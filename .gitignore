@@ -1,3 +1,21 @@
+# Secrets — NEVER commit these.
+# entropy.bin is a per-installation 64-byte seed for Wolfram's DRBG. A shared
+# seed would give every console identical key material, so it must not reach
+# the repository. See src/util/entropy.h and AGENTS.md §13.
+entropy.bin
+*.entropy
+session.dat
+
+# Build products
+build/
+dist/
+*.rpx
+*.wuhb
+*.lst
+
+# Agent tooling scratch
+.letta/
+
 # Prerequisites
 *.d
 
