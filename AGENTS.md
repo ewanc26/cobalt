@@ -20,10 +20,14 @@ Channel Blue is **pre-alpha** — it doesn't really work yet. So this isn't a "p
 Some platform-level reasoning still applies regardless of Channel Blue's state: the Wii (PowerPC "Broadway" CPU, 88 MB RAM, GX for graphics, no second screen) and Wii U (Espresso CPU, larger RAM pool, GX2, GamePad) are different enough that:
 
 - UI layout logic should be rewritten around a **two-mode model**: TV+GamePad together (TV for the primary feed/thread view, GamePad for compose/notifications/navigation) *and* GamePad-only, self-sufficient Off-TV Play — see §5 for details — rather than ported as-is.
-- Networking code should be built fresh against WUT's `nsysnet`/socket layer and a modern TLS library (see §6). Channel Blue's Wii networking work, such as it exists, relied on much weaker/older TLS support and was never gotten fully working — there's little to reuse there beyond what was learned.
+- Networking code should be built fresh against WUT's `nsysnet`/socket layer and a modern TLS library (see §6), since the Wii U's transport is curl-over-mbedTLS while the Wii's is a hand-rolled socket/TLS stack on libogc.
 - Shared *concepts* (feed rendering approach, ATProto record caching strategy, offline queue for posts made without connectivity) are worth porting; shared *code* mostly isn't, given how different the two platforms' SDKs are.
 
-If you find yourself tempted to reuse or adapt something from Channel Blue, remember it never reached a working state — verify carefully rather than assuming any of it is a solid foundation, and ask Ewan before sinking significant effort into adapting old Wii-specific code.
+If you find yourself tempted to reuse or adapt something from Channel Blue, verify carefully rather than assuming it is a solid foundation, and ask Ewan before sinking significant effort into adapting Wii-specific code.
+
+**Correction (see also §13):** the "pre-alpha, doesn't really work" framing above is out of date in one respect that matters. Channel Blue is not a desktop mock — it is a linked MVP candidate that cross-builds to a booting DOL, has a host test suite, and **already uses Wolfram** for XRPC, auth and Wii HTTPS over mbedTLS. What its own AGENTS.md and README leave unverified is the *real-hardware* path (login, TLS, session refresh, live social flows), not whether the code exists.
+
+The practical consequence: Channel Blue's Wii networking is worth reading, not dismissing. Cobalt's entropy provisioning was taken directly from it rather than invented — same load/rotate/save/commit discipline, same file format — precisely so the two projects do not diverge on a security-sensitive detail. Check what Channel Blue already solved before solving it again here.
 
 ## 3. Target Platform & Toolchain
 
@@ -176,6 +180,61 @@ When setting up the initial project skeleton, start from the WUT sample's CMake/
 8. Packaging polish: WUHB icon/metadata, README, release build flags.
 
 Treat steps 1–2 as blocking for everything else — if networking doesn't reliably work on real hardware, nothing downstream matters yet.
+
+---
+
+## 13. Decisions Already Made (keep this current)
+
+Findings and choices settled in the code. Where these contradict an earlier section, these win — the earlier text describes the plan, this describes what was actually built.
+
+### SDL2 owns ProcUI — do not drive it yourself
+
+The Wii U SDL2 port drives ProcUI internally: `WIIU_VideoInit` calls `ProcUIInitEx` and registers the save/acquire/release callbacks, `WIIU_PumpEvents` calls `ProcUIProcessMessages` and turns the result into `SDL_QUIT` and the `SDL_APP_*` lifecycle events, and `WIIU_VideoQuit` calls `ProcUIShutdown`. (Verified against the symbols in `libSDL2.a`'s `SDL_wiiuvideo.o`.)
+
+So Cobalt must **not** call `ProcUIInit`/`ProcUIProcessMessages`/`ProcUIShutdown`. Two consumers of one message queue means whichever loop runs first eats the foreground-release notifications the other needs — a fast route to an app that will not return to the Wii U Menu. §9's "handle every foreground/background transition" is satisfied by handling `SDL_APP_WILLENTERBACKGROUND` / `SDL_APP_DIDENTERFOREGROUND` in `src/main.c`. Textures do not survive a foreground release, so the text caches are flushed on re-acquire.
+
+### wut owns nn::ac — do not initialise or finalise it
+
+`__init_wut_socket` (linked in as soon as anything references sockets, which curl does) runs `socket_lib_init()`, `AddDevice()`, `ACInitialize()` and `ACConnectAsync()`. `__fini_wut_socket` calls `ACClose()` and `ACFinalize()` at exit.
+
+`src/net/net.c` therefore only *queries* AC and uses synchronous `ACConnect()` as a fallback for wut's async connect not having landed yet. Calling `ACInitialize`/`ACFinalize` here would double-finalize against wut's own teardown.
+
+### Wolfram is in, and its Wii U support was built out here
+
+§8's question is settled: Wolfram is used, not reimplemented. Its Wii U support was a stub and has been filled in (in the Wolfram repo, not forked into Cobalt):
+
+- `src/platform/wiiu_platform.c` returned `WF_ERR_NOT_IMPLEMENTED`, a NULL mutex allocator and a clock stuck at 0. Now implemented against `coreinit` `OSMutex` and `OSGetTime`.
+- Wolfram lumped every console into one "embedded" bucket and routed the Wii U through the hand-rolled socket/TLS transport, which depends on libogc's `net_*` API. The Wii U has a real libcurl portlib, so it now uses the same curl transport as desktop — which is also what §6 already called for.
+- `.devdeps/wiiu.cmake` passed `-mwiiu`, which devkitPPC's gcc does not accept; it now delegates to devkitPro's own `WiiU.cmake`.
+
+Build Wolfram before Cobalt; the Makefile picks it up automatically from `../wolfram/build-wiiu` and defines `COBALT_HAS_WOLFRAM`. Without it Cobalt still builds and boots, and the diagnostics screen says the SDK is absent. Everything protocol-shaped goes behind `src/atproto/`.
+
+### The Wii U has no usable CSPRNG — signing fails closed
+
+devkitPro's mbedTLS for Wii U does define `mbedtls_hardware_poll`, so seeding a DRBG from it compiles and runs. Disassembly shows it is `srand(OSGetSystemTick()); rand()` — a timer-seeded libc PRNG whose entire state is the console's tick counter.
+
+This matters because Wolfram's `wii_tls_random` feeds **P-256 key generation and ECDSA signing**. Wolfram already refuses exactly this class of entropy on the Wii, so the Wii U now follows the same rule: `src/crypto/wiiu_random.c` fails closed until the application provisions 64 real bytes via `wf_wiiu_set_entropy_seed()`.
+
+Consequences to design around:
+- Read-only use (timeline, threads) is unaffected.
+- App-password login is unaffected — curl runs its own TLS stack.
+- **Seed provisioning is implemented**, following Channel Blue rather than inventing a second scheme. `make bundle` generates a fresh 64-byte seed with `openssl rand` into `dist/wiiu/apps/cobalt/entropy.bin`; the app reads it from `sd:/wiiu/apps/cobalt/entropy.bin` and on every boot does load → set → rotate → save → commit (`provision_entropy()` in `src/atproto/atproto.c`, `src/util/entropy.c`). The ordering is load-bearing: the DRBG is deterministic, so booting twice on one seed regenerates identical key material, and the commit is withheld unless the replacement actually reached the card. A missing seed is not fatal — the app boots and reports it, and only signing is disabled.
+- The seed is **not distributable**. One per installation; `.gitignore` blocks `entropy.bin` and `dist/`.
+- **Still unresolved:** curl/mbedTLS's *own* TLS randomness on Wii U draws on the same weak poll. That affects client randoms and ephemeral ECDHE keys for every HTTPS request, and Wolfram's seed does not fix it, because curl has its own mbedTLS entropy context. Worth a decision before treating the transport as trustworthy for anything sensitive.
+
+### Assets and font
+
+`assets/` artwork is generated, not hand-drawn: `python3 tools/gen_assets.py` writes the 128×128 icon and both splash screens from a palette defined in that script (stdlib only — no Pillow or ImageMagick needed). Regenerate after a palette change rather than editing the PNGs.
+
+`romfs/font.ttf` is **Lato Regular, a placeholder** — see `romfs/FONTS.md`. It is OFL-1.1 and safe to redistribute, but it is not the rounded, Pop-style face §5 asks for, and the OFL text still needs to ship alongside it before any release.
+
+### Asset paths are probed, not assumed
+
+`src/util/paths.c` probes candidate content roots for a `content.marker` sentinel and logs every probe, so a failure to find assets on hardware shows up as an explicit list of what was tried rather than a bare "font load failed". `/vol/content` (WUHB) and the SD app directory (bare RPX) are both covered.
+
+### Logging
+
+`src/util/log.c` fans out to every sink wut offers — Cafe OS, UDP on port 4405, Aroma's LoggingModule, and `sd:/wiiu/apps/cobalt/cobalt.log` (flushed per line so it survives a hang). Given there is no emulator, `nc -ul 4405` from a PC on the same LAN is the fastest debug loop available.
 
 ---
 
