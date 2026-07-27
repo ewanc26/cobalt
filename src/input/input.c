@@ -90,6 +90,9 @@ cobalt_input_begin_frame(cobalt_input *in, uint32_t now_ms)
    memset(in->pressed, 0, sizeof(in->pressed));
    in->touch_began = false;
    in->touch_ended = false;
+   in->text[0] = '\0';
+   in->backspace = false;
+   in->text_confirmed = false;
 }
 
 static void
@@ -153,6 +156,28 @@ cobalt_input_handle_event(cobalt_input *in, const SDL_Event *event)
          break;
       }
 
+      case SDL_TEXTINPUT: {
+         /* Append rather than overwrite: rare, but more than one SDL_TEXTINPUT
+          * can arrive in a single frame (e.g. IME composition committing
+          * several characters at once). */
+         size_t used = strlen(in->text);
+         size_t room = sizeof(in->text) - used - 1;
+         if (room > 0) {
+            strncat(in->text, event->text.text, room);
+         }
+         break;
+      }
+
+      case SDL_KEYDOWN: {
+         if (event->key.keysym.sym == SDLK_BACKSPACE) {
+            in->backspace = true;
+         } else if (event->key.keysym.sym == SDLK_RETURN ||
+                    event->key.keysym.sym == SDLK_KP_ENTER) {
+            in->text_confirmed = true;
+         }
+         break;
+      }
+
       case SDL_FINGERDOWN:
       case SDL_FINGERMOTION:
       case SDL_FINGERUP: {
@@ -195,6 +220,18 @@ cobalt_input_end_frame(cobalt_input *in, uint32_t now_ms)
          in->next_repeat[btn] = now_ms + REPEAT_RATE_MS;
       }
    }
+}
+
+void
+cobalt_input_start_text_edit(void)
+{
+   SDL_StartTextInput();
+}
+
+void
+cobalt_input_stop_text_edit(void)
+{
+   SDL_StopTextInput();
 }
 
 bool

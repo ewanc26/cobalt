@@ -23,6 +23,8 @@ extern "C" {
 typedef enum {
    COBALT_SCREEN_HOME = 0,
    COBALT_SCREEN_DIAGNOSTICS,
+   COBALT_SCREEN_SIGNIN,
+   COBALT_SCREEN_TIMELINE,
 } cobalt_screen;
 
 /*

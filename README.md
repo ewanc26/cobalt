@@ -10,7 +10,7 @@ Cobalt is early and under active development, tested only against real Wii U har
 
 - The app boots, handles GamePad/Pro Controller input, and renders a native-style menu on both the TV and GamePad screens, including Off-TV Play (GamePad-only) mode.
 - A **Diagnostics** screen reports asset path resolution, network status, linked library versions, and AT Protocol SDK status — useful for confirming a build is sound on a given console.
-- **Sign in** and **Timeline** are visible in the menu but intentionally disabled ("Coming soon") — the AT Protocol session/feed layer isn't wired up yet. See `AGENTS.md` for the build order this project follows.
+- **Sign in** (app password) and **Timeline** are wired up in code, but **unverified**: they were written without hardware or a real Wolfram checkout available, so the AT Protocol calls they depend on are a best-effort guess at Wolfram's API rather than confirmed against it — see `AGENTS.md` §13. Expect these to need fixing up once tested against the real SDK and a real console.
 
 If you're looking for a client you can actually post from today, this isn't it yet. If you want to track progress or help test on hardware, read on.
 

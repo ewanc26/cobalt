@@ -209,6 +209,19 @@ So Cobalt must **not** call `ProcUIInit`/`ProcUIProcessMessages`/`ProcUIShutdown
 
 Build Wolfram before Cobalt; the Makefile picks it up automatically from `../wolfram/build-wiiu` and defines `COBALT_HAS_WOLFRAM`. Without it Cobalt still builds and boots, and the diagnostics screen says the SDK is absent. Everything protocol-shaped goes behind `src/atproto/`.
 
+### Sign-in and timeline are wired up, but the Wolfram call surface they use is a guess
+
+`src/atproto.{h,c}` now has real login (`cobalt_atproto_login`), session (`cobalt_atproto_has_session`/`_session_handle`/`_logout`), and timeline (`cobalt_atproto_fetch_timeline`) APIs, and `src/app/app.c` has working sign-in and timeline screens wired to the "Sign in"/"Timeline" menu entries — no more "Coming soon" placeholders. This was written in an environment without a `../wolfram` checkout available, so the actual XRPC/session calls (`wf_atp_create_session`, `wf_atp_get_timeline`) are declared locally in `atproto.c` inside a block clearly marked **"UNVERIFIED WOLFRAM SURFACE"**, following the naming already verified elsewhere in the file (`wf_status`, `wf_wiiu_*`) but not checked against Wolfram's real headers.
+
+Before building this with `COBALT_HAS_WOLFRAM` against a real Wolfram checkout: compare those declarations against `wolfram/include/wolfram/*.h` and fix names/layouts/error codes to match — a link error naming one of the `wf_atp_*` symbols is the expected sign this needs correcting. Nothing outside `atproto.c` talks to Wolfram directly, so that file is the only one that should need changes.
+
+Other things worth knowing about this pass, none of it verified on real hardware (no console access from where this was written):
+- **Session storage is plaintext.** `session.dat` (already in `.gitignore`) holds the access/refresh JWTs and handle as a raw struct, temp-file-and-rename like the entropy seed. §7 asks for encryption or at least non-plaintext storage — this is an open gap, flagged rather than papered over with fake obfuscation.
+- **PDS is hardcoded to `bsky.social`.** Fine for accounts hosted there; wrong for a self-hosted PDS. No handle-resolution/host-discovery flow exists yet.
+- **Text entry assumes the Wii U SDL2 port exposes `SDL_StartTextInput`/`SDL_TEXTINPUT` for the Cafe OS software keyboard**, the way other SDL2 ports do for on-screen keyboards (iOS, Android). `src/input/` gained `cobalt_input_start_text_edit()`/`_stop_text_edit()` and `SDL_TEXTINPUT`/`SDL_KEYDOWN` (backspace/enter) handling on this assumption — needs confirming on hardware, and is isolated to `input.c` if it needs to change.
+- **Login/timeline calls block the frame loop.** There's no threading in this codebase yet, so `cobalt_app_update()` defers each call by one frame (set a pending flag, let that frame's "Signing in.../Loading..." draw actually present, then make the blocking call on the next update) rather than freezing mid-draw — but the call itself still blocks for its full duration once it runs.
+- **Sign-in fields have no touch target yet** — D-pad/stick navigation and the confirm button work, but tapping a field on the GamePad doesn't, unlike every other screen. Noted in a comment on `draw_signin`.
+
 ### The Wii U has no usable CSPRNG — signing fails closed
 
 devkitPro's mbedTLS for Wii U does define `mbedtls_hardware_poll`, so seeding a DRBG from it compiles and runs. Disassembly shows it is `srand(OSGetSystemTick()); rand()` — a timer-seeded libc PRNG whose entire state is the console's tick counter.
