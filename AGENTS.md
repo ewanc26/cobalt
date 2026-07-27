@@ -226,7 +226,7 @@ Consequences to design around:
 
 `assets/` artwork is generated, not hand-drawn: `python3 tools/gen_assets.py` writes the 128×128 icon and both splash screens from a palette defined in that script (stdlib only — no Pillow or ImageMagick needed). Regenerate after a palette change rather than editing the PNGs.
 
-`romfs/font.ttf` is **Lato Regular, a placeholder** — see `romfs/FONTS.md`. It is OFL-1.1 and safe to redistribute, but it is not the rounded, Pop-style face §5 asks for, and the OFL text still needs to ship alongside it before any release.
+`romfs/font.ttf` is **Lato Regular, a placeholder** — see `romfs/FONTS.md`. It is OFL-1.1 and safe to redistribute; `romfs/OFL.txt` ships the required license text alongside it. It is still not the rounded, Pop-style face §5 asks for — that substitution remains open.
 
 ### Asset paths are probed, not assumed
 
