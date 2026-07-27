@@ -99,6 +99,10 @@ struct cobalt_app {
 static SDL_Rect s_drc_hit[MENU_COUNT];
 static bool s_drc_hit_valid = false;
 
+/* Same idea for the sign-in form's three rows (identifier, password, submit). */
+static SDL_Rect s_signin_hit[SIGNIN_FIELD_COUNT];
+static bool s_signin_hit_valid = false;
+
 cobalt_app *
 cobalt_app_create(void)
 {
@@ -379,6 +383,28 @@ update_home(cobalt_app *app, const cobalt_input *in)
    }
 }
 
+/*
+ * Confirm/tap share this: both mean "do the thing the focused field/button
+ * represents" — start editing a text field, or attempt to submit.
+ */
+static void
+signin_activate_focused(cobalt_app *app)
+{
+   if (app->signin_focus == SIGNIN_FIELD_SUBMIT) {
+      if (app->signin_identifier[0] && app->signin_password[0]) {
+         app->signin_error[0] = '\0';
+         app->signin_submitting = true;
+         app->signin_pending_login = true;
+      } else {
+         snprintf(app->signin_error, sizeof(app->signin_error),
+                  "Enter both an identifier and an app password.");
+      }
+   } else {
+      cobalt_input_start_text_edit();
+      app->signin_editing = true;
+   }
+}
+
 static void
 update_signin(cobalt_app *app, const cobalt_input *in)
 {
@@ -426,18 +452,26 @@ update_signin(cobalt_app *app, const cobalt_input *in)
    }
 
    if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
-      if (app->signin_focus == SIGNIN_FIELD_SUBMIT) {
-         if (app->signin_identifier[0] && app->signin_password[0]) {
-            app->signin_error[0] = '\0';
-            app->signin_submitting = true;
-            app->signin_pending_login = true;
-         } else {
-            snprintf(app->signin_error, sizeof(app->signin_error),
-                     "Enter both an identifier and an app password.");
+      signin_activate_focused(app);
+      return;
+   }
+
+   /* Touch: tapping a row both moves focus to it and activates it in one
+    * gesture, same as the TV's tile row and the GamePad's home list. Hit
+    * rects are only ever recorded from the DRC draw (see draw_signin) since
+    * touch coordinates are always in DRC pixel space regardless of which
+    * surface is being drawn. */
+   if (s_signin_hit_valid && in->touch_ended) {
+      for (int i = 0; i < SIGNIN_FIELD_COUNT; i++) {
+         if (cobalt_input_tapped(in, &s_signin_hit[i])) {
+            if (app->signin_editing) {
+               cobalt_input_stop_text_edit();
+               app->signin_editing = false;
+            }
+            app->signin_focus = (signin_field) i;
+            signin_activate_focused(app);
+            break;
          }
-      } else {
-         cobalt_input_start_text_edit();
-         app->signin_editing = true;
       }
    }
 }
@@ -705,13 +739,14 @@ draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
  * sign-in form is naturally vertical on either screen; the metrics struct
  * already gives each surface its own width and type scale.
  *
- * Touch is not wired up for the fields themselves yet (AGENTS.md §5 wants
- * every screen usable both ways) — only D-pad/stick navigation plus the
- * confirm button works here so far. Follow draw_home_drc's s_drc_hit pattern
- * to add tap-to-focus for the three rows when picking this back up.
+ * Hit rects for touch are only recorded from the DRC draw: touch coordinates
+ * are always reported in DRC pixel space (see input.c's SDL_FINGER* handling)
+ * regardless of which surface is currently being drawn, so recording them
+ * from a TV draw would hit-test DRC touches against TV-sized rectangles.
+ * Same convention as draw_home_drc's s_drc_hit.
  */
 static void
-draw_signin(cobalt_app *app, cobalt_render *r)
+draw_signin(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
    draw_header(app, r, "Sign in with an app password");
@@ -731,6 +766,9 @@ draw_signin(cobalt_app *app, cobalt_render *r)
 
    for (int i = 0; i < 2; i++) {
       SDL_Rect row = { m->pad_edge, top + i * (row_h + m->gap), form_w, row_h };
+      if (surface == COBALT_SURFACE_DRC) {
+         s_signin_hit[i] = row;
+      }
       bool focused = ((int) app->signin_focus == i);
       cobalt_draw_tile(r, &row, focused ? 1.0f : 0.0f);
 
@@ -765,6 +803,10 @@ draw_signin(cobalt_app *app, cobalt_render *r)
    }
 
    SDL_Rect submit = { m->pad_edge, top + 2 * (row_h + m->gap), form_w, row_h };
+   if (surface == COBALT_SURFACE_DRC) {
+      s_signin_hit[SIGNIN_FIELD_SUBMIT] = submit;
+      s_signin_hit_valid = true;
+   }
    bool submit_focused = (app->signin_focus == SIGNIN_FIELD_SUBMIT);
    cobalt_draw_tile(r, &submit, submit_focused ? 1.0f : 0.0f);
    int submit_text_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
@@ -782,7 +824,7 @@ draw_signin(cobalt_app *app, cobalt_render *r)
    SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     app->signin_editing ? "A / Enter: done typing"
-                                        : "A: edit / confirm     B: back     Up/Down: move",
+                                        : "A / touch: edit / confirm     B: back     Up/Down: move",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }
 
@@ -854,7 +896,7 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
          break;
 
       case COBALT_SCREEN_SIGNIN:
-         draw_signin(app, r);
+         draw_signin(app, r, surface);
          break;
 
       case COBALT_SCREEN_TIMELINE:

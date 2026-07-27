@@ -220,7 +220,8 @@ Other things worth knowing about this pass, none of it verified on real hardware
 - **PDS is hardcoded to `bsky.social`.** Fine for accounts hosted there; wrong for a self-hosted PDS. No handle-resolution/host-discovery flow exists yet.
 - **Text entry assumes the Wii U SDL2 port exposes `SDL_StartTextInput`/`SDL_TEXTINPUT` for the Cafe OS software keyboard**, the way other SDL2 ports do for on-screen keyboards (iOS, Android). `src/input/` gained `cobalt_input_start_text_edit()`/`_stop_text_edit()` and `SDL_TEXTINPUT`/`SDL_KEYDOWN` (backspace/enter) handling on this assumption — needs confirming on hardware, and is isolated to `input.c` if it needs to change.
 - **Login/timeline calls block the frame loop.** There's no threading in this codebase yet, so `cobalt_app_update()` defers each call by one frame (set a pending flag, let that frame's "Signing in.../Loading..." draw actually present, then make the blocking call on the next update) rather than freezing mid-draw — but the call itself still blocks for its full duration once it runs.
-- **Sign-in fields have no touch target yet** — D-pad/stick navigation and the confirm button work, but tapping a field on the GamePad doesn't, unlike every other screen. Noted in a comment on `draw_signin`.
+- **Sign-in fields now have a touch target** (tapping a row focuses and activates it in one gesture, same as Home's tile list), but the timeline screen's scroll is still D-pad/stick only — no swipe-to-scroll yet.
+- **No session refresh.** `com.atproto.server.refreshSession` isn't called anywhere; once the access JWT expires, `cobalt_atproto_fetch_timeline()` will just start failing and the user has to sign in again. AGENTS.md §12 step 5 ("expired session" as a named error state) is not yet handled.
 
 ### The Wii U has no usable CSPRNG — signing fails closed
 
