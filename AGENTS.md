@@ -133,7 +133,7 @@ If Wolfram turns out to need real adaptation work to build under devkitPPC, that
 Beyond that, don't start the rest of the project from a blank Makefile either — there's enough of an ecosystem here to build on real starting points instead of reinventing the toolchain setup:
 
 - **`devkitPro/wut`'s own `samples/` directory** — canonical, always-current "hello world" examples for both Makefile- and CMake-based WUT projects (`samples/cmake/helloworld` is the minimal CMake starting point referenced in WUT's own docs). This is the right base for getting a bare RPX booting and exiting cleanly before anything else is added.
-- **`GaryOderNichts/SDL_mirror`** — the current, actively maintained SDL2 port for Wii U (audio, GamePad joystick/touchscreen input, GX2-backed hardware-accelerated rendering, timers, threading). Build against this rather than an older/abandoned SDL2-for-Wii-U fork (older forks like `yawut/sdl2-wiiu` point to this as their successor).
+- **SDL2 for Wii U** — note this has moved. `wiiu-sdl2` is **no longer** GaryOderNichts/SDL_mirror, whose newest Wii U branch (`wiiu-2.0.12`) was last touched in early 2021. devkitPro's package now builds **upstream SDL 2.32.10 plus a ~7,400-line Wii U patch** adding `src/video/wiiu`, `src/render/wiiu`, `src/thread/wiiu` and `src/audio/wiiu`. So Cobalt is on SDL 2.32, with a full GX2 render backend and real SDL threads — not 2.0.x.
 - **`KarvinJ/wii-u-tetris`** — a small, complete SDL2 starter template for Wii U (requires WUT + SDL2 + `libromfs-wiiu`). Worth cloning and reading through even if none of its code is reused directly — it's a working example of the exact stack (WUT + SDL2 + romfs assets) Cobalt is planning to use, at a scale small enough to actually read end-to-end in one sitting.
 - **`yawut/libromfs-wiiu`** — romfs implementation for bundling assets (fonts, icons) into the RPX/WUHB, referenced in §4's `romfs/` directory. Use this rather than hand-rolling asset loading from SD card paths.
 - **`devkitPro/wut-packages`** — the actual package definitions for `SDL2`, `SDL2_image`, `SDL2_ttf`, `curl`, `mbedtls`, `physfs`, and more. Useful both as documentation of what's available via pacman and, if a package needs a patch or a newer version than what's currently released, as a reference for how these are built for the WUT toolchain.
@@ -195,6 +195,21 @@ Treat steps 1–2 as blocking for everything else — if networking doesn't reli
 That is a deliberate departure from the rule above, made on Ewan's instruction to keep building, and the risk it was guarding against grows with every increment: the first console run now has to settle the TLS handshake, `SDL_CreateThread` under the Wii U SDL port, `createSession`, the timeline, the thread view, and record writes all at once. If it goes badly, bisecting will be slow. A hardware pass is worth more than the next feature.
 
 Step 4 (the GamePad/Off-TV split) was satisfied structurally from the start rather than as a later step: every screen lays itself out per surface.
+
+### What the toolchain actually offers
+
+Checked against the `wut-packages` and `pacman-packages` PKGBUILDs rather than assumed. Anything outside `wiiu-*` ∪ `ppc-*` has to be vendored as source that builds for `-mcpu=750` newlib with no dynamic loader.
+
+- **Images are viable.** `wiiu-sdl2_image` 2.6.3 links libjpeg-turbo, libpng, libwebp and giflib statically (`--disable-*-shared`, which is required — there is no `dlopen`). `IMG_Load_RW(SDL_RWFromMem(...))` decodes straight from a downloaded buffer, which is exactly what `fortheusers/chesto` does on this platform in production. TIFF, JPEG-XL and AVIF are off. Prefer this over vendoring stb_image: libjpeg-turbo is faster and far more robust on truncated or hostile input, which matters when decoding bytes off the network.
+- **No `sqlite3` portlib exists**, for Wii U or ppc. A local cache means vendoring the amalgamation and supplying a VFS.
+- **No `libxml2`** either; `ppc-libexpat`, `ppc-mxml` and `ppc-tinyxml2` are there.
+- **`wiiu-curl` is built `--disable-ipv6 --disable-threaded-resolver --disable-pthreads`.** So: no IPv6, and DNS resolution is synchronous inside the request — another reason network calls belong on the worker thread.
+
+**C++ is fully available**, and the constraints Cobalt assumed are not real ones. devkitPPC r50 ships gcc 16.1.0 configured `--enable-languages=c,c++ --enable-threads=posix --enable-libstdcxx-time=yes`, with no exception or RTTI disabling; `wut.ld` explicitly keeps `.eh_frame` and `.gcc_except_table`. `std::thread`/`std::mutex` are real, not stubs — devkitPro's newlib routes `pthread_create` to a hook that wut implements on `OSCreateThread`. The `-fno-exceptions -fno-rtti` in the Makefile is a legitimate *binary size* choice, not a correctness one; decide it deliberately. Two things to know: `--disable-libstdcxx-verbose` means an uncaught exception terminates without a useful message, and `--disable-__cxa_atexit` weakens cross-TU static destruction order, so avoid non-trivial global destructors.
+
+**C# / .NET is not possible.** Mono's PowerPC support covers Wii and PS3, never Wii U; modern .NET has never supported 32-bit big-endian PowerPC at all. Do not spend time on it.
+
+**Text shaping is better than assumed, with three real gaps.** `wiiu-sdl2_ttf` *is* built against `ppc-harfbuzz` (the PKGBUILD passes `--disable-harfbuzz-builtin`, not `--disable-harfbuzz`), so intra-run GSUB/GPOS shaping works. But SDL_ttf sets one script and direction for a whole string, does no BiDi (`ppc-libfribidi` is available if needed), and does no font fallback — one `TTF_Font` is one face, so a missing glyph is `.notdef`. Mixed CJK/Latin/emoji therefore needs a run-segmenter in Cobalt. Colour emoji via a CBDT font works, with the catch that such faces are non-scalable and `ptsize` becomes a strike *index*; COLRv1 does not, since SDL_ttf never walks the paint graph.
 
 ### Parity with `bluesky-social/social-app`
 
@@ -369,6 +384,21 @@ Two things are resolved at parse time rather than left to the screen:
 - **What to open.** A reply, mention or quote *is* a post and is its own subject; a like or repost points at what the *viewer* wrote, which lives in `reasonSubject`. Getting that backwards opens a plausible-looking wrong post, so it is a tested function rather than a condition inside a draw call.
 
 `updateSeen` fires only on a top-of-list fetch. Doing it while paging backwards through history would mark things read that the user has not reached yet. Its failure is logged, not surfaced — the notifications arrived, and an error about a badge would be noise.
+
+### Shared list state is the worker's, and needs the lock
+
+The feed, thread, notification list and profile are the worker's own buffers, handed to screens by pointer rather than copied. That is deliberate — copying 50 KB per frame to draw it is the alternative — but it means the UI must hold `cobalt_session_lock()` across the *whole* of update and draw, which `app.c` does.
+
+The reason is sharper than general tidiness. The worker edits these in place while a screen is on it: a like rewrites a counts line, a refresh clears and refills the list. A torn read of a counts line is not a one-frame flicker, because `ui/render.c`'s text cache keys on **string contents** — it renders the texture, then copies the key. A string that changes between those two steps gets its texture stored under the wrong key and draws wrongly until it is evicted, up to 128 lookups later.
+
+SDL mutexes are reentrant, so accessors that take the lock internally are safe to call while it is held.
+
+### Two rules every list screen shares
+
+Both were bugs before they were rules, and both are now single tested functions rather than repeated logic:
+
+- **`cobalt_list_clamp()`** — a list can shrink under the cursor (replying re-roots a thread on its parent, which is usually much shorter). The scroll maths only ever raises `scroll` to meet `selected`, so it cannot recover from a cursor past the end: the screen draws nothing and takes one press of UP per row to escape.
+- **`cobalt_feed_can_page()`** — not simply `has_more`. The window is fixed, so once full, every further page appends nothing while the server still returns a cursor. A screen that auto-pages on reaching the last row would request forever, holding `busy` true so no interaction ever ran, and earning a rate limit.
 
 ### There is a host test harness, and it is not a substitute for hardware
 

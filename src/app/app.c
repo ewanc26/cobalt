@@ -1,6 +1,7 @@
 #include "app/app.h"
 #include "app/compose.h"
 #include "app/notify.h"
+#include "app/profile.h"
 #include "app/signin.h"
 #include "app/thread.h"
 #include "app/timeline.h"
@@ -58,6 +59,9 @@ struct cobalt_app {
    cobalt_thread_view thread;
    cobalt_compose compose;
    cobalt_notify_view notify;
+   cobalt_profile_view profile;
+   /* Where B from the profile screen returns to. */
+   cobalt_screen profile_return;
    /* Where to return after composing — the timeline or the thread. */
    cobalt_screen compose_return;
    /* Where B from the thread screen returns to — the timeline or notifications. */
@@ -175,6 +179,7 @@ cobalt_app_create(void)
    cobalt_timeline_init(&app->timeline);
    cobalt_thread_view_init(&app->thread);
    cobalt_notify_view_init(&app->notify);
+   cobalt_profile_view_init(&app->profile);
 
    curl_version_info_data *curl_info = curl_version_info(CURLVERSION_NOW);
    snprintf(app->curl_version, sizeof(app->curl_version), "curl %s / %s",
@@ -341,6 +346,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          cobalt_timeline_init(&app->timeline);
    cobalt_thread_view_init(&app->thread);
    cobalt_notify_view_init(&app->notify);
+   cobalt_profile_view_init(&app->profile);
          app->screen = COBALT_SCREEN_HOME;
          app->selected = 1;
          break;
@@ -354,6 +360,10 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
             app->screen = app->compose_return;
             if (app->compose_return == COBALT_SCREEN_THREAD &&
                 app->compose.parent_uri[0]) {
+               /* The refetch re-roots on the parent, which is usually a much
+                * shorter conversation than the one being read — without this
+                * the cursor stays where it was and lands past the end. */
+               cobalt_thread_view_reset(&app->thread);
                cobalt_session_begin_thread(app->compose.parent_uri);
             } else {
                cobalt_session_begin_timeline(false);
@@ -368,6 +378,8 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          break;
 
       case COBALT_JOB_NOTIFICATIONS:
+      case COBALT_JOB_PROFILE:
+      case COBALT_JOB_FOLLOW:
       case COBALT_JOB_THREAD:
       case COBALT_JOB_LIKE:
       case COBALT_JOB_REPOST:
@@ -505,10 +517,35 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
       handle_job_result(app, &result);
    }
 
+   /*
+    * Screens read the worker's feed, thread and notification buffers directly,
+    * and the worker rewrites them in place while they are on screen — a like
+    * moves a count, a refresh clears and refills the list. Holding the session
+    * lock across the whole update is what makes that safe; the lock is never
+    * held across network I/O, so this costs nothing.
+    */
+   cobalt_session_lock();
+
    switch (app->screen) {
       case COBALT_SCREEN_DIAGNOSTICS:
          if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
             app->screen = COBALT_SCREEN_HOME;
+         }
+         break;
+
+      case COBALT_SCREEN_PROFILE:
+         switch (cobalt_profile_view_update(&app->profile, in)) {
+            case COBALT_PROFILE_VIEW_BACK:
+               app->screen = app->profile_return;
+               break;
+            case COBALT_PROFILE_VIEW_OPEN_THREAD:
+               cobalt_thread_view_reset(&app->thread);
+               app->thread_return = COBALT_SCREEN_PROFILE;
+               app->screen = COBALT_SCREEN_THREAD;
+               break;
+            case COBALT_PROFILE_VIEW_STAY:
+            default:
+               break;
          }
          break;
 
@@ -521,6 +558,16 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                cobalt_thread_view_reset(&app->thread);
                app->thread_return = COBALT_SCREEN_TIMELINE;
                app->screen = COBALT_SCREEN_THREAD;
+               break;
+            case COBALT_TIMELINE_OPEN_PROFILE:
+               cobalt_profile_view_rewind(&app->profile);
+               app->profile_return = COBALT_SCREEN_TIMELINE;
+               app->screen = COBALT_SCREEN_PROFILE;
+               break;
+            case COBALT_TIMELINE_COMPOSE:
+               cobalt_compose_init(&app->compose);
+               app->compose_return = COBALT_SCREEN_TIMELINE;
+               app->screen = COBALT_SCREEN_COMPOSE;
                break;
             case COBALT_TIMELINE_STAY:
             default:
@@ -598,6 +645,8 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
          update_home(app, in);
          break;
    }
+
+   cobalt_session_unlock();
 
    /* Ease focus toward the selection so tiles settle rather than snap. */
    for (int i = 0; i < MENU_COUNT; i++) {
@@ -902,6 +951,11 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
       return;
    }
 
+   /* Same reason as cobalt_app_update: the buffers being drawn belong to the
+    * worker and it edits them in place. Both surfaces are drawn per frame, so
+    * this is taken twice. */
+   cobalt_session_lock();
+
    switch (app->screen) {
       case COBALT_SCREEN_DIAGNOSTICS:
          draw_diagnostics(app, r, surface);
@@ -923,6 +977,10 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
          cobalt_notify_view_draw(&app->notify, r, surface);
          break;
 
+      case COBALT_SCREEN_PROFILE:
+         cobalt_profile_view_draw(&app->profile, r, surface);
+         break;
+
       case COBALT_SCREEN_SIGN_IN:
          cobalt_signin_draw(&app->signin, r, surface);
          break;
@@ -940,4 +998,6 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
          }
          break;
    }
+
+   cobalt_session_unlock();
 }

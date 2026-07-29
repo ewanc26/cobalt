@@ -17,6 +17,12 @@ cobalt_notifications_reset(cobalt_notifications *list)
    }
 }
 
+bool
+cobalt_notifications_can_page(const cobalt_notifications *list)
+{
+   return list && list->has_more && list->count < COBALT_NOTIFICATIONS_MAX;
+}
+
 const char *
 cobalt_notification_summary(const char *reason)
 {
@@ -113,8 +119,11 @@ cobalt_notifications_append_from_wolfram(
       cobalt_feed_copy_text(item->actor, sizeof(item->actor), display);
       snprintf(item->handle, sizeof(item->handle), "@%s", handle);
 
-      snprintf(item->summary, sizeof(item->summary), "%s",
-               cobalt_notification_summary(src->reason));
+      /* Through copy_text, not snprintf: an unrecognised reason is passed
+       * through verbatim, so this is arbitrary server-supplied UTF-8 and a
+       * plain truncation could cut a multi-byte sequence into tofu. */
+      cobalt_feed_copy_text(item->summary, sizeof(item->summary),
+                            cobalt_notification_summary(src->reason));
 
       /* A like has no words; a reply does. Both are normal. */
       const char *text = json_string(src->record, "text");
@@ -147,7 +156,13 @@ cobalt_notifications_append_from_wolfram(
       added++;
    }
 
-   if (typed->cursor && typed->cursor[0]) {
+   /* A full window clears the cursor for the same reason the feed does: every
+    * further page would append nothing while still returning one, and a screen
+    * that auto-pages at the end would request it forever. */
+   if (out->count >= COBALT_NOTIFICATIONS_MAX) {
+      out->cursor[0] = '\0';
+      out->has_more = false;
+   } else if (typed->cursor && typed->cursor[0]) {
       snprintf(out->cursor, sizeof(out->cursor), "%s", typed->cursor);
       out->has_more = true;
    } else {

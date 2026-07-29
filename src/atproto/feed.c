@@ -34,6 +34,43 @@ cobalt_thread_reset(cobalt_thread *thread)
    }
 }
 
+void
+cobalt_list_clamp(int *selected, int *scroll, int count)
+{
+   if (!selected || !scroll) {
+      return;
+   }
+
+   if (count <= 0) {
+      *selected = -1;
+      *scroll = 0;
+      return;
+   }
+
+   if (*selected >= count) {
+      *selected = count - 1;
+   }
+   if (*selected < 0) {
+      *selected = 0;
+   }
+
+   /* Scrolled past the end: go back to the top rather than to the last row.
+    * Landing mid-list after a refresh would be more disorienting than
+    * starting again from the beginning of new content. */
+   if (*scroll >= count || *scroll < 0) {
+      *scroll = 0;
+   }
+   if (*scroll > *selected) {
+      *scroll = *selected;
+   }
+}
+
+bool
+cobalt_feed_can_page(const cobalt_feed *feed)
+{
+   return feed && feed->has_more && feed->count < COBALT_FEED_MAX_POSTS;
+}
+
 /* Rebuild the drawn counts line after a local change. */
 static void
 refresh_meta(cobalt_post *post)
@@ -415,9 +452,22 @@ cobalt_feed_append_from_wolfram(cobalt_feed *feed,
       added++;
    }
 
-   /* An absent cursor is the server saying there is nothing after this page,
-    * which is what stops the UI offering "load more" forever. */
-   if (typed->cursor && typed->cursor[0]) {
+   /*
+    * An absent cursor is the server saying there is nothing after this page.
+    *
+    * A full window has to clear it too, and that is not obvious: the window is
+    * fixed at COBALT_FEED_MAX_POSTS, so once it fills, every further page
+    * appends nothing while still handing back a cursor. Leaving has_more set
+    * would let a screen that auto-pages at the end of the list request the
+    * next page forever — spinning the worker, keeping `busy` true so no
+    * interaction ever runs, and earning a rate limit.
+    */
+   if (feed->count >= COBALT_FEED_MAX_POSTS) {
+      COBALT_LOGI("feed: window full at %d posts, no further paging",
+                  feed->count);
+      feed->cursor[0] = '\0';
+      feed->has_more = false;
+   } else if (typed->cursor && typed->cursor[0]) {
       snprintf(feed->cursor, sizeof(feed->cursor), "%s", typed->cursor);
       feed->has_more = true;
    } else {
@@ -568,9 +618,15 @@ cobalt_thread_from_wolfram(cobalt_thread *out, const struct wf_agent_thread *src
     */
    const wf_agent_thread_node *ancestors[COBALT_THREAD_MAX_POSTS];
    int ancestor_count = 0;
-   for (const wf_agent_thread_node *p = root->parent;
-        p && ancestor_count < COBALT_THREAD_MAX_POSTS / 2; p = p->parent) {
+   const wf_agent_thread_node *p = root->parent;
+   for (; p && ancestor_count < COBALT_THREAD_MAX_POSTS / 2; p = p->parent) {
       ancestors[ancestor_count++] = p;
+   }
+   /* Stopping early here drops the top of the conversation, which looks
+    * identical to a thread that simply starts at an odd reply unless it is
+    * flagged — push_node only notices when the buffer itself fills. */
+   if (p) {
+      out->truncated = true;
    }
 
    for (int i = ancestor_count - 1; i >= 0; i--) {

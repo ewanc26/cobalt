@@ -1,6 +1,7 @@
 #include "atproto/session.h"
 #include "atproto/feed.h"
 #include "atproto/notifications.h"
+#include "atproto/profile.h"
 #include "cache/session_store.h"
 #include "util/log.h"
 #include "util/paths.h"
@@ -83,6 +84,8 @@ static struct {
    /* Named to stay clear of `thread`, which is the worker. */
    cobalt_thread conversation;
    cobalt_notifications notifications;
+   cobalt_profile profile;
+   cobalt_feed author_feed;
 
 #ifdef COBALT_HAS_WOLFRAM
    /* Owned by the worker while a job runs; only touched off-thread when idle. */
@@ -327,7 +330,39 @@ publish_session(void)
    /* wf_agent_login re-points the client at the account's real PDS, discovered
     * from didDoc#atproto_pds — frequently not the host the user typed. Persist
     * where the tokens are actually valid, not the entry point. */
-   const char *service = (data.pds_url && data.pds_url[0]) ? data.pds_url : s.service;
+   char fallback[COBALT_SERVICE_MAX];
+   SDL_LockMutex(s.lock);
+   snprintf(fallback, sizeof(fallback), "%s", s.service);
+   SDL_UnlockMutex(s.lock);
+
+   const char *service = (data.pds_url && data.pds_url[0]) ? data.pds_url : fallback;
+   /*
+    * Refuse to persist anything that would not fit rather than truncating it.
+    * A silently clipped refresh JWT is the worst of both: it saves, then fails
+    * to resume on every subsequent boot, and the failure path wipes the store —
+    * so the user retypes their app password forever with nothing on the
+    * diagnostics screen explaining why. Bluesky's tokens are far under these
+    * limits; a self-hosted PDS with more claims is what this guards.
+    */
+   const struct { const char *value; size_t limit; const char *name; } FIELDS[] = {
+      { service,                                    sizeof(stored.service),     "PDS URL" },
+      { data.handle ? data.handle : "",             sizeof(stored.handle),      "handle" },
+      { data.did ? data.did : "",                   sizeof(stored.did),         "DID" },
+      { data.access_jwt ? data.access_jwt : "",     sizeof(stored.access_jwt),  "access token" },
+      { data.refresh_jwt ? data.refresh_jwt : "",   sizeof(stored.refresh_jwt), "refresh token" },
+   };
+   for (size_t i = 0; i < sizeof(FIELDS) / sizeof(FIELDS[0]); i++) {
+      if (strlen(FIELDS[i].value) >= FIELDS[i].limit) {
+         COBALT_LOGE("session: %s is %u bytes, over the %u the store holds — "
+                     "refusing to save a truncated credential",
+                     FIELDS[i].name, (unsigned) strlen(FIELDS[i].value),
+                     (unsigned) FIELDS[i].limit - 1);
+         wf_agent_session_data_free(&data);
+         memset(&stored, 0, sizeof(stored));
+         return false;
+      }
+   }
+
    snprintf(stored.service, sizeof(stored.service), "%s", service);
    snprintf(stored.handle, sizeof(stored.handle), "%s", data.handle ? data.handle : "");
    snprintf(stored.did, sizeof(stored.did), "%s", data.did ? data.did : "");
@@ -407,7 +442,10 @@ run_login(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
 {
    teardown_wf();
 
+   SDL_LockMutex(s.lock);
    snprintf(s.service, sizeof(s.service), "%s", in->service);
+   SDL_UnlockMutex(s.lock);
+
    s.wf = new_wf_agent(in->service);
    if (!s.wf) {
       set_message(r, "Could not create the client.");
@@ -440,7 +478,19 @@ run_resume(cobalt_job_result *r, cobalt_auth_state *state)
 {
    cobalt_stored_session stored;
    if (!cobalt_session_store_load(&stored)) {
-      set_message(r, "No saved session was found.");
+      /*
+       * Present but undecodable is unrecoverable by construction — a missing
+       * or replaced device.key, or a corrupt file. Clearing it stops
+       * cobalt_session_has_saved() firing a doomed resume on every boot with a
+       * message that says nothing is stored.
+       */
+      if (cobalt_session_store_exists()) {
+         COBALT_LOGW("session: stored credentials could not be decoded, clearing");
+         cobalt_session_store_clear();
+         set_message(r, "The saved session could not be read. Sign in again.");
+      } else {
+         set_message(r, "No saved session was found.");
+      }
       return;
    }
 
@@ -450,7 +500,10 @@ run_resume(cobalt_job_result *r, cobalt_auth_state *state)
    snprintf(service, sizeof(service), "%s",
             stored.service[0] ? stored.service : DEFAULT_SERVICE);
 
+   SDL_LockMutex(s.lock);
    snprintf(s.service, sizeof(s.service), "%s", service);
+   SDL_UnlockMutex(s.lock);
+
    s.wf = new_wf_agent(service);
    if (!s.wf) {
       memset(&stored, 0, sizeof(stored));
@@ -553,6 +606,13 @@ run_timeline(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state
       cobalt_feed_reset(&s.feed);
    }
    const int added = cobalt_feed_append_from_wolfram(&s.feed, &list, now);
+   /* A page that added nothing is the end as far as this client is concerned,
+    * whatever cursor came back — otherwise a screen that pages on reaching the
+    * last post would ask again immediately, and keep asking. */
+   if (in->paging && added == 0) {
+      s.feed.has_more = false;
+      s.feed.cursor[0] = '\0';
+   }
    const int total = s.feed.count;
    SDL_UnlockMutex(s.lock);
 
@@ -596,6 +656,12 @@ run_thread(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
    if (status != WF_OK) {
       COBALT_LOGW("session: getPostThread failed (%d)", (int) status);
       describe_failure(r, status, COBALT_JOB_THREAD);
+      /* Drop whatever was loaded. The screen has already switched, so leaving
+       * it would show a *different* conversation than the one asked for —
+       * complete with its focus marker and actionable posts. */
+      SDL_LockMutex(s.lock);
+      cobalt_thread_reset(&s.conversation);
+      SDL_UnlockMutex(s.lock);
       *state = COBALT_AUTH_SIGNED_IN;
       return;
    }
@@ -785,6 +851,10 @@ run_notifications(const job_input *in, cobalt_job_result *r,
    }
    const int added =
       cobalt_notifications_append_from_wolfram(&s.notifications, &list, now);
+   if (in->paging && added == 0) {
+      s.notifications.has_more = false;
+      s.notifications.cursor[0] = '\0';
+   }
    const int total = s.notifications.count;
    SDL_UnlockMutex(s.lock);
 
@@ -810,6 +880,109 @@ run_notifications(const job_input *in, cobalt_job_result *r,
                      "on other clients");
       }
    }
+
+   publish_session();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+
+static void
+run_profile(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in first.");
+      return;
+   }
+
+   wf_agent_profile profile;
+   memset(&profile, 0, sizeof(profile));
+
+   COBALT_LOGI("session: getProfile %s", in->uri);
+   wf_status status = wf_agent_get_profile(s.wf, in->uri, &profile);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: getProfile failed (%d)", (int) status);
+      describe_failure(r, status, COBALT_JOB_PROFILE);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(s.lock);
+   cobalt_profile_from_wolfram(&s.profile, &profile, s.did);
+   SDL_UnlockMutex(s.lock);
+
+   wf_agent_profile_free(&profile);
+
+   /*
+    * The posts are a second request, but the same job. A failure here is not
+    * fatal to the screen: the profile itself already loaded and is worth
+    * showing, so the feed is left empty and the header stands on its own.
+    */
+   wf_agent_feed_list list;
+   memset(&list, 0, sizeof(list));
+
+   status = wf_agent_get_author_feed_typed(s.wf, in->uri, TIMELINE_PAGE, NULL,
+                                           NULL, &list);
+   if (status == WF_OK) {
+      const int64_t now = cobalt_time_now();
+      SDL_LockMutex(s.lock);
+      cobalt_feed_reset(&s.author_feed);
+      cobalt_feed_append_from_wolfram(&s.author_feed, &list, now);
+      SDL_UnlockMutex(s.lock);
+      wf_agent_feed_list_free(&list);
+   } else {
+      COBALT_LOGW("session: getAuthorFeed failed (%d) — showing the profile "
+                  "without posts", (int) status);
+      SDL_LockMutex(s.lock);
+      cobalt_feed_reset(&s.author_feed);
+      SDL_UnlockMutex(s.lock);
+   }
+
+   publish_session();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+static void
+run_follow(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in first.");
+      return;
+   }
+
+   const bool undo = in->record_uri[0] != '\0';
+   wf_status status;
+   char created[COBALT_POST_URI_MAX] = "";
+
+   if (undo) {
+      COBALT_LOGI("session: unfollowing %s", in->record_uri);
+      status = wf_agent_unfollow(s.wf, in->record_uri);
+   } else {
+      wf_agent_post_result result;
+      memset(&result, 0, sizeof(result));
+
+      COBALT_LOGI("session: following %s", in->uri);
+      status = wf_agent_follow(s.wf, in->uri, &result);
+      if (status == WF_OK) {
+         snprintf(created, sizeof(created), "%s", result.uri ? result.uri : "");
+      }
+      wf_agent_post_result_free(&result);
+   }
+
+   if (status != WF_OK) {
+      COBALT_LOGW("session: follow failed (%d)", (int) status);
+      set_message(r, "Could not %s (wolfram status %d).",
+                  undo ? "unfollow" : "follow", (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(s.lock);
+   cobalt_profile_apply_follow(&s.profile, undo ? NULL : created);
+   SDL_UnlockMutex(s.lock);
 
    publish_session();
 
@@ -843,6 +1016,8 @@ run_logout(cobalt_job_result *r, cobalt_auth_state *state)
    s.feed.has_more = false;
    cobalt_thread_reset(&s.conversation);
    cobalt_notifications_reset(&s.notifications);
+   cobalt_profile_reset(&s.profile);
+   cobalt_feed_reset(&s.author_feed);
    SDL_UnlockMutex(s.lock);
 
    *state = COBALT_AUTH_SIGNED_OUT;
@@ -877,6 +1052,8 @@ run_job(cobalt_job_kind kind, const job_input *in, cobalt_auth_state *state)
       case COBALT_JOB_NOTIFICATIONS:
          run_notifications(in, &r, state);
          break;
+      case COBALT_JOB_PROFILE:  run_profile(in, &r, state);   break;
+      case COBALT_JOB_FOLLOW:   run_follow(in, &r, state);    break;
       case COBALT_JOB_NONE:
       default:                                           break;
    }
@@ -1181,6 +1358,54 @@ cobalt_session_notifications(void)
    return &s.notifications;
 }
 
+const cobalt_profile *
+cobalt_session_profile(void)
+{
+   return &s.profile;
+}
+
+const cobalt_feed *
+cobalt_session_author_feed(void)
+{
+   return &s.author_feed;
+}
+
+bool
+cobalt_session_begin_profile(const char *actor)
+{
+   if (!actor || !actor[0]) {
+      return false;
+   }
+
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", actor);
+   return submit(COBALT_JOB_PROFILE, &in);
+}
+
+bool
+cobalt_session_begin_follow(void)
+{
+   job_input in;
+   memset(&in, 0, sizeof(in));
+
+   SDL_LockMutex(s.lock);
+   const bool have = s.profile.loaded && !s.profile.is_self && s.profile.did[0];
+   if (have) {
+      snprintf(in.uri, sizeof(in.uri), "%s", s.profile.did);
+      snprintf(in.record_uri, sizeof(in.record_uri), "%s",
+               s.profile.viewer_following);
+   }
+   SDL_UnlockMutex(s.lock);
+
+   /* Nothing loaded, or it is the signed-in account — which has no follow
+    * button, so this should not have been reachable. */
+   if (!have) {
+      return false;
+   }
+   return submit(COBALT_JOB_FOLLOW, &in);
+}
+
 bool
 cobalt_session_begin_notifications(bool paging)
 {
@@ -1221,25 +1446,40 @@ begin_interaction(cobalt_job_kind kind, const char *uri, const char *cid,
    snprintf(in.uri, sizeof(in.uri), "%s", uri);
    snprintf(in.cid, sizeof(in.cid), "%s", cid);
 
-   /* Look for the post in whichever of the two views has it. An empty record
-    * URI means "not yet done", which the worker reads as create-not-delete. */
+   /*
+    * Find the post in whichever view holds it and read its viewer state. An
+    * empty record URI means "not yet done", which the worker reads as
+    * create-not-delete.
+    *
+    * `found` is tracked separately rather than testing record_uri for empty:
+    * an unliked post in the feed also has an empty record, and falling through
+    * to the thread on that would pick up a stale copy from before a refresh
+    * and turn a like into an unlike of a record the server may have dropped.
+    */
+   bool found = false;
    SDL_LockMutex(s.lock);
-   for (int i = 0; i < s.feed.count; i++) {
+   for (int i = 0; i < s.feed.count && !found; i++) {
       if (strcmp(s.feed.posts[i].uri, uri) == 0) {
          const char *record = is_like ? s.feed.posts[i].viewer_like
                                       : s.feed.posts[i].viewer_repost;
          snprintf(in.record_uri, sizeof(in.record_uri), "%s", record);
-         break;
+         found = true;
       }
    }
-   if (in.record_uri[0] == '\0') {
-      for (int i = 0; i < s.conversation.count; i++) {
-         if (strcmp(s.conversation.posts[i].uri, uri) == 0) {
-            const char *record = is_like ? s.conversation.posts[i].viewer_like
-                                         : s.conversation.posts[i].viewer_repost;
-            snprintf(in.record_uri, sizeof(in.record_uri), "%s", record);
-            break;
-         }
+   for (int i = 0; i < s.conversation.count && !found; i++) {
+      if (strcmp(s.conversation.posts[i].uri, uri) == 0) {
+         const char *record = is_like ? s.conversation.posts[i].viewer_like
+                                      : s.conversation.posts[i].viewer_repost;
+         snprintf(in.record_uri, sizeof(in.record_uri), "%s", record);
+         found = true;
+      }
+   }
+   for (int i = 0; i < s.author_feed.count && !found; i++) {
+      if (strcmp(s.author_feed.posts[i].uri, uri) == 0) {
+         const char *record = is_like ? s.author_feed.posts[i].viewer_like
+                                      : s.author_feed.posts[i].viewer_repost;
+         snprintf(in.record_uri, sizeof(in.record_uri), "%s", record);
+         found = true;
       }
    }
    SDL_UnlockMutex(s.lock);
@@ -1288,6 +1528,22 @@ bool
 cobalt_session_begin_repost(const char *uri, const char *cid)
 {
    return begin_interaction(COBALT_JOB_REPOST, uri, cid, false);
+}
+
+void
+cobalt_session_lock(void)
+{
+   if (s.lock) {
+      SDL_LockMutex(s.lock);
+   }
+}
+
+void
+cobalt_session_unlock(void)
+{
+   if (s.lock) {
+      SDL_UnlockMutex(s.lock);
+   }
 }
 
 bool

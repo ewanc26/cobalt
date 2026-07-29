@@ -62,6 +62,11 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
       return COBALT_TIMELINE_STAY;
    }
 
+   /* A refresh can return fewer posts than were on screen. Every current path
+    * that shrinks the feed also rewinds the view, but that is a property of
+    * the call graph rather than an invariant, so clamp here too. */
+   cobalt_list_clamp(&view->selected, &view->scroll, feed->count);
+
    if (cobalt_input_pressed(in, COBALT_BTN_DOWN)) {
       if (view->selected < feed->count - 1) {
          view->selected++;
@@ -101,6 +106,18 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
          COBALT_LOGI("timeline: opening thread %s", post->uri);
          cobalt_session_begin_thread(post->uri);
          return COBALT_TIMELINE_OPEN_THREAD;
+      } else if (cobalt_input_pressed(in, COBALT_BTN_ALT_Y)) {
+         /* The handle is stored with its leading @, which getProfile will not
+          * accept as an actor. */
+         const char *actor = post->handle[0] == '@' ? post->handle + 1
+                                                    : post->handle;
+         if (actor[0]) {
+            COBALT_LOGI("timeline: opening profile %s", actor);
+            cobalt_session_begin_profile(actor);
+            return COBALT_TIMELINE_OPEN_PROFILE;
+         }
+      } else if (cobalt_input_pressed(in, COBALT_BTN_ALT_X)) {
+         return COBALT_TIMELINE_COMPOSE;
       }
    }
 
@@ -125,7 +142,7 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
     * the request is already asynchronous, and a D-pad is a slow way to reach a
     * button that exists only to say "yes, continue".
     */
-   if (!busy && feed->has_more && view->selected >= feed->count - 1) {
+   if (!busy && cobalt_feed_can_page(feed) && view->selected >= feed->count - 1) {
       COBALT_LOGI("timeline: reached the end, fetching the next page");
       cobalt_session_begin_timeline(true);
    }
@@ -244,7 +261,7 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
    SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
    const char *footer = cobalt_session_busy()
                            ? "Working..."
-                           : "A: thread   Left: like   Right: repost   +: refresh";
+                           : "A: thread  Y: profile  X: post  Left: like  Right: repost  +: refresh";
    cobalt_draw_text(r, COBALT_FONT_CAPTION, footer, m->pad_edge,
                     m->height - m->pad_edge - 20, hint);
 }

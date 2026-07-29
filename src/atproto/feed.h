@@ -135,6 +135,30 @@ void cobalt_feed_reset(cobalt_feed *feed);
 void cobalt_thread_reset(cobalt_thread *thread);
 
 /*
+ * Bring a list cursor back into range after the list may have shrunk.
+ *
+ * Every list screen needs this and none of them can derive it from the scroll
+ * maths, which only ever raises `scroll` to meet `selected` and so cannot
+ * recover from a cursor past the end — the symptom is a screen that draws
+ * nothing and takes one press of UP per row to escape. Shared rather than
+ * repeated four times, and pure so it can be tested.
+ *
+ * `selected` lands on the last row, or -1 for an empty list, which callers
+ * already guard before indexing.
+ */
+void cobalt_list_clamp(int *selected, int *scroll, int count);
+
+/*
+ * Whether a screen should ask for another page.
+ *
+ * Not simply `has_more`: the window is fixed, so once it is full every further
+ * page appends nothing while the server still returns a cursor. A screen that
+ * auto-pages on reaching the last row would then request forever, holding the
+ * worker busy so no interaction ever ran.
+ */
+bool cobalt_feed_can_page(const cobalt_feed *feed);
+
+/*
  * Apply a like or repost locally, without refetching.
  *
  * Interactions are reflected immediately and reconciled by the next refresh,

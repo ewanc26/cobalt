@@ -29,6 +29,8 @@ typedef enum {
    COBALT_TIMELINE_STAY = 0,
    COBALT_TIMELINE_BACK,
    COBALT_TIMELINE_OPEN_THREAD,
+   COBALT_TIMELINE_OPEN_PROFILE,
+   COBALT_TIMELINE_COMPOSE,
 } cobalt_timeline_action;
 
 typedef struct {

@@ -28,6 +28,14 @@ typedef enum {
    COBALT_BTN_CONFIRM,
    COBALT_BTN_BACK,
    COBALT_BTN_MENU,
+   /*
+    * The GamePad's X and Y. The D-pad plus A/B/+ was full once posts became
+    * interactive — like, repost, open, back and refresh took every binding a
+    * list screen had — and burying the rest behind a menu would make them
+    * unreachable one-handed, which is how this app is actually held.
+    */
+   COBALT_BTN_ALT_X,
+   COBALT_BTN_ALT_Y,
    COBALT_BTN_COUNT,
 } cobalt_button;
 
