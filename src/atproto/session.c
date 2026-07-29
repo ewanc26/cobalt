@@ -1,5 +1,6 @@
 #include "atproto/session.h"
 #include "atproto/feed.h"
+#include "atproto/notifications.h"
 #include "cache/session_store.h"
 #include "util/log.h"
 #include "util/paths.h"
@@ -81,6 +82,7 @@ static struct {
    cobalt_feed feed;
    /* Named to stay clear of `thread`, which is the worker. */
    cobalt_thread conversation;
+   cobalt_notifications notifications;
 
 #ifdef COBALT_HAS_WOLFRAM
    /* Owned by the worker while a job runs; only touched off-thread when idle. */
@@ -740,6 +742,81 @@ run_post(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
    r->ok = true;
 }
 
+
+static void
+run_notifications(const job_input *in, cobalt_job_result *r,
+                  cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in to see notifications.");
+      return;
+   }
+
+   const char *cursor = NULL;
+   if (in->paging) {
+      SDL_LockMutex(s.lock);
+      cursor = s.notifications.cursor[0] ? s.notifications.cursor : NULL;
+      SDL_UnlockMutex(s.lock);
+      if (!cursor) {
+         *state = COBALT_AUTH_SIGNED_IN;
+         r->ok = true;
+         return;
+      }
+   }
+
+   wf_agent_notification_list list;
+   memset(&list, 0, sizeof(list));
+
+   COBALT_LOGI("session: listNotifications cursor=%s", cursor ? cursor : "(top)");
+   wf_status status = wf_agent_list_notifications_typed(s.wf, TIMELINE_PAGE,
+                                                        cursor, &list);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: listNotifications failed (%d)", (int) status);
+      describe_failure(r, status, COBALT_JOB_NOTIFICATIONS);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   const int64_t now = cobalt_time_now();
+
+   SDL_LockMutex(s.lock);
+   if (!in->paging) {
+      cobalt_notifications_reset(&s.notifications);
+   }
+   const int added =
+      cobalt_notifications_append_from_wolfram(&s.notifications, &list, now);
+   const int total = s.notifications.count;
+   SDL_UnlockMutex(s.lock);
+
+   wf_agent_notification_list_free(&list);
+   COBALT_LOGI("session: notifications +%d (%d held)", added, total);
+
+   if (total == 0) {
+      set_message(r, "No notifications yet.");
+   }
+
+   /*
+    * Mark everything up to now as seen, but only on a top-of-list fetch —
+    * doing it while paging backwards through history would mark things read
+    * that the user has not reached yet. A failure is logged rather than
+    * surfaced: the notifications themselves arrived, and an error message
+    * about a badge would be noise.
+    */
+   if (!in->paging && total > 0 && now > 0) {
+      char seen_at[32];
+      if (cobalt_time_format_rfc3339(now, seen_at, sizeof(seen_at)) &&
+          wf_agent_update_seen_notifications(s.wf, seen_at) != WF_OK) {
+         COBALT_LOGW("session: updateSeen failed — the unread badge may linger "
+                     "on other clients");
+      }
+   }
+
+   publish_session();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
 static void
 run_logout(cobalt_job_result *r, cobalt_auth_state *state)
 {
@@ -765,6 +842,7 @@ run_logout(cobalt_job_result *r, cobalt_auth_state *state)
    s.feed.cursor[0] = '\0';
    s.feed.has_more = false;
    cobalt_thread_reset(&s.conversation);
+   cobalt_notifications_reset(&s.notifications);
    SDL_UnlockMutex(s.lock);
 
    *state = COBALT_AUTH_SIGNED_OUT;
@@ -796,6 +874,9 @@ run_job(cobalt_job_kind kind, const job_input *in, cobalt_auth_state *state)
       case COBALT_JOB_LIKE:     run_interaction(in, &r, state, true);  break;
       case COBALT_JOB_REPOST:   run_interaction(in, &r, state, false); break;
       case COBALT_JOB_POST:     run_post(in, &r, state);      break;
+      case COBALT_JOB_NOTIFICATIONS:
+         run_notifications(in, &r, state);
+         break;
       case COBALT_JOB_NONE:
       default:                                           break;
    }
@@ -1092,6 +1173,21 @@ const cobalt_thread *
 cobalt_session_thread(void)
 {
    return &s.conversation;
+}
+
+const cobalt_notifications *
+cobalt_session_notifications(void)
+{
+   return &s.notifications;
+}
+
+bool
+cobalt_session_begin_notifications(bool paging)
+{
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   in.paging = paging;
+   return submit(COBALT_JOB_NOTIFICATIONS, &in);
 }
 
 bool

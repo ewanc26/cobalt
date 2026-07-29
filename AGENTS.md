@@ -207,7 +207,9 @@ The stated goal is to go as far as the hardware allows. Some of it never will, a
 | Push notifications | No service the console can register with |
 | GIFs / animated media | Same decode problem as video, plus per-frame budget |
 
-Reachable, in rough order of value: **images and avatars** (blob fetch, decode, texture cache — real work, and the biggest visible gap), profiles, notifications, search, custom feeds, lists, mutes and blocks, threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
+Reachable, in rough order of value: **images and avatars** (blob fetch, decode, texture cache — real work, and the biggest visible gap), profiles, search, custom feeds, lists, mutes and blocks, threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
+
+**Language policy.** Cobalt may use C++ (and any other language the toolchain supports) where it earns its place. Wolfram stays **C only** — it is the shared SDK across Ewan's ATProto work and its portability is the point.
 
 ---
 
@@ -357,6 +359,16 @@ So the root is carried on every `cobalt_post` from the moment it is parsed: from
 Posting is public and irreversible, and OK on a games-console keyboard is one D-pad slip from a key someone was aiming at. So the compose screen commits to a confirmation row (Post / Keep editing / Discard) rather than straight to the network, and B from there returns to editing rather than discarding — losing a post typed on a D-pad would be a genuinely bad outcome.
 
 The character count is codepoints, not bytes: Bluesky's limit is 300 graphemes, and counting bytes would make a post of CJK or accented text appear to blow the limit at a third of its real length. Codepoints disagree with graphemes only on emoji sequences and combining marks, and erring towards refusing a post the server would have taken is the safer direction.
+
+### Notification rows are not posts
+
+A like carries no text of its own and a follow has nothing to open, so notifications get their own compact row rather than a cut-down post card — drawing them as posts would leave a column of near-empty tiles.
+
+Two things are resolved at parse time rather than left to the screen:
+- **Wording.** `like` becomes "liked your post". An unrecognised reason is shown **verbatim** rather than mapped to something generic: Bluesky adds reasons over time, and a row reading "did something" says less than the raw lexicon word does.
+- **What to open.** A reply, mention or quote *is* a post and is its own subject; a like or repost points at what the *viewer* wrote, which lives in `reasonSubject`. Getting that backwards opens a plausible-looking wrong post, so it is a tested function rather than a condition inside a draw call.
+
+`updateSeen` fires only on a top-of-list fetch. Doing it while paging backwards through history would mark things read that the user has not reached yet. Its failure is logged, not surfaced — the notifications arrived, and an error about a badge would be noise.
 
 ### There is a host test harness, and it is not a substitute for hardware
 

@@ -16,7 +16,8 @@ counterpart.
 
 ## Status
 
-**Early.** Signing in works; reading does not yet.
+**Early, but usable in shape.** Reading, posting and interacting all exist;
+nothing has been run on a Wii U yet.
 
 | | |
 |---|---|
@@ -29,8 +30,9 @@ counterpart.
 | Threads, with replies and re-rooting | done |
 | Like and repost, with undo | done |
 | Posting and replying | done |
+| Notifications, with mark-as-seen | done |
 | Images, avatars, link cards | markers only |
-| Profiles, notifications, search | next |
+| Profiles, search | next |
 | Custom feeds, lists, mutes and blocks | not started |
 | Video, GIFs, DMs, push notifications | not planned — see below |
 

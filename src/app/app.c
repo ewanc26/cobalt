@@ -1,5 +1,6 @@
 #include "app/app.h"
 #include "app/compose.h"
+#include "app/notify.h"
 #include "app/signin.h"
 #include "app/thread.h"
 #include "app/timeline.h"
@@ -18,6 +19,7 @@
 typedef enum {
    ACTION_TIMELINE = 0,
    ACTION_COMPOSE,
+   ACTION_NOTIFICATIONS,
    ACTION_ACCOUNT,
    ACTION_DIAGNOSTICS,
    ACTION_TOGGLE_DISPLAY,
@@ -33,6 +35,7 @@ typedef enum {
 static const menu_action MENU[] = {
    ACTION_TIMELINE,
    ACTION_COMPOSE,
+   ACTION_NOTIFICATIONS,
    ACTION_ACCOUNT,
    ACTION_DIAGNOSTICS,
    ACTION_TOGGLE_DISPLAY,
@@ -54,8 +57,11 @@ struct cobalt_app {
    cobalt_timeline timeline;
    cobalt_thread_view thread;
    cobalt_compose compose;
+   cobalt_notify_view notify;
    /* Where to return after composing — the timeline or the thread. */
    cobalt_screen compose_return;
+   /* Where B from the thread screen returns to — the timeline or notifications. */
+   cobalt_screen thread_return;
 
    /* Last completed request's message, shown on the home and account screens
     * so an auto-resume that failed while nobody was looking is not silent. */
@@ -99,6 +105,7 @@ menu_label(int index)
    switch (MENU[index]) {
       case ACTION_TIMELINE:       return "Timeline";
       case ACTION_COMPOSE:        return "New post";
+      case ACTION_NOTIFICATIONS:  return "Notifications";
       case ACTION_ACCOUNT:        return signed_in() ? "Account" : "Sign in";
       case ACTION_DIAGNOSTICS:    return "Diagnostics";
       case ACTION_TOGGLE_DISPLAY: return "TV display";
@@ -116,6 +123,9 @@ menu_hint(int index)
                             : "Sign in to read your feed";
       case ACTION_COMPOSE:
          return signed_in() ? "Write something" : "Sign in to post";
+      case ACTION_NOTIFICATIONS:
+         return signed_in() ? "Replies, likes and follows"
+                            : "Sign in to see notifications";
       case ACTION_ACCOUNT:
          if (signed_in()) {
             return cobalt_session_handle();
@@ -139,6 +149,7 @@ menu_enabled(int index)
    switch (MENU[index]) {
       case ACTION_TIMELINE:
       case ACTION_COMPOSE:
+      case ACTION_NOTIFICATIONS:
          return signed_in();
       case ACTION_ACCOUNT:
          return cobalt_session_available() || signed_in();
@@ -163,6 +174,7 @@ cobalt_app_create(void)
    cobalt_signin_init(&app->signin);
    cobalt_timeline_init(&app->timeline);
    cobalt_thread_view_init(&app->thread);
+   cobalt_notify_view_init(&app->notify);
 
    curl_version_info_data *curl_info = curl_version_info(CURLVERSION_NOW);
    snprintf(app->curl_version, sizeof(app->curl_version), "curl %s / %s",
@@ -227,6 +239,14 @@ activate(cobalt_app *app, int index)
          app->compose_return = COBALT_SCREEN_HOME;
          app->screen = COBALT_SCREEN_COMPOSE;
          COBALT_LOGI("menu: composing a new post");
+         break;
+
+      case ACTION_NOTIFICATIONS:
+         app->screen = COBALT_SCREEN_NOTIFICATIONS;
+         if (cobalt_session_notifications()->count == 0) {
+            cobalt_session_begin_notifications(false);
+         }
+         COBALT_LOGI("menu: opened notifications");
          break;
 
       case ACTION_ACCOUNT:
@@ -320,6 +340,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          cobalt_signin_init(&app->signin);
          cobalt_timeline_init(&app->timeline);
    cobalt_thread_view_init(&app->thread);
+   cobalt_notify_view_init(&app->notify);
          app->screen = COBALT_SCREEN_HOME;
          app->selected = 1;
          break;
@@ -346,6 +367,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          }
          break;
 
+      case COBALT_JOB_NOTIFICATIONS:
       case COBALT_JOB_THREAD:
       case COBALT_JOB_LIKE:
       case COBALT_JOB_REPOST:
@@ -497,6 +519,7 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             case COBALT_TIMELINE_OPEN_THREAD:
                cobalt_thread_view_reset(&app->thread);
+               app->thread_return = COBALT_SCREEN_TIMELINE;
                app->screen = COBALT_SCREEN_THREAD;
                break;
             case COBALT_TIMELINE_STAY:
@@ -508,7 +531,7 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
       case COBALT_SCREEN_THREAD:
          switch (cobalt_thread_view_update(&app->thread, in)) {
             case COBALT_THREAD_VIEW_BACK:
-               app->screen = COBALT_SCREEN_TIMELINE;
+               app->screen = app->thread_return;
                break;
             case COBALT_THREAD_VIEW_REPLY: {
                const cobalt_thread *conv = cobalt_session_thread();
@@ -521,6 +544,22 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             }
             case COBALT_THREAD_VIEW_STAY:
+            default:
+               break;
+         }
+         break;
+
+      case COBALT_SCREEN_NOTIFICATIONS:
+         switch (cobalt_notify_view_update(&app->notify, in)) {
+            case COBALT_NOTIFY_BACK:
+               app->screen = COBALT_SCREEN_HOME;
+               break;
+            case COBALT_NOTIFY_OPEN_THREAD:
+               cobalt_thread_view_reset(&app->thread);
+               app->thread_return = COBALT_SCREEN_NOTIFICATIONS;
+               app->screen = COBALT_SCREEN_THREAD;
+               break;
+            case COBALT_NOTIFY_STAY:
             default:
                break;
          }
@@ -878,6 +917,10 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_COMPOSE:
          cobalt_compose_draw(&app->compose, r, surface);
+         break;
+
+      case COBALT_SCREEN_NOTIFICATIONS:
+         cobalt_notify_view_draw(&app->notify, r, surface);
          break;
 
       case COBALT_SCREEN_SIGN_IN:

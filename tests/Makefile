@@ -56,6 +56,8 @@ UNIT_SOURCES := \
 	$(SRC)/app/timeline.c \
 	$(SRC)/app/thread.c \
 	$(SRC)/app/compose.c \
+	$(SRC)/app/notify.c \
+	$(SRC)/atproto/notifications.c \
 	$(SRC)/ui/postcard.c \
 	$(SRC)/ui/render.c \
 	$(SRC)/ui/theme.c \

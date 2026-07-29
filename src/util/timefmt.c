@@ -50,6 +50,52 @@ days_from_civil(int64_t y, unsigned m, unsigned d)
    return era * 146097 + (int64_t) doe - 719468;
 }
 
+/* The inverse of days_from_civil, from the same source. */
+static void
+civil_from_days(int64_t z, int *out_year, unsigned *out_month, unsigned *out_day)
+{
+   z += 719468;
+   const int64_t era = (z >= 0 ? z : z - 146096) / 146097;
+   const unsigned doe = (unsigned) (z - era * 146097);                  /* [0, 146096] */
+   const unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+   const int64_t y = (int64_t) yoe + era * 400;
+   const unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);        /* [0, 365] */
+   const unsigned mp = (5 * doy + 2) / 153;                             /* [0, 11] */
+   const unsigned d = doy - (153 * mp + 2) / 5 + 1;                     /* [1, 31] */
+   const unsigned m = mp + (mp < 10 ? 3 : -9);                          /* [1, 12] */
+
+   *out_year = (int) (y + (m <= 2));
+   *out_month = m;
+   *out_day = d;
+}
+
+bool
+cobalt_time_format_rfc3339(int64_t epoch, char *out, size_t out_size)
+{
+   /* "YYYY-MM-DDTHH:MM:SSZ" is 20 characters plus a terminator. */
+   if (!out || out_size < 21) {
+      return false;
+   }
+
+   /* Floor division, so times before 1970 do not round the day towards zero
+    * and land an hour into the wrong date. */
+   int64_t days = epoch / 86400;
+   int64_t rem = epoch % 86400;
+   if (rem < 0) {
+      rem += 86400;
+      days -= 1;
+   }
+
+   int year;
+   unsigned month, day;
+   civil_from_days(days, &year, &month, &day);
+
+   snprintf(out, out_size, "%04d-%02u-%02uT%02u:%02u:%02uZ", year, month, day,
+            (unsigned) (rem / 3600), (unsigned) ((rem % 3600) / 60),
+            (unsigned) (rem % 60));
+   return true;
+}
+
 bool
 cobalt_time_parse_rfc3339(const char *text, int64_t *out_epoch)
 {
