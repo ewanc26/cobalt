@@ -27,6 +27,19 @@ else
    CURL_LIBS    := $(shell pkg-config --libs libcurl 2>/dev/null || echo -lcurl)
 endif
 
+# SDL2_image is how ui/imagecache.c decodes. Without it the module still builds
+# and is still swept and tested — decoding compiles out and every load reports
+# failure — so a checkout that lacks the package loses coverage of one call
+# rather than of the threading and eviction logic around it.
+HAVE_SDL_IMAGE := $(shell pkg-config --exists SDL2_image 2>/dev/null && echo yes)
+ifeq ($(HAVE_SDL_IMAGE),yes)
+   IMAGE_CFLAGS := $(shell pkg-config --cflags SDL2_image) -DCOBALT_FORCE_SDL_IMAGE=1
+   IMAGE_LIBS   := $(shell pkg-config --libs SDL2_image)
+else
+   IMAGE_CFLAGS :=
+   IMAGE_LIBS   :=
+endif
+
 # Matches the main Makefile's convention: Wolfram is a sibling checkout and is
 # optional. Present, it lets the sweep check Cobalt's calls against the real SDK
 # signatures instead of only the no-Wolfram configuration.
@@ -47,8 +60,8 @@ WOLFRAM_CJSON := $(firstword $(wildcard \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.a))
 
 CFLAGS  := -std=gnu11 -g -O1 -Wall -Wextra -I$(SRC) $(SDL_CFLAGS) $(CURL_CFLAGS) \
-           -include $(CURDIR)/host_sdl_compat.h
-LDLIBS  := $(SDL_LIBS) $(CURL_LIBS) -lmbedcrypto -lm -lpthread
+           $(IMAGE_CFLAGS) -include $(CURDIR)/host_sdl_compat.h
+LDLIBS  := $(SDL_LIBS) $(IMAGE_LIBS) $(CURL_LIBS) -lmbedcrypto -lm -lpthread
 
 #---------------------------------------------------------------------------------
 # Unit tests.
@@ -62,6 +75,8 @@ UNIT_SOURCES := \
 	$(SRC)/cache/session_store.c \
 	$(SRC)/atproto/session.c \
 	$(SRC)/app/signin.c \
+	$(SRC)/net/http.c \
+	$(SRC)/ui/imagecache.c \
 	$(SRC)/ui/keyboard.c \
 	$(SRC)/util/rng.c \
 	$(SRC)/util/timefmt.c \
@@ -83,16 +98,22 @@ TEST_BIN := $(OUT)/cobalt-tests
 #---------------------------------------------------------------------------------
 # Compile sweep.
 #
-# Everything except the translation units that need devkitPro headers:
-#   main.c        - <whb/proc.h> by way of the SDL Wii U port's expectations
+# Everything except the translation units that reach for devkitPro headers:
 #   net/net.c     - <nn/ac.h>
 #   util/log.c    - <coreinit/debug.h>, Aroma's logging module
 #   util/paths.c  - <whb/sdcard.h>
 # Those are covered by the hardware pass, which is the only place they can be.
+#
+# main.c is swept, and matters: it owns the startup and shutdown ordering, which
+# is exactly the code a hardware pass is slowest to tell you about. The Wii U
+# window flags it needs are stubbed in host_sdl_compat.h. It is kept out of the
+# link check below only because linkcheck_main.c supplies that binary's main().
 #---------------------------------------------------------------------------------
 SWEEP_SOURCES := $(filter-out \
-	$(SRC)/main.c $(SRC)/net/net.c $(SRC)/util/log.c $(SRC)/util/paths.c, \
+	$(SRC)/net/net.c $(SRC)/util/log.c $(SRC)/util/paths.c, \
 	$(wildcard $(SRC)/*.c $(SRC)/*/*.c))
+
+LINK_SOURCES := $(filter-out $(SRC)/main.c, $(SWEEP_SOURCES))
 
 .PHONY: all check sweep linkcheck clean
 
@@ -137,7 +158,7 @@ else
 	@mkdir -p $(OUT)
 	@$(CC) $(CFLAGS) -DCOBALT_HAS_WOLFRAM=1 -I$(WOLFRAM_ROOT)/include \
 		$(CJSON_CFLAGS) -o $(LINK_BIN) \
-		linkcheck_main.c linkcheck_stubs.c host_stubs.c $(SWEEP_SOURCES) \
+		linkcheck_main.c linkcheck_stubs.c host_stubs.c $(LINK_SOURCES) \
 		$(HAVE_WOLFRAM_LIB) $(WOLFRAM_CJSON) $(LDLIBS) \
 		-Wl,-rpath,$(abspath $(WOLFRAM_HOST_BUILD)) \
 		-Wl,-rpath,$(abspath $(dir $(WOLFRAM_CJSON)))

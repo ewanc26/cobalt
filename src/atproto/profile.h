@@ -30,6 +30,10 @@ typedef struct {
    char display_name[COBALT_POST_NAME_MAX];
    char description[COBALT_PROFILE_BIO_MAX];
 
+   /* Avatar URL, empty when unset. Same as on a post: only the URL lives here
+    * and ui/imagecache.c does the fetching. */
+   char avatar[COBALT_POST_AVATAR_MAX];
+
    /* Pre-formatted, because these are drawn as a single line and the numbers
     * are not otherwise needed. */
    char counts[COBALT_POST_META_MAX];       /* "120 followers · 84 following" */

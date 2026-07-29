@@ -13,6 +13,7 @@
 #include "atproto/feed.h"
 #include "atproto/notifications.h"
 #include "cache/session_store.h"
+#include "ui/imagecache.h"
 #include "ui/keyboard.h"
 #include "util/entropy.h"
 #include "util/rng.h"
@@ -1242,6 +1243,194 @@ test_signin_validation(void)
    cobalt_session_shutdown();
 }
 
+/* --- image scaling --- */
+
+static void
+test_image_fit_geometry(void)
+{
+   begin("image scaling crops and sizes correctly");
+
+   SDL_Rect src;
+   int w = 0, h = 0;
+
+   /* Landscape, contained: the longest edge becomes the limit and the aspect
+    * ratio is preserved. 1000x500 to 64 is 64x32. */
+   cobalt_image_fit_rects(COBALT_IMAGE_FIT_CONTAIN, 64, 1000, 500, &src, &w, &h);
+   CHECK(src.x == 0 && src.y == 0 && src.w == 1000 && src.h == 500);
+   CHECK(w == 64 && h == 32);
+
+   /* Portrait: the limit applies to the height instead. */
+   cobalt_image_fit_rects(COBALT_IMAGE_FIT_CONTAIN, 64, 500, 1000, &src, &w, &h);
+   CHECK(w == 32 && h == 64);
+
+   /* Rounding, not truncation. 3:2 at 100 is 100x66.67; truncating gives 66,
+    * which is a whole pixel of distortion at this size. */
+   cobalt_image_fit_rects(COBALT_IMAGE_FIT_CONTAIN, 100, 300, 200, &src, &w, &h);
+   CHECK(w == 100 && h == 67);
+
+   /* Never upscale: a 16x16 icon asked for at 64 stays 16x16. Stretching it
+    * would cost four times the texture memory for a blurrier result. */
+   cobalt_image_fit_rects(COBALT_IMAGE_FIT_CONTAIN, 64, 16, 16, &src, &w, &h);
+   CHECK(w == 16 && h == 16);
+
+   /* Circle: centre-crop to a square first. A 200x100 banner used as an avatar
+    * should take the middle 100x100, not the left edge. */
+   cobalt_image_fit_rects(COBALT_IMAGE_FIT_CIRCLE, 64, 200, 100, &src, &w, &h);
+   CHECK(src.x == 50 && src.y == 0 && src.w == 100 && src.h == 100);
+   CHECK(w == 64 && h == 64);
+
+   /* Circle, already square and already small: untouched. */
+   cobalt_image_fit_rects(COBALT_IMAGE_FIT_CIRCLE, 64, 48, 48, &src, &w, &h);
+   CHECK(src.x == 0 && src.y == 0 && src.w == 48 && src.h == 48);
+   CHECK(w == 48 && h == 48);
+
+   /* Degenerate input reports nothing rather than a negative rect. */
+   cobalt_image_fit_rects(COBALT_IMAGE_FIT_CONTAIN, 64, 0, 0, &src, &w, &h);
+   CHECK(w == 0 && h == 0);
+}
+
+/* Fill an ARGB8888 surface via a callback, so the tests below can describe a
+ * pattern rather than repeat the pitch arithmetic. */
+static SDL_Surface *
+make_surface(int w, int h, uint32_t (*pixel)(int x, int y))
+{
+   SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32,
+                                                   SDL_PIXELFORMAT_ARGB8888);
+   if (!s) {
+      return NULL;
+   }
+   for (int y = 0; y < h; y++) {
+      uint32_t *row = (uint32_t *) ((uint8_t *) s->pixels + (size_t) y * (size_t) s->pitch);
+      for (int x = 0; x < w; x++) {
+         row[x] = pixel(x, y);
+      }
+   }
+   return s;
+}
+
+static uint32_t
+quadrant_pattern(int x, int y)
+{
+   /* A 4x4 split into four 2x2 blocks of one colour each, so a halving scale
+    * has an answer that can be written down: each output pixel is exactly one
+    * block's colour. */
+   const uint32_t left = (x < 2) ? 0x00u : 0xFFu;
+   const uint32_t top = (y < 2) ? 0x00u : 0xFFu;
+   return 0xFF000000u | (left << 16) | (top << 8);
+}
+
+static uint32_t
+opaque_white(int x, int y)
+{
+   (void) x;
+   (void) y;
+   return 0xFFFFFFFFu;
+}
+
+static uint32_t
+pixel_at(SDL_Surface *s, int x, int y)
+{
+   return ((const uint32_t *) ((const uint8_t *) s->pixels +
+                               (size_t) y * (size_t) s->pitch))[x];
+}
+
+static void
+test_image_resample(void)
+{
+   begin("image resampling averages rather than samples");
+
+   SDL_Surface *src = make_surface(4, 4, quadrant_pattern);
+   CHECK(src != NULL);
+   if (!src) {
+      return;
+   }
+
+   /* 4x4 down to 2x2: each output pixel covers exactly one uniform block, so
+    * the averaging must reproduce the colours exactly. Nearest-neighbour would
+    * also pass this one — the point is that averaging does not *lose* to it. */
+   SDL_Surface *half = cobalt_image_resample(src, 2, COBALT_IMAGE_FIT_CONTAIN);
+   CHECK(half != NULL);
+   if (half) {
+      CHECK(half->w == 2 && half->h == 2);
+      CHECK(pixel_at(half, 0, 0) == 0xFF000000u);
+      CHECK(pixel_at(half, 1, 0) == 0xFFFF0000u);
+      CHECK(pixel_at(half, 0, 1) == 0xFF00FF00u);
+      CHECK(pixel_at(half, 1, 1) == 0xFFFFFF00u);
+      SDL_FreeSurface(half);
+   }
+
+   /*
+    * 4x4 down to 1x1: the whole image in one pixel. Nearest-neighbour returns
+    * whichever corner it lands on — here 0xFF000000, black. Averaging returns
+    * the mean, half red and half green. This is the check that would catch a
+    * silent fall back to SDL_BlitScaled.
+    */
+   SDL_Surface *one = cobalt_image_resample(src, 1, COBALT_IMAGE_FIT_CONTAIN);
+   CHECK(one != NULL);
+   if (one) {
+      CHECK(one->w == 1 && one->h == 1);
+      const uint32_t p = pixel_at(one, 0, 0);
+      CHECK(((p >> 24) & 0xFFu) == 0xFFu);
+      CHECK(((p >> 16) & 0xFFu) == 0x80u); /* 2 of 4 columns red */
+      CHECK(((p >> 8) & 0xFFu) == 0x80u);  /* 2 of 4 rows green */
+      SDL_FreeSurface(one);
+   }
+
+   SDL_FreeSurface(src);
+
+   /* A surface that is not ARGB8888 is refused rather than read as if it were:
+    * the scaler indexes 32-bit words directly. */
+   SDL_Surface *rgb24 =
+      SDL_CreateRGBSurfaceWithFormat(0, 8, 8, 24, SDL_PIXELFORMAT_RGB24);
+   if (rgb24) {
+      CHECK(cobalt_image_resample(rgb24, 4, COBALT_IMAGE_FIT_CONTAIN) == NULL);
+      SDL_FreeSurface(rgb24);
+   }
+}
+
+static void
+test_image_circle_mask(void)
+{
+   begin("circular fit clears the corners and keeps the middle");
+
+   SDL_Surface *src = make_surface(64, 64, opaque_white);
+   CHECK(src != NULL);
+   if (!src) {
+      return;
+   }
+
+   SDL_Surface *out = cobalt_image_resample(src, 32, COBALT_IMAGE_FIT_CIRCLE);
+   SDL_FreeSurface(src);
+   CHECK(out != NULL);
+   if (!out) {
+      return;
+   }
+
+   CHECK(out->w == 32 && out->h == 32);
+
+   /* Corners fall outside the inscribed circle and must be fully transparent,
+    * or the avatar draws as a square with rounded shading. */
+   CHECK(((pixel_at(out, 0, 0) >> 24) & 0xFFu) == 0);
+   CHECK(((pixel_at(out, 31, 0) >> 24) & 0xFFu) == 0);
+   CHECK(((pixel_at(out, 0, 31) >> 24) & 0xFFu) == 0);
+   CHECK(((pixel_at(out, 31, 31) >> 24) & 0xFFu) == 0);
+
+   /* The centre is untouched, and the colour survives the premultiply round
+    * trip rather than coming back a shade off. */
+   CHECK(pixel_at(out, 16, 16) == 0xFFFFFFFFu);
+
+   /* The rim is feathered, not binary. The inscribed circle touches the box at
+    * the midpoint of each edge, so the outermost pixel of the widest row is
+    * the one the boundary cuts through: it must come back partly transparent
+    * rather than snapped to on or off. */
+   const uint32_t right = (pixel_at(out, 31, 16) >> 24) & 0xFFu;
+   const uint32_t left = (pixel_at(out, 0, 16) >> 24) & 0xFFu;
+   CHECK(right > 0 && right < 0xFFu);
+   CHECK(left == right); /* and symmetric, or the centre is off by a half-pixel */
+
+   SDL_FreeSurface(out);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -1285,6 +1474,9 @@ main(int argc, char **argv)
    test_selection_survives_a_shrinking_list();
    test_session_request_handshake();
    test_signin_validation();
+   test_image_fit_geometry();
+   test_image_resample();
+   test_image_circle_mask();
 
    printf("\n%d checks, %d failures\n", s_checks, s_failures);
    return s_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

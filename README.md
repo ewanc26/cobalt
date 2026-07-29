@@ -32,7 +32,8 @@ nothing has been run on a Wii U yet.
 | Posting and replying | done |
 | Notifications, with mark-as-seen | done |
 | Profiles, follow and unfollow | done |
-| Images, avatars, link cards | next — markers for now |
+| Avatars, on posts, replies, notifications and profiles | done |
+| Post images and link cards | next — markers for now |
 | Search, custom feeds, lists, mutes and blocks | not started |
 | Video, GIFs, DMs, push notifications | not planned — see below |
 
@@ -40,10 +41,13 @@ nothing has been run on a Wii U yet.
 suite passes, but every milestone's real acceptance test is the console and none
 of them have had one. Treat the "done" column as "written and host-tested".
 
-Embedded media is shown as a marker — a post with a picture reads `[image]`
-rather than displaying it. Fetching and decoding blobs is real work that has
-not been done, and silently dropping the embed would make an image-only post
-look like an empty card.
+Avatars are fetched, decoded and scaled on background threads and drawn as
+circles; until one arrives — and permanently, for accounts that have not set
+one — the card shows the author's initial on a disc tinted from their handle,
+so the column stays scannable rather than becoming a row of identical grey.
+Media *inside* a post is still shown as a marker: a post with a picture reads
+`[image]` rather than displaying it. Silently dropping the embed would make an
+image-only post look like an empty card.
 
 Some things in the official client are not coming, because the console cannot
 do them rather than because nobody has got to them yet: **video** and **GIFs**
@@ -74,7 +78,8 @@ the app needs and which is not part of the `.wuhb`.
 
 ```sh
 # Toolchain (once)
-sudo dkp-pacman -S wiiu-dev wiiu-sdl2 wiiu-sdl2_ttf wiiu-curl wiiu-mbedtls
+sudo dkp-pacman -S wiiu-dev wiiu-sdl2 wiiu-sdl2_ttf wiiu-sdl2_image \
+                   wiiu-curl wiiu-mbedtls
 
 # Wolfram — the AT Protocol SDK, as a sibling checkout.
 # Needs a version with wf_xrpc_client_set_tls_rng(); an older one will fail to

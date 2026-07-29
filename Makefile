@@ -104,10 +104,13 @@ LDFLAGS	=	$(RPXSPECS) -g $(MACHDEP) -Wl,-Map,$(notdir $*.map)
 # any extra libraries we wish to link with the project
 # Order matters: dependers first, dependees last
 #---------------------------------------------------------------------------------
-LIBS	:=	-lSDL2_ttf -lSDL2 \
+# SDL2_image is statically linked against its decoders (devkitPro builds it
+# --disable-*-shared, which is required: there is no dynamic loader here), so
+# libjpeg/libpng/libwebp have to appear explicitly and after it.
+LIBS	:=	-lSDL2_ttf -lSDL2_image -lSDL2 \
 			$(WOLFRAM_LIBS) \
 			-lcurl -lmbedtls -lmbedx509 -lmbedcrypto \
-			-lharfbuzz -lfreetype -lpng16 -lbz2 \
+			-lharfbuzz -lfreetype -ljpeg -lwebp -lpng16 -lbz2 \
 			-lbrotlidec -lbrotlicommon -lz \
 			-lwut -lm
 

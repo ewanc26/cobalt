@@ -115,6 +115,12 @@ cobalt_profile_from_wolfram(cobalt_profile *out,
    cobalt_feed_copy_text(out->description, sizeof(out->description),
                          typed->description ? typed->description : "");
 
+   /* Wolfram's field is named avatar_cid, but for a *parsed* profile view it
+    * holds the server's avatar URL rather than a blob CID — the SDK documents
+    * this at the assignment in agent.c. */
+   snprintf(out->avatar, sizeof(out->avatar), "%s",
+            typed->avatar_cid ? typed->avatar_cid : "");
+
    cobalt_profile_format_counts(out->counts, sizeof(out->counts),
                                 typed->followers_count, typed->follows_count);
    cobalt_profile_format_number(out->post_count, sizeof(out->post_count),

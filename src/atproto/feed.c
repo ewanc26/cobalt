@@ -343,6 +343,8 @@ fill_from_view(cobalt_post *post, const wf_agent_post_view *view, int64_t now)
    }
    cobalt_feed_copy_text(post->author, sizeof(post->author), display);
    snprintf(post->handle, sizeof(post->handle), "@%s", handle);
+   snprintf(post->avatar, sizeof(post->avatar), "%s",
+            view->author.avatar ? view->author.avatar : "");
 
    /* The post text lives in the record, which Wolfram keeps as raw JSON
     * because a record can be any shape. A post with no text is legitimate —
@@ -503,6 +505,8 @@ fill_from_thread_post(cobalt_post *post, const wf_agent_thread_post *view,
    }
    cobalt_feed_copy_text(post->author, sizeof(post->author), display);
    snprintf(post->handle, sizeof(post->handle), "@%s", handle);
+   snprintf(post->avatar, sizeof(post->avatar), "%s",
+            view->author.avatar ? view->author.avatar : "");
 
    const char *text = json_string(view->record, "text");
    cobalt_feed_copy_text(post->text, sizeof(post->text), text ? text : "");

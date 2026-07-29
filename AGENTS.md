@@ -222,7 +222,7 @@ The stated goal is to go as far as the hardware allows. Some of it never will, a
 | Push notifications | No service the console can register with |
 | GIFs / animated media | Same decode problem as video, plus per-frame budget |
 
-Reachable, in rough order of value: **images and avatars** (blob fetch, decode, texture cache — real work, and the biggest visible gap), profiles, search, custom feeds, lists, mutes and blocks, threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
+Reachable, in rough order of value: ~~images and avatars~~ (done — see §13), ~~profiles~~ (done), search, custom feeds, lists, mutes and blocks, threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
 
 **Language policy.** Cobalt may use C++ (and any other language the toolchain supports) where it earns its place. Wolfram stays **C only** — it is the shared SDK across Ewan's ATProto work and its portability is the point.
 
@@ -400,9 +400,34 @@ Both were bugs before they were rules, and both are now single tested functions 
 - **`cobalt_list_clamp()`** — a list can shrink under the cursor (replying re-roots a thread on its parent, which is usually much shorter). The scroll maths only ever raises `scroll` to meet `selected`, so it cannot recover from a cursor past the end: the screen draws nothing and takes one press of UP per row to escape.
 - **`cobalt_feed_can_page()`** — not simply `has_more`. The window is fixed, so once full, every further page appends nothing while the server still returns a cursor. A screen that auto-pages on reaching the last row would request forever, holding `busy` true so no interaction ever ran, and earning a rate limit.
 
+### Avatars are fetched, decoded and scaled off the frame loop — textures are not
+
+Images were the biggest visible gap against `social-app`, and the whole of the work is in getting the threading right.
+
+SDL's Wii U backends — `src/render/wiiu/` and `src/video/wiiu/` — contain **no locking of any kind**. No mutex, no spinlock, nothing. Creating a texture from a worker thread would be writing into the same GX2 command buffer the frame is being built in: corruption, not tearing. So the split in `ui/imagecache.c` is not caution, it is the only correct arrangement:
+
+- **Loader threads** (three per cache, because each image is its own TLS handshake and the cost is almost all round-trip latency) do the HTTPS GET, the decode and the downscale. All three are pure CPU work on an `SDL_Surface` and touch no renderer.
+- **The main thread** turns finished surfaces into textures, in `cobalt_imagecache_pump()`, and is the only thread that ever destroys one.
+
+Consequences worth keeping:
+
+- **A cache belongs to one renderer.** A texture cannot be shared between the TV and GamePad, so there is one cache per surface, hanging off the render context (`cobalt_render_set_images()`) rather than threaded through every drawing call. Asking a cache with the wrong context is refused, not silently wrong.
+
+  **This costs a duplicate fetch, and that is a known, accepted cost — not an oversight.** Both surfaces draw the same screen, so every avatar is downloaded and decoded twice, once per cache. The fix is to share the *fetch* while keeping textures per-renderer: a URL-keyed staging store that the second requester waits on rather than re-requesting. That needs a second condition variable and a "someone else is already loading this" state, and writing that blind — for a pipeline that has never run on hardware once — is how you get a deadlock that only appears on the console. Do the simple version first, confirm it works, then dedupe. Do not skip the confirmation.
+- **Slots carry a generation counter.** A loader captures it before releasing the lock and re-checks it after. A result for a request nobody wants any more — evicted, or flushed by a foreground release — is discarded rather than written into whatever took the slot.
+- **Eviction skips anything in flight.** Only `READY` and `FAILED` slots are reusable. Taking a loading one would throw away a request already paid for, and a fast scroll would then never settle.
+- **`cobalt_imagecache_flush()` on `SDL_APP_DIDENTERFOREGROUND`**, next to the text cache flush, for the same reason: textures do not survive a GX2 context release.
+- **Scaling is a real box filter, not `SDL_BlitScaled`.** That is nearest-neighbour here, and a 1000×1000 avatar down to 64 by nearest discards 99.6% of the pixels — a shimmering mess. Averaging costs a few milliseconds on a thread that has them. It averages *premultiplied*, or transparent pixels bleed their colour into the edges.
+- **Downscaling bounds the texture budget by construction.** Twenty-four full-size avatars would be 96 MB as ARGB8888.
+- **Everything degrades to a placeholder.** No SDL2_image, no trust store, a loader that will not start, a fetch that fails: the card draws a disc tinted from a hash of the handle with the author's first codepoint on it. That is deliberately not a grey circle — a column of identical grey reads as one voice.
+
+`net/http.c` is a plain HTTPS GET into memory, deliberately outside the ATProto layer: fetching an avatar is not protocol-shaped work, and routing it through Wolfram would serialise images behind the one request the session worker may have in flight. It repeats two platform details Wolfram also handles, because they are properties of *this console* rather than of the SDK — the bundled CA bundle, and the application DRBG for the handshake (§13's RNG note). It is https-only and caps the transfer in the write callback, aborting the download rather than discarding an oversized result afterwards: the URL comes from a PDS response and a hostile one could point at an endless stream.
+
+Avatar counts are on the diagnostics screen. Without them there is no way to tell "nobody has set one" from "every fetch is failing", which are very different problems and look identical.
+
 ### There is a host test harness, and it is not a substitute for hardware
 
-`tests/` does two things with the build machine's own compiler. It runs a `-fsyntax-only -Werror` sweep over every translation unit that does not need devkitPro headers — in both the with-Wolfram and without-Wolfram configurations, so a changed SDK signature is caught in a second rather than after a card swap. And it unit tests the genuinely platform-independent logic §10 carves out: the credential store's round trip and its refusal of damaged or foreign files, the service-URL normaliser, the keyboard's text model, and the async request handshake.
+`tests/` does two things with the build machine's own compiler. It runs a `-fsyntax-only -Werror` sweep over every translation unit that does not need devkitPro headers — including `main.c`, which owns the startup and shutdown ordering and is exactly the code a hardware pass is slowest to tell you about — in both the with-Wolfram and without-Wolfram configurations, so a changed SDK signature is caught in a second rather than after a card swap. And it unit tests the genuinely platform-independent logic §10 carves out: the credential store's round trip and its refusal of damaged or foreign files, the service-URL normaliser, the keyboard's text model, and the async request handshake.
 
 `make test` runs both. It is a filter on the obvious failures, not evidence anything works — every milestone's acceptance test is still the console.
 

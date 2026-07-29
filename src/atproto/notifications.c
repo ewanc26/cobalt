@@ -118,6 +118,8 @@ cobalt_notifications_append_from_wolfram(
       }
       cobalt_feed_copy_text(item->actor, sizeof(item->actor), display);
       snprintf(item->handle, sizeof(item->handle), "@%s", handle);
+      snprintf(item->avatar, sizeof(item->avatar), "%s",
+               src->author.avatar ? src->author.avatar : "");
 
       /* Through copy_text, not snprintf: an unrecognised reason is passed
        * through verbatim, so this is arbitrary server-supplied UTF-8 and a
