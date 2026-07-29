@@ -2,6 +2,7 @@
 #include "util/entropy.h"
 #include "util/log.h"
 #include "util/paths.h"
+#include "util/rng.h"
 
 #ifdef COBALT_HAS_WOLFRAM
 #include <wolfram/platform.h>
@@ -18,17 +19,25 @@
 
 static cobalt_atproto_status s_status = COBALT_ATPROTO_ABSENT;
 
-#ifdef COBALT_HAS_WOLFRAM
-
 /*
- * Provision Wolfram's DRBG from the SD card seed, rotating it for next boot.
+ * Provision every generator that needs real entropy, from the one seed file on
+ * the SD card, and rotate it for the next boot.
  *
- * The ordering is load -> set -> rotate -> save -> commit, and it matters.
- * The DRBG is deterministic, so booting twice on the same seed would
- * regenerate identical key material. Wolfram therefore hands back a
- * replacement seed and refuses to sign until commit confirms it reached
- * storage — if the console loses power between the rotate and the save, the
- * next boot comes up on the old seed and must not silently proceed.
+ * Two consumers, deliberately kept distinct:
+ *
+ *   - Cobalt's own DRBG (util/rng.h), which backs the TLS handshake and the
+ *     credential store. It exists because devkitPro's mbedTLS has no usable
+ *     entropy source and cannot be fixed at link time — see util/rng.h.
+ *   - Wolfram's DRBG, which backs P-256 signing and key generation, and keeps
+ *     its own rotate/commit protocol.
+ *
+ * The ordering is load -> seed both -> rotate -> save -> commit, and it
+ * matters. Both DRBGs are deterministic, so booting twice on the same seed
+ * would regenerate identical key material and, worse, identical TLS client
+ * randoms. Wolfram therefore hands back a replacement seed and refuses to sign
+ * until commit confirms it reached storage — if the console loses power
+ * between the rotate and the save, the next boot comes up on the old seed and
+ * must not silently proceed.
  *
  * This mirrors Channel Blue's provision_wolfram_entropy() on the Wii, so the
  * two projects keep the same discipline on a security-sensitive path.
@@ -46,11 +55,17 @@ provision_entropy(void)
    if (!cobalt_entropy_seed_load(path, seed)) {
       COBALT_LOGW("entropy: no seed at %s — run `make bundle` to generate one "
                   "per installation, then copy it to the SD card", path);
+      memset(seed, 0, sizeof(seed));
       return false;
    }
 
+   /* Cobalt's generator first: without it there is no HTTPS at all, so it is
+    * the one whose failure matters most. */
+   bool app_rng = cobalt_rng_init(seed, sizeof(seed));
+
+#ifdef COBALT_HAS_WOLFRAM
    wf_status status = wf_wiiu_set_entropy_seed(seed, sizeof(seed));
-   /* Wipe our copy as soon as Wolfram has it, regardless of outcome. */
+   /* Wipe our copy as soon as both generators have it, regardless of outcome. */
    memset(seed, 0, sizeof(seed));
    if (status != WF_OK) {
       COBALT_LOGE("entropy: wf_wiiu_set_entropy_seed failed (%d)", (int) status);
@@ -78,10 +93,30 @@ provision_entropy(void)
       COBALT_LOGE("entropy: commit failed after a successful save");
       return false;
    }
+#else
+   memset(seed, 0, sizeof(seed));
 
-   COBALT_LOGI("entropy: seed provisioned and rotated");
-   return true;
+   /* No Wolfram to rotate the seed, so Cobalt's own generator produces the
+    * replacement. Same requirement either way: the next boot must not come up
+    * on the bytes this one just used. */
+   if (app_rng) {
+      unsigned char next[COBALT_ENTROPY_SEED_SIZE];
+      bool rotated = cobalt_rng_bytes(next, sizeof(next)) &&
+                     cobalt_entropy_seed_save(path, next);
+      memset(next, 0, sizeof(next));
+      if (!rotated) {
+         COBALT_LOGE("entropy: could not rotate the seed for the next boot");
+         return false;
+      }
+   }
+#endif
+
+   COBALT_LOGI("entropy: seed provisioned and rotated (app rng %s)",
+               app_rng ? "ready" : "UNAVAILABLE");
+   return app_rng;
 }
+
+#ifdef COBALT_HAS_WOLFRAM
 
 bool
 cobalt_atproto_init(void)
@@ -109,14 +144,16 @@ cobalt_atproto_init(void)
    }
 
    /*
-    * Signing and key generation fail closed until a real entropy seed is
-    * provisioned. devkitPro's mbedTLS for Wii U backs mbedtls_hardware_poll
-    * with srand(OSGetSystemTick())/rand(), which is not usable entropy, so
-    * Wolfram deliberately refuses to generate keys without one.
+    * Everything that needs unpredictable bytes fails closed until a real seed
+    * is provisioned, because devkitPro's mbedTLS for Wii U backs
+    * mbedtls_hardware_poll with srand(OSGetSystemTick())/rand() and offers
+    * nothing behind it.
     *
-    * A missing seed is not fatal. Read-only use (timeline, threads) does not
-    * need signing, and app-password login does not either, since curl runs its
-    * own TLS stack. It blocks only the paths that sign with a local key.
+    * A missing seed is a bigger problem than it first appears, and bigger than
+    * this comment used to claim: it disables Wolfram's P-256 signing *and*
+    * leaves libcurl's TLS handshake drawing its client randoms and ephemeral
+    * keys from that same broken poll. So a missing seed takes networking down
+    * with it — cobalt_session_init() refuses to come up. See util/rng.h.
     */
    provision_entropy();
 
@@ -137,6 +174,7 @@ cobalt_atproto_shutdown(void)
    if (s_status != COBALT_ATPROTO_ABSENT) {
       wf_platform_shutdown();
    }
+   cobalt_rng_shutdown();
    s_status = COBALT_ATPROTO_ABSENT;
 }
 
@@ -153,6 +191,12 @@ cobalt_atproto_init(void)
 {
    COBALT_LOGW("built without wolfram — ATProto features are unavailable "
                "(build ../wolfram for Wii U, see the Makefile)");
+
+   /* Still worth doing: the credential store draws from the same generator,
+    * and provisioning here keeps the seed's rotate-on-boot cycle intact
+    * whichever way the app was built. */
+   provision_entropy();
+
    s_status = COBALT_ATPROTO_ABSENT;
    return false;
 }
@@ -160,6 +204,7 @@ cobalt_atproto_init(void)
 void
 cobalt_atproto_shutdown(void)
 {
+   cobalt_rng_shutdown();
    s_status = COBALT_ATPROTO_ABSENT;
 }
 

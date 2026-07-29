@@ -5,6 +5,12 @@
 entropy.bin
 *.entropy
 session.dat
+device.key
+
+# Fetched at build time by tools/fetch_cacert.sh, not committed: the Mozilla
+# set expires, and a stale bundle in git fails on console in a way that reads
+# as a network bug. `make cacert` refreshes it.
+romfs/cacert.pem
 
 # Build products
 build/
