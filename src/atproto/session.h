@@ -41,6 +41,10 @@ extern "C" {
 #define COBALT_IDENTIFIER_MAX 256
 #define COBALT_PASSWORD_MAX   128
 #define COBALT_MESSAGE_MAX    192
+/* Bluesky's 300-grapheme limit, in bytes, plus a terminator. Kept here rather
+ * than taken from app/compose.h so the protocol layer does not depend on a
+ * screen. */
+#define COBALT_COMPOSE_TEXT_MAX 3001
 
 typedef enum {
    COBALT_AUTH_SIGNED_OUT = 0,
@@ -54,6 +58,10 @@ typedef enum {
    COBALT_JOB_RESUME,
    COBALT_JOB_LOGOUT,
    COBALT_JOB_TIMELINE,
+   COBALT_JOB_THREAD,
+   COBALT_JOB_LIKE,
+   COBALT_JOB_REPOST,
+   COBALT_JOB_POST,
 } cobalt_job_kind;
 
 typedef struct {
@@ -135,6 +143,35 @@ bool cobalt_session_begin_timeline(bool paging);
  * how the UI already gates its drawing; never NULL.
  */
 const cobalt_feed *cobalt_session_feed(void);
+
+/*
+ * Fetch the conversation around `uri`. Replaces whatever thread was loaded.
+ */
+bool cobalt_session_begin_thread(const char *uri);
+
+/* The thread as last fetched; never NULL. */
+const cobalt_thread *cobalt_session_thread(void);
+
+/*
+ * Toggle a like or repost on a post.
+ *
+ * The direction is decided from the post's current viewer state rather than
+ * passed in, so a screen cannot get out of step with what the server thinks.
+ * `uri` and `cid` identify the post; both are required to create a record.
+ * The change is applied locally on success — see cobalt_feed_apply_like.
+ */
+bool cobalt_session_begin_like(const char *uri, const char *cid);
+bool cobalt_session_begin_repost(const char *uri, const char *cid);
+
+/*
+ * Publish a post. `parent_uri`/`parent_cid` and `root_uri`/`root_cid` make it
+ * a reply; pass NULL for all four for a top-level post. Both refs are required
+ * for a reply — a reply naming the wrong root lands in the wrong conversation
+ * for every other client, so a partial set is refused rather than guessed at.
+ */
+bool cobalt_session_begin_post(const char *text, const char *parent_uri,
+                               const char *parent_cid, const char *root_uri,
+                               const char *root_cid);
 
 /*
  * True exactly once per completed request, handing back its outcome. Call it
