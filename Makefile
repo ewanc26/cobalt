@@ -2,6 +2,18 @@
 .SUFFIXES:
 #---------------------------------------------------------------------------------
 
+TOPDIR ?= $(CURDIR)
+
+#---------------------------------------------------------------------------------
+# `make test` runs on the build machine and must work on a checkout with no
+# devkitPro installed, so the toolchain requirement is scoped to the goals that
+# actually need it. An empty goal list means the default target, which does.
+#---------------------------------------------------------------------------------
+HOST_ONLY_GOALS	:=	test
+REQUESTED_GOALS	:=	$(if $(MAKECMDGOALS),$(MAKECMDGOALS),all)
+
+ifneq ($(filter-out $(HOST_ONLY_GOALS),$(REQUESTED_GOALS)),)
+
 ifeq ($(strip $(DEVKITPRO)),)
 $(error "Please set DEVKITPRO in your environment. export DEVKITPRO=<path to>devkitPro")
 endif
@@ -10,9 +22,9 @@ ifeq ($(strip $(DEVKITPPC)),)
 $(error "Please set DEVKITPPC in your environment. export DEVKITPPC=<path to>devkitPPC")
 endif
 
-TOPDIR ?= $(CURDIR)
-
 include $(DEVKITPRO)/wut/share/wut_rules
+
+endif
 
 #---------------------------------------------------------------------------------
 # TARGET is the name of the output
@@ -172,19 +184,53 @@ export APP_NAME
 export APP_SHORTNAME := $(APP_SHORT_NAME)
 export APP_AUTHOR
 
-.PHONY: $(BUILD) all clean run bundle
+#---------------------------------------------------------------------------------
+# TLS trust store.
+#
+# devkitPro's wiiu-curl is built against mbedTLS and the Wii U has no system
+# certificate store behind it, so without an explicit CA bundle every HTTPS
+# request fails verification. Cobalt ships one in its romfs and points Wolfram
+# at it (see src/atproto/session.c).
+#
+# It is fetched rather than committed: the Mozilla set expires, and a stale
+# bundle fails in a way that reads as a network bug rather than an out-of-date
+# trust store. Run `make cacert` to force a refresh.
+#---------------------------------------------------------------------------------
+CACERT	:=	$(TOPDIR)/$(CONTENT)/cacert.pem
+
+.PHONY: $(BUILD) all clean run bundle cacert test
 
 #---------------------------------------------------------------------------------
 all: $(BUILD)
 
-$(BUILD):
+$(BUILD): $(CACERT)
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+
+# Deliberately not a hard failure. An offline build still produces a working
+# RPX; it just cannot reach a PDS, and the diagnostics screen says so rather
+# than the app failing mysteriously at the first request.
+$(CACERT):
+	@echo cacert ...
+	@$(TOPDIR)/tools/fetch_cacert.sh $@ || \
+		echo "cacert ... WARNING: no trust store bundled — HTTPS will fail on console"
+
+cacert:
+	@rm -f $(CACERT)
+	@$(MAKE) --no-print-directory $(CACERT)
 
 #---------------------------------------------------------------------------------
 clean:
 	@echo clean ...
 	@rm -fr $(BUILD) dist $(OUTPUT).elf $(OUTPUT).rpx $(OUTPUT).wuhb
+	@$(MAKE) --no-print-directory -C tests clean
+
+#---------------------------------------------------------------------------------
+# Host-side checks. Builds nothing for the console — it exists so a typo or a
+# changed Wolfram signature is caught before an SD-card round trip, since there
+# is no emulator in this workflow (AGENTS.md §10). See tests/README.md.
+test:
+	@$(MAKE) --no-print-directory -C tests
 
 #---------------------------------------------------------------------------------
 run: all

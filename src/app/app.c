@@ -1,5 +1,7 @@
 #include "app/app.h"
+#include "app/signin.h"
 #include "atproto/atproto.h"
+#include "atproto/session.h"
 #include "net/net.h"
 #include "util/log.h"
 #include "util/paths.h"
@@ -11,31 +13,25 @@
 #include <string.h>
 
 typedef enum {
-   ACTION_NONE = 0,       /* placeholder entry, not yet implemented */
+   ACTION_TIMELINE = 0,
+   ACTION_ACCOUNT,
    ACTION_DIAGNOSTICS,
    ACTION_TOGGLE_DISPLAY,
    ACTION_QUIT,
 } menu_action;
 
-typedef struct {
-   const char *label;
-   const char *hint;
-   menu_action action;
-   bool enabled;
-} menu_item;
-
 /*
- * Build order (AGENTS.md §12) puts networking before any UI that depends on
- * it, so timeline and sign-in are present but explicitly disabled rather than
- * hidden — the shape of the app is visible on hardware from the first run
- * without pretending features exist.
+ * Home menu order. Entries are described by functions rather than a static
+ * table because two of them change with session state — the account entry is
+ * "Sign in" or "Account" depending on whether there is one, and it is only
+ * selectable when a sign-in could actually succeed.
  */
-static const menu_item MENU[] = {
-   { "Timeline",     "Your Bluesky home feed",             ACTION_NONE,           false },
-   { "Sign in",      "Connect with an app password",       ACTION_NONE,           false },
-   { "Diagnostics",  "Paths, network and library status",  ACTION_DIAGNOSTICS,    true  },
-   { "TV display",   "Switch between TV+GamePad and Off-TV", ACTION_TOGGLE_DISPLAY, true },
-   { "Quit",         "Return to the Wii U Menu",           ACTION_QUIT,           true  },
+static const menu_action MENU[] = {
+   ACTION_TIMELINE,
+   ACTION_ACCOUNT,
+   ACTION_DIAGNOSTICS,
+   ACTION_TOGGLE_DISPLAY,
+   ACTION_QUIT,
 };
 
 #define MENU_COUNT ((int) (sizeof(MENU) / sizeof(MENU[0])))
@@ -49,9 +45,20 @@ struct cobalt_app {
    int selected;
    float focus[MENU_COUNT];
 
+   cobalt_signin signin;
+
+   /* Last completed request's message, shown on the home and account screens
+    * so an auto-resume that failed while nobody was looking is not silent. */
+   char notice[COBALT_MESSAGE_MAX];
+   bool notice_is_error;
+
+   /* The resume attempt is fired from the first update rather than from
+    * startup, so the app has already drawn a frame and a slow PDS shows a live
+    * screen instead of a black one. */
+   bool resume_attempted;
+
    bool quit;
    uint32_t frames;
-   uint32_t started_ms;
 
    /* Cached once — curl_version() returns a static string but formatting it
     * every frame would allocate in the render loop. */
@@ -64,6 +71,70 @@ struct cobalt_app {
 static SDL_Rect s_drc_hit[MENU_COUNT];
 static bool s_drc_hit_valid = false;
 
+/* Hit rectangle for the account screen's only action. */
+static SDL_Rect s_account_hit;
+static bool s_account_hit_valid = false;
+
+/* --- menu description --- */
+
+static bool
+signed_in(void)
+{
+   return cobalt_session_state() == COBALT_AUTH_SIGNED_IN;
+}
+
+static const char *
+menu_label(int index)
+{
+   switch (MENU[index]) {
+      case ACTION_TIMELINE:       return "Timeline";
+      case ACTION_ACCOUNT:        return signed_in() ? "Account" : "Sign in";
+      case ACTION_DIAGNOSTICS:    return "Diagnostics";
+      case ACTION_TOGGLE_DISPLAY: return "TV display";
+      case ACTION_QUIT:           return "Quit";
+      default:                    return "";
+   }
+}
+
+static const char *
+menu_hint(int index)
+{
+   switch (MENU[index]) {
+      case ACTION_TIMELINE:
+         return "Your Bluesky home feed";
+      case ACTION_ACCOUNT:
+         if (signed_in()) {
+            return cobalt_session_handle();
+         }
+         return cobalt_session_available() ? "Connect with an app password"
+                                           : "Unavailable — see Diagnostics";
+      case ACTION_DIAGNOSTICS:
+         return "Paths, network and library status";
+      case ACTION_TOGGLE_DISPLAY:
+         return "Switch between TV+GamePad and Off-TV";
+      case ACTION_QUIT:
+         return "Return to the Wii U Menu";
+      default:
+         return "";
+   }
+}
+
+static bool
+menu_enabled(int index)
+{
+   switch (MENU[index]) {
+      case ACTION_TIMELINE:
+         /* AGENTS.md §12 step 3, and blocked on step 2 landing on hardware.
+          * Shown-but-disabled rather than hidden so the shape of the app is
+          * visible from the first run without pretending it works. */
+         return false;
+      case ACTION_ACCOUNT:
+         return cobalt_session_available() || signed_in();
+      default:
+         return true;
+   }
+}
+
 cobalt_app *
 cobalt_app_create(void)
 {
@@ -75,8 +146,9 @@ cobalt_app_create(void)
 
    app->screen = COBALT_SCREEN_HOME;
    app->display = COBALT_DISPLAY_DUAL;
-   app->selected = 2; /* Diagnostics — the only thing worth opening on run one. */
-   app->started_ms = SDL_GetTicks();
+   app->selected = 1; /* Sign in — the one thing worth doing on run one. */
+
+   cobalt_signin_init(&app->signin);
 
    curl_version_info_data *curl_info = curl_version_info(CURLVERSION_NOW);
    snprintf(app->curl_version, sizeof(app->curl_version), "curl %s / %s",
@@ -95,6 +167,11 @@ cobalt_app_create(void)
 void
 cobalt_app_destroy(cobalt_app *app)
 {
+   if (app) {
+      /* The password buffer lives in this allocation; do not hand it back to
+       * the heap still holding one. */
+      cobalt_signin_clear_password(&app->signin);
+   }
    free(app);
 }
 
@@ -105,14 +182,30 @@ cobalt_app_should_quit(const cobalt_app *app)
 }
 
 static void
+set_notice(cobalt_app *app, const char *message, bool is_error)
+{
+   snprintf(app->notice, sizeof(app->notice), "%s", message ? message : "");
+   app->notice_is_error = is_error;
+}
+
+static void
 activate(cobalt_app *app, int index)
 {
-   if (index < 0 || index >= MENU_COUNT || !MENU[index].enabled) {
-      COBALT_LOGD("menu: entry %d is not selectable yet", index);
+   if (index < 0 || index >= MENU_COUNT || !menu_enabled(index)) {
+      COBALT_LOGD("menu: entry %d is not selectable", index);
       return;
    }
 
-   switch (MENU[index].action) {
+   switch (MENU[index]) {
+      case ACTION_ACCOUNT:
+         if (signed_in()) {
+            app->screen = COBALT_SCREEN_ACCOUNT;
+         } else {
+            cobalt_signin_set_status(&app->signin, "", false);
+            app->screen = COBALT_SCREEN_SIGN_IN;
+         }
+         break;
+
       case ACTION_DIAGNOSTICS:
          app->screen = COBALT_SCREEN_DIAGNOSTICS;
          /* Refresh here rather than per frame: AC queries are not free. */
@@ -132,36 +225,73 @@ activate(cobalt_app *app, int index)
          app->quit = true;
          break;
 
-      case ACTION_NONE:
+      case ACTION_TIMELINE:
       default:
          break;
    }
 }
 
-void
-cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
+/* --- session plumbing --- */
+
+static void
+handle_job_result(cobalt_app *app, const cobalt_job_result *result)
 {
-   if (!app || !in) {
-      return;
-   }
+   switch (result->kind) {
+      case COBALT_JOB_LOGIN:
+         if (result->ok) {
+            /* Wolfram has its own copy now, so this one has no reason to live
+             * any longer — and it is about to sit in an idle screen's state. */
+            cobalt_signin_clear_password(&app->signin);
+            cobalt_signin_set_status(&app->signin, "", false);
+            app->screen = COBALT_SCREEN_ACCOUNT;
 
-   (void) now_ms;
-   app->frames++;
+            char message[COBALT_MESSAGE_MAX];
+            if (result->message[0]) {
+               /* Signed in, but with a caveat worth repeating verbatim. */
+               snprintf(message, sizeof(message), "%s", result->message);
+               set_notice(app, message, true);
+            } else {
+               snprintf(message, sizeof(message), "Signed in as %s",
+                        cobalt_session_handle());
+               set_notice(app, message, false);
+            }
+         } else {
+            cobalt_signin_set_status(&app->signin, result->message, true);
+         }
+         break;
 
-   if (in->quit_requested) {
-      app->quit = true;
-      return;
-   }
+      case COBALT_JOB_RESUME:
+         if (result->ok) {
+            char message[COBALT_MESSAGE_MAX];
+            snprintf(message, sizeof(message), "Signed in as %s",
+                     cobalt_session_handle());
+            set_notice(app, message, false);
+         } else {
+            /* A failed resume is not an error the user asked for, so it lands
+             * on the home screen as a notice rather than throwing them into
+             * the sign-in form. */
+            set_notice(app, result->message, true);
+         }
+         break;
 
-   if (app->screen == COBALT_SCREEN_DIAGNOSTICS) {
-      if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
+      case COBALT_JOB_LOGOUT:
+         set_notice(app, "Signed out.", false);
+         cobalt_signin_init(&app->signin);
          app->screen = COBALT_SCREEN_HOME;
-      }
-      return;
-   }
+         app->selected = 1;
+         break;
 
-   /* Home screen. Both axes move the selection so the same code serves the
-    * TV's horizontal row and the GamePad's vertical list. */
+      case COBALT_JOB_NONE:
+      default:
+         break;
+   }
+}
+
+static void
+update_home(cobalt_app *app, const cobalt_input *in)
+{
+   /* Both axes move the selection so the same code serves the TV's horizontal
+    * row and the GamePad's vertical list. */
    if (cobalt_input_pressed(in, COBALT_BTN_DOWN) ||
        cobalt_input_pressed(in, COBALT_BTN_RIGHT)) {
       app->selected = (app->selected + 1) % MENU_COUNT;
@@ -185,6 +315,106 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
          }
       }
    }
+}
+
+static void
+update_account(cobalt_app *app, const cobalt_input *in)
+{
+   if (cobalt_session_busy()) {
+      return;
+   }
+
+   if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
+      app->screen = COBALT_SCREEN_HOME;
+      return;
+   }
+
+   bool sign_out = cobalt_input_pressed(in, COBALT_BTN_CONFIRM);
+   if (!sign_out && s_account_hit_valid && in->touch_ended) {
+      sign_out = cobalt_input_tapped(in, &s_account_hit);
+   }
+
+   if (sign_out) {
+      COBALT_LOGI("account: sign out requested");
+      cobalt_session_begin_logout();
+   }
+}
+
+static void
+update_signin(cobalt_app *app, const cobalt_input *in)
+{
+   switch (cobalt_signin_update(&app->signin, in)) {
+      case COBALT_SIGNIN_BACK:
+         cobalt_signin_clear_password(&app->signin);
+         app->screen = COBALT_SCREEN_HOME;
+         break;
+
+      case COBALT_SIGNIN_SUBMIT:
+         if (!cobalt_session_begin_login(app->signin.service,
+                                         app->signin.identifier,
+                                         app->signin.password)) {
+            cobalt_signin_set_status(&app->signin,
+                                     "Could not start the sign-in request.", true);
+         } else {
+            cobalt_signin_set_status(&app->signin, "", false);
+         }
+         break;
+
+      case COBALT_SIGNIN_STAY:
+      default:
+         break;
+   }
+}
+
+void
+cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
+{
+   if (!app || !in) {
+      return;
+   }
+
+   (void) now_ms;
+   app->frames++;
+
+   if (in->quit_requested) {
+      app->quit = true;
+      return;
+   }
+
+   if (!app->resume_attempted) {
+      app->resume_attempted = true;
+      if (cobalt_session_available() && cobalt_session_has_saved()) {
+         COBALT_LOGI("app: stored session found, resuming");
+         cobalt_session_begin_resume();
+      }
+   }
+
+   cobalt_job_result result;
+   if (cobalt_session_poll(&result)) {
+      COBALT_LOGI("app: job %d finished ok=%d", (int) result.kind, (int) result.ok);
+      handle_job_result(app, &result);
+   }
+
+   switch (app->screen) {
+      case COBALT_SCREEN_DIAGNOSTICS:
+         if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
+            app->screen = COBALT_SCREEN_HOME;
+         }
+         break;
+
+      case COBALT_SCREEN_SIGN_IN:
+         update_signin(app, in);
+         break;
+
+      case COBALT_SCREEN_ACCOUNT:
+         update_account(app, in);
+         break;
+
+      case COBALT_SCREEN_HOME:
+      default:
+         update_home(app, in);
+         break;
+   }
 
    /* Ease focus toward the selection so tiles settle rather than snap. */
    for (int i = 0; i < MENU_COUNT; i++) {
@@ -196,7 +426,7 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
 /* --- drawing --- */
 
 static void
-draw_header(cobalt_app *app, cobalt_render *r, const char *subtitle)
+draw_header(cobalt_render *r, const char *subtitle)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
 
@@ -207,14 +437,35 @@ draw_header(cobalt_app *app, cobalt_render *r, const char *subtitle)
    SDL_Color dim = { 0xD8, 0xE6, 0xF4, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
                     m->pad_edge + title_h - m->line_gap, dim);
-   (void) app;
+}
+
+/* The one-line status the home and account screens share. */
+static void
+draw_notice(const cobalt_app *app, cobalt_render *r, int y, int width)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+
+   if (cobalt_session_busy()) {
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, "Working...", m->pad_edge, y,
+                       COBALT_COLOUR_TILE);
+      return;
+   }
+
+   if (app->notice[0] == '\0') {
+      return;
+   }
+
+   cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, app->notice, m->pad_edge, y,
+                            width, 2,
+                            app->notice_is_error ? COBALT_COLOUR_ERROR
+                                                 : COBALT_COLOUR_TILE);
 }
 
 static void
 draw_home_tv(cobalt_app *app, cobalt_render *r)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   draw_header(app, r, "AT Protocol for Wii U");
+   draw_header(r, "AT Protocol for Wii U");
 
    /* A single row of large tiles, Wii U menu style — few, big, readable from
     * across a room rather than a dense list. */
@@ -227,12 +478,12 @@ draw_home_tv(cobalt_app *app, cobalt_render *r)
       SDL_Rect tile = { m->pad_edge + i * (tile_w + m->gap), top, tile_w, tile_h };
       cobalt_draw_tile(r, &tile, app->focus[i]);
 
-      SDL_Color label = MENU[i].enabled ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM;
-      cobalt_draw_text_wrapped(r, COBALT_FONT_HEADING, MENU[i].label,
+      SDL_Color label = menu_enabled(i) ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM;
+      cobalt_draw_text_wrapped(r, COBALT_FONT_HEADING, menu_label(i),
                                tile.x + m->pad_tile, tile.y + m->pad_tile,
                                tile.w - 2 * m->pad_tile, 2, label);
 
-      if (!MENU[i].enabled) {
+      if (!menu_enabled(i)) {
          cobalt_draw_text(r, COBALT_FONT_CAPTION, "Coming soon",
                           tile.x + m->pad_tile, tile.y + tile.h - m->pad_tile - 24,
                           COBALT_COLOUR_TEXT_DIM);
@@ -242,8 +493,10 @@ draw_home_tv(cobalt_app *app, cobalt_render *r)
    /* Detail strip for the focused tile: the TV has room, so use it rather
     * than cramming the hint into the tile. */
    const int detail_y = top + tile_h + m->gap * 2;
-   cobalt_draw_text(r, COBALT_FONT_BODY, MENU[app->selected].hint,
+   cobalt_draw_text(r, COBALT_FONT_BODY, menu_hint(app->selected),
                     m->pad_edge, detail_y, COBALT_COLOUR_TILE);
+
+   draw_notice(app, r, detail_y + m->font_body + m->gap, m->width - 2 * m->pad_edge);
 
    SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
@@ -255,7 +508,7 @@ static void
 draw_home_drc(cobalt_app *app, cobalt_render *r)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   draw_header(app, r, "Off-TV ready");
+   draw_header(r, "Off-TV ready");
 
    /* A vertical list: denser than the TV row, and every row is a touch target
     * comfortably larger than a fingertip. */
@@ -269,15 +522,16 @@ draw_home_drc(cobalt_app *app, cobalt_render *r)
 
       cobalt_draw_tile(r, &row, app->focus[i]);
 
-      SDL_Color label = MENU[i].enabled ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM;
+      SDL_Color label = menu_enabled(i) ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM;
       int text_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
-      cobalt_draw_text(r, COBALT_FONT_BODY, MENU[i].label,
+      cobalt_draw_text(r, COBALT_FONT_BODY, menu_label(i),
                        row.x + m->pad_tile, row.y + (row_h - text_h) / 2, label);
 
+      const char *hint_text = menu_hint(i);
       int hint_w = 0;
-      cobalt_text_size(r, COBALT_FONT_CAPTION, MENU[i].hint, &hint_w, NULL);
+      cobalt_text_size(r, COBALT_FONT_CAPTION, hint_text, &hint_w, NULL);
       if (hint_w > 0 && hint_w < list_w / 2) {
-         cobalt_draw_text(r, COBALT_FONT_CAPTION, MENU[i].hint,
+         cobalt_draw_text(r, COBALT_FONT_CAPTION, hint_text,
                           row.x + list_w - m->pad_tile - hint_w,
                           row.y + (row_h - cobalt_font_line_height(r, COBALT_FONT_CAPTION)) / 2,
                           COBALT_COLOUR_TEXT_DIM);
@@ -286,19 +540,160 @@ draw_home_drc(cobalt_app *app, cobalt_render *r)
 
    s_drc_hit_valid = true;
 
+   const int list_bottom = top + MENU_COUNT * (row_h + m->gap / 2);
+   draw_notice(app, r, list_bottom + m->gap, list_w);
+
    SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     app->display == COBALT_DISPLAY_DUAL ? "TV + GamePad" : "GamePad only",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }
 
+static void
+draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   draw_header(r, "Account");
+
+   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int row_h = m->font_body * 2;
+   const int width = m->width - 2 * m->pad_edge;
+
+   SDL_Rect panel = { m->pad_edge, top, width, row_h * 3 };
+   cobalt_draw_tile(r, &panel, 0.0f);
+
+   char lines[3][COBALT_MESSAGE_MAX];
+   snprintf(lines[0], sizeof(lines[0]), "%s", cobalt_session_handle());
+   snprintf(lines[1], sizeof(lines[1]), "%s", cobalt_session_did());
+   snprintf(lines[2], sizeof(lines[2]), "%s", cobalt_session_service());
+
+   const cobalt_font_id fonts[3] = {
+      COBALT_FONT_HEADING, COBALT_FONT_CAPTION, COBALT_FONT_CAPTION
+   };
+   const SDL_Color colours[3] = {
+      COBALT_COLOUR_TEXT, COBALT_COLOUR_TEXT_DIM, COBALT_COLOUR_TEXT_DIM
+   };
+
+   int y = panel.y + m->pad_tile;
+   for (int i = 0; i < 3; i++) {
+      y += cobalt_draw_text_wrapped(r, fonts[i], lines[i], panel.x + m->pad_tile, y,
+                                    panel.w - 2 * m->pad_tile, 1, colours[i]);
+   }
+
+   SDL_Rect sign_out = { m->pad_edge, panel.y + panel.h + m->gap, width, row_h };
+   cobalt_draw_tile(r, &sign_out, 1.0f);
+   const int label_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
+   cobalt_draw_text_centred(r, COBALT_FONT_HEADING, "Sign out", sign_out.x,
+                            sign_out.y + (row_h - label_h) / 2, sign_out.w,
+                            COBALT_COLOUR_ERROR);
+
+   if (surface == COBALT_SURFACE_DRC) {
+      s_account_hit = sign_out;
+      s_account_hit_valid = true;
+   }
+
+   draw_notice(app, r, sign_out.y + row_h + m->gap, width);
+
+   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   cobalt_draw_text(r, COBALT_FONT_CAPTION, "A / touch: sign out     B: back",
+                    m->pad_edge, m->height - m->pad_edge - 20, hint);
+}
+
+static void
+draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   draw_header(r, "Diagnostics");
+
+   /*
+    * This screen exists because there is no emulator (AGENTS.md §10). It is
+    * the fastest way to confirm, on the console itself, that asset paths
+    * resolved, the network came up, the TLS trust store is present and the
+    * session layer can run — the things that block everything downstream.
+    */
+   const cobalt_net_status net = cobalt_net_get_status();
+   const char *ca = cobalt_session_ca_path();
+   const char *blocker = cobalt_session_blocker();
+
+   char lines[14][160];
+   int count = 0;
+
+   snprintf(lines[count++], sizeof(lines[0]), "Surface: %s (%dx%d) frame %u",
+            surface == COBALT_SURFACE_DRC ? "GamePad" : "TV", m->width, m->height,
+            (unsigned) app->frames);
+   snprintf(lines[count++], sizeof(lines[0]), "Content: %s",
+            cobalt_content_root() ? cobalt_content_root() : "NOT FOUND");
+   snprintf(lines[count++], sizeof(lines[0]), "Data: %s",
+            cobalt_data_root() ? cobalt_data_root() : "NOT FOUND");
+   snprintf(lines[count++], sizeof(lines[0]), "Network: %s (%s)",
+            cobalt_net_status_string(net), cobalt_net_local_address());
+   snprintf(lines[count++], sizeof(lines[0]), "Trust store: %s",
+            ca ? ca : "MISSING - run `make cacert`");
+   snprintf(lines[count++], sizeof(lines[0]), "%s / %s",
+            app->sdl_version, app->curl_version);
+   snprintf(lines[count++], sizeof(lines[0]), "ATProto SDK: %s",
+            cobalt_atproto_sdk_version());
+   snprintf(lines[count++], sizeof(lines[0]), "SDK status: %s",
+            cobalt_atproto_status_string());
+   snprintf(lines[count++], sizeof(lines[0]), "Sign-in: %s",
+            blocker ? blocker : "available");
+   snprintf(lines[count++], sizeof(lines[0]), "Net worker: %s",
+            cobalt_session_threaded() ? "background thread"
+                                      : "SYNCHRONOUS - requests stall the frame");
+
+   switch (cobalt_session_state()) {
+      case COBALT_AUTH_SIGNED_IN:
+         snprintf(lines[count++], sizeof(lines[0]), "Session: %s at %s",
+                  cobalt_session_handle(), cobalt_session_service());
+         break;
+      case COBALT_AUTH_WORKING:
+         snprintf(lines[count++], sizeof(lines[0]), "Session: request in flight");
+         break;
+      case COBALT_AUTH_SIGNED_OUT:
+      default:
+         snprintf(lines[count++], sizeof(lines[0]), "Session: signed out%s",
+                  cobalt_session_has_saved() ? " (credentials stored)" : "");
+         break;
+   }
+
+   snprintf(lines[count++], sizeof(lines[0]), "Font: %s",
+            cobalt_render_has_font(r) ? "loaded" : "MISSING");
+
+   /* The GamePad panel is 480px tall and this list is long, so it drops to the
+    * caption scale there rather than scrolling. The TV keeps body size. */
+   const cobalt_font_id font = (surface == COBALT_SURFACE_DRC) ? COBALT_FONT_CAPTION
+                                                               : COBALT_FONT_BODY;
+
+   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   SDL_Rect panel = { m->pad_edge, top, m->width - 2 * m->pad_edge,
+                      m->height - top - m->pad_edge - 40 };
+   cobalt_draw_tile(r, &panel, 0.0f);
+
+   const int line_h = cobalt_font_line_height(r, font) + m->line_gap;
+   for (int i = 0; i < count; i++) {
+      bool bad = (strstr(lines[i], "NOT FOUND") != NULL) ||
+                 (strstr(lines[i], "MISSING") != NULL) ||
+                 (strstr(lines[i], "SYNCHRONOUS") != NULL) ||
+                 (i == 8 && blocker != NULL) ||
+                 (net != COBALT_NET_UP && strncmp(lines[i], "Network:", 8) == 0);
+
+      cobalt_draw_text_wrapped(r, font, lines[i],
+                               panel.x + m->pad_tile, panel.y + m->pad_tile + i * line_h,
+                               panel.w - 2 * m->pad_tile, 1,
+                               bad ? COBALT_COLOUR_ERROR : COBALT_COLOUR_TEXT);
+   }
+
+   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   cobalt_draw_text(r, COBALT_FONT_CAPTION, "B: back",
+                    m->pad_edge, m->height - m->pad_edge - 20, hint);
+}
+
 /* The TV's idle card in Off-TV mode: enough to show the app is alive and
  * where to look, without duplicating a UI nobody is watching. */
 static void
-draw_tv_idle(cobalt_app *app, cobalt_render *r)
+draw_tv_idle(cobalt_render *r)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   (void) app;
 
    SDL_Rect card = { m->width / 2 - 320, m->height / 2 - 110, 640, 220 };
    cobalt_draw_tile(r, &card, 0.0f);
@@ -312,63 +707,6 @@ draw_tv_idle(cobalt_app *app, cobalt_render *r)
                             COBALT_COLOUR_TEXT_DIM);
 }
 
-static void
-draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
-{
-   const cobalt_metrics *m = cobalt_render_metrics(r);
-   draw_header(app, r, "Diagnostics");
-
-   /*
-    * This screen exists because there is no emulator (AGENTS.md §10). It is
-    * the fastest way to confirm, on the console itself, that asset paths
-    * resolved, the network came up and the TLS stack linked — the three things
-    * that block everything downstream.
-    */
-   const cobalt_net_status net = cobalt_net_get_status();
-
-   char lines[10][160];
-   int count = 0;
-
-   snprintf(lines[count++], sizeof(lines[0]), "Surface: %s (%dx%d)",
-            surface == COBALT_SURFACE_DRC ? "GamePad" : "TV", m->width, m->height);
-   snprintf(lines[count++], sizeof(lines[0]), "Content: %s",
-            cobalt_content_root() ? cobalt_content_root() : "NOT FOUND");
-   snprintf(lines[count++], sizeof(lines[0]), "Data: %s",
-            cobalt_data_root() ? cobalt_data_root() : "NOT FOUND");
-   snprintf(lines[count++], sizeof(lines[0]), "Network: %s (%s)",
-            cobalt_net_status_string(net), cobalt_net_local_address());
-   snprintf(lines[count++], sizeof(lines[0]), "%s", app->sdl_version);
-   snprintf(lines[count++], sizeof(lines[0]), "%s", app->curl_version);
-   snprintf(lines[count++], sizeof(lines[0]), "ATProto SDK: %s",
-            cobalt_atproto_sdk_version());
-   snprintf(lines[count++], sizeof(lines[0]), "SDK status: %s",
-            cobalt_atproto_status_string());
-   snprintf(lines[count++], sizeof(lines[0]), "Font: %s",
-            cobalt_render_has_font(r) ? "loaded" : "MISSING");
-   snprintf(lines[count++], sizeof(lines[0]), "Frames: %u", (unsigned) app->frames);
-
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
-   SDL_Rect panel = { m->pad_edge, top, m->width - 2 * m->pad_edge,
-                      m->height - top - m->pad_edge - 40 };
-   cobalt_draw_tile(r, &panel, 0.0f);
-
-   const int line_h = cobalt_font_line_height(r, COBALT_FONT_BODY) + m->line_gap;
-   for (int i = 0; i < count; i++) {
-      bool bad = (strstr(lines[i], "NOT FOUND") != NULL) ||
-                 (strstr(lines[i], "MISSING") != NULL) ||
-                 (net != COBALT_NET_UP && strncmp(lines[i], "Network:", 8) == 0);
-
-      cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, lines[i],
-                               panel.x + m->pad_tile, panel.y + m->pad_tile + i * line_h,
-                               panel.w - 2 * m->pad_tile, 1,
-                               bad ? COBALT_COLOUR_ERROR : COBALT_COLOUR_TEXT);
-   }
-
-   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, "B: back",
-                    m->pad_edge, m->height - m->pad_edge - 20, hint);
-}
-
 void
 cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 {
@@ -377,13 +715,21 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    }
 
    if (surface == COBALT_SURFACE_TV && app->display == COBALT_DISPLAY_GAMEPAD) {
-      draw_tv_idle(app, r);
+      draw_tv_idle(r);
       return;
    }
 
    switch (app->screen) {
       case COBALT_SCREEN_DIAGNOSTICS:
          draw_diagnostics(app, r, surface);
+         break;
+
+      case COBALT_SCREEN_SIGN_IN:
+         cobalt_signin_draw(&app->signin, r, surface);
+         break;
+
+      case COBALT_SCREEN_ACCOUNT:
+         draw_account(app, r, surface);
          break;
 
       case COBALT_SCREEN_HOME:

@@ -67,6 +67,7 @@ cobalt/
 ├── assets/                   # fonts, icons, WUHB metadata (icon.png, meta.xml equivalent)
 ├── romfs/                    # bundled assets shipped inside the RPX/WUHB
 ├── tools/                    # helper scripts (packaging, deployment to SD/FTP)
+├── tests/                    # host compile sweep + unit tests (see §10 and §13)
 └── third_party/              # vendored or portlib-pinned dependencies
 ```
 
@@ -181,6 +182,8 @@ When setting up the initial project skeleton, start from the WUT sample's CMake/
 
 Treat steps 1–2 as blocking for everything else — if networking doesn't reliably work on real hardware, nothing downstream matters yet.
 
+**Where this stands:** step 1 is done. Step 2 is written and passes the host checks, but has *not* been through a hardware pass yet — the first console run is the one that settles whether curl completes a TLS handshake against a real PDS, whether `SDL_CreateThread` works under the Wii U SDL port, and whether `createSession` comes back. Step 5's session persistence and sign-out landed alongside it, since resuming a stored session is the same code path. Step 3 (timeline) is deliberately not started: per the paragraph above, it waits on step 2 being confirmed on the console rather than on the build machine.
+
 ---
 
 ## 13. Decisions Already Made (keep this current)
@@ -235,6 +238,49 @@ Consequences to design around:
 ### Logging
 
 `src/util/log.c` fans out to every sink wut offers — Cafe OS, UDP on port 4405, Aroma's LoggingModule, and `sd:/wiiu/apps/cobalt/cobalt.log` (flushed per line so it survives a hang). Given there is no emulator, `nc -ul 4405` from a PC on the same LAN is the fastest debug loop available.
+
+### The trust store is fetched at build time, not committed
+
+devkitPro's `wiiu-curl` is built against mbedTLS and the Wii U has no system certificate store behind it, so without an explicit `CURLOPT_CAINFO` every HTTPS request fails verification. This is the first thing that blocks §12's step 2, and it is not obvious from the failure: curl reports it as a connection error, which reads as a network problem.
+
+`make` therefore runs `tools/fetch_cacert.sh` into `romfs/cacert.pem`, and `src/atproto/session.c` hands that path to `wf_xrpc_client_set_ca_bundle()`. The bundle is git-ignored on purpose — the Mozilla set expires, and a stale copy committed to the repo would fail on console months later looking like a network bug. `make cacert` forces a refresh. An offline build is not a hard failure: it produces a working RPX that simply cannot reach a PDS, and the diagnostics screen reports the trust store as missing.
+
+**Still unresolved from the entropy note above:** a trust store fixes certificate *verification*. It does not fix curl/mbedTLS's own TLS randomness on this platform, which still draws on the weak poll for client randoms and ephemeral ECDHE keys. That remains open.
+
+### Network I/O runs on a worker thread
+
+Wolfram's transport is blocking libcurl. A sign-in against a cold PDS is several seconds of DNS, TLS handshake and server-side password hashing. Doing that on the frame loop would stop the app pumping SDL events — and since SDL owns ProcUI here, a stalled event pump is a stalled ProcUI message queue, i.e. a console sitting on a frozen frame that will not return to the Wii U Menu.
+
+`src/atproto/session.c` therefore owns an SDL worker thread with a one-job-at-a-time handoff: the UI submits a request, keeps drawing, and calls `cobalt_session_poll()` each frame for the result. If `SDL_CreateThread` fails, requests fall back to running synchronously on the caller — functional, but visibly stalling — and the diagnostics screen reports which mode is live, because "slow" and "hung" look identical from the couch otherwise.
+
+Any future network call belongs behind the same job mechanism. Adding a synchronous one anywhere on the frame path reintroduces the freeze.
+
+### The session layer drives `wf_session`, not `wf_agent`
+
+`wf_agent` is the ergonomic entry point, but it is opaque and exposes no way to reach its XRPC client — which means no way to set the CA bundle, which on this platform means no TLS at all. So Cobalt composes the layer below it instead: `wf_session_new()` (a public struct, so `session->client` is reachable), `wf_xrpc_client_set_ca_bundle()`, and `wf_xrpc_client_set_refresh_handler()` for transparent token refresh. Timeline work should follow the same shape — `wf_xrpc_query_params()` on that client, then Wolfram's own `wf_agent_parse_feed()` on the body — rather than reaching for `wf_agent` and losing the CA bundle.
+
+Two things are worth fixing in Wolfram rather than working around here (§8: extend the shared SDK, do not fork it):
+
+- **No CA bundle accessor on `wf_agent`.** A `wf_agent_set_ca_bundle()` would make the high-level API usable on platforms without a system trust store, which is every console.
+- **`wf_session_login` swallows the XRPC error envelope.** It returns a bare `wf_status`, so a wrong password, a takendown account and a missing 2FA token are all `WF_ERR_HTTP`. Cobalt's sign-in errors are written to be useful without it, but that is a workaround — the envelope is right there in the response.
+
+### Credentials are stored encrypted, and that is worth less than it sounds
+
+`src/cache/session_store.c` persists the session as AES-256-CTR under a 32-byte `device.key` generated per installation, satisfying §7's "encrypted or at minimum not in plaintext". Sign-out overwrites both files before unlinking so the tokens are not left in free clusters on the card.
+
+Do not oversell it in the README or anywhere else. The key lives beside the file it protects, because the Wii U gives homebrew no keystore and no per-title secret to bind to. It defends against incidental exposure — a log, a screenshot, a stray copy of `session.dat` — and against nothing at all once someone has the whole card. If a future decision depends on this being real at-rest encryption, that decision is wrong.
+
+### Text entry is Cobalt's own keyboard, not swkbd
+
+`src/ui/keyboard.c` draws a QWERTY grid rather than calling the system software keyboard. swkbd is a C++ `nn::` API that composites itself into the app's GX2 render passes, and Cobalt only reaches GX2 through SDL2 — driving it would mean punching through the abstraction everything else is built on. §11 already flagged the swkbd overlay as slow and a GamePad touch keyboard as the faster option, so this is that.
+
+It obeys §5's two-input rule by construction: touch on the GamePad, and a focus moved by D-pad or stick for someone on a Pro Controller. B is backspace; leaving a field is the Cancel key.
+
+### There is a host test harness, and it is not a substitute for hardware
+
+`tests/` does two things with the build machine's own compiler. It runs a `-fsyntax-only -Werror` sweep over every translation unit that does not need devkitPro headers — in both the with-Wolfram and without-Wolfram configurations, so a changed SDK signature is caught in a second rather than after a card swap. And it unit tests the genuinely platform-independent logic §10 carves out: the credential store's round trip and its refusal of damaged or foreign files, the service-URL normaliser, the keyboard's text model, and the async request handshake.
+
+`make test` runs both. It is a filter on the obvious failures, not evidence anything works — every milestone's acceptance test is still the console.
 
 ---
 
