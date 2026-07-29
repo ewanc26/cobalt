@@ -51,6 +51,9 @@ UNIT_SOURCES := \
 	$(SRC)/app/signin.c \
 	$(SRC)/ui/keyboard.c \
 	$(SRC)/util/rng.c \
+	$(SRC)/util/timefmt.c \
+	$(SRC)/atproto/feed.c \
+	$(SRC)/app/timeline.c \
 	$(SRC)/ui/render.c \
 	$(SRC)/ui/theme.c \
 	$(SRC)/input/input.c

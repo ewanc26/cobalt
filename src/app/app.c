@@ -1,5 +1,6 @@
 #include "app/app.h"
 #include "app/signin.h"
+#include "app/timeline.h"
 #include "atproto/atproto.h"
 #include "atproto/session.h"
 #include "net/net.h"
@@ -46,6 +47,7 @@ struct cobalt_app {
    float focus[MENU_COUNT];
 
    cobalt_signin signin;
+   cobalt_timeline timeline;
 
    /* Last completed request's message, shown on the home and account screens
     * so an auto-resume that failed while nobody was looking is not silent. */
@@ -101,7 +103,8 @@ menu_hint(int index)
 {
    switch (MENU[index]) {
       case ACTION_TIMELINE:
-         return "Your Bluesky home feed";
+         return signed_in() ? "Your Bluesky home feed"
+                            : "Sign in to read your feed";
       case ACTION_ACCOUNT:
          if (signed_in()) {
             return cobalt_session_handle();
@@ -124,10 +127,7 @@ menu_enabled(int index)
 {
    switch (MENU[index]) {
       case ACTION_TIMELINE:
-         /* AGENTS.md §12 step 3, and blocked on step 2 landing on hardware.
-          * Shown-but-disabled rather than hidden so the shape of the app is
-          * visible from the first run without pretending it works. */
-         return false;
+         return signed_in();
       case ACTION_ACCOUNT:
          return cobalt_session_available() || signed_in();
       default:
@@ -149,6 +149,7 @@ cobalt_app_create(void)
    app->selected = 1; /* Sign in — the one thing worth doing on run one. */
 
    cobalt_signin_init(&app->signin);
+   cobalt_timeline_init(&app->timeline);
 
    curl_version_info_data *curl_info = curl_version_info(CURLVERSION_NOW);
    snprintf(app->curl_version, sizeof(app->curl_version), "curl %s / %s",
@@ -197,6 +198,17 @@ activate(cobalt_app *app, int index)
    }
 
    switch (MENU[index]) {
+      case ACTION_TIMELINE:
+         app->screen = COBALT_SCREEN_TIMELINE;
+         /* Only fetch if there is nothing to show. Re-entering the screen
+          * should not throw away a scroll position the user was partway
+          * through; refresh is on + and is deliberately explicit. */
+         if (cobalt_session_feed()->count == 0) {
+            cobalt_session_begin_timeline(false);
+         }
+         COBALT_LOGI("menu: opened timeline");
+         break;
+
       case ACTION_ACCOUNT:
          if (signed_in()) {
             app->screen = COBALT_SCREEN_ACCOUNT;
@@ -225,7 +237,6 @@ activate(cobalt_app *app, int index)
          app->quit = true;
          break;
 
-      case ACTION_TIMELINE:
       default:
          break;
    }
@@ -243,7 +254,13 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
              * any longer — and it is about to sit in an idle screen's state. */
             cobalt_signin_clear_password(&app->signin);
             cobalt_signin_set_status(&app->signin, "", false);
-            app->screen = COBALT_SCREEN_ACCOUNT;
+
+            /* Land on the feed, not on a confirmation screen. Signing in is a
+             * means to an end, and the account details are one menu entry
+             * away for anyone who wants them. */
+            cobalt_timeline_rewind(&app->timeline);
+            app->screen = COBALT_SCREEN_TIMELINE;
+            cobalt_session_begin_timeline(false);
 
             char message[COBALT_MESSAGE_MAX];
             if (result->message[0]) {
@@ -266,6 +283,10 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
             snprintf(message, sizeof(message), "Signed in as %s",
                      cobalt_session_handle());
             set_notice(app, message, false);
+            /* Warm the feed while the user is still looking at the menu, so
+             * opening it is instant rather than a spinner. */
+            cobalt_timeline_rewind(&app->timeline);
+            cobalt_session_begin_timeline(false);
          } else {
             /* A failed resume is not an error the user asked for, so it lands
              * on the home screen as a notice rather than throwing them into
@@ -277,8 +298,20 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
       case COBALT_JOB_LOGOUT:
          set_notice(app, "Signed out.", false);
          cobalt_signin_init(&app->signin);
+         cobalt_timeline_init(&app->timeline);
          app->screen = COBALT_SCREEN_HOME;
          app->selected = 1;
+         break;
+
+      case COBALT_JOB_TIMELINE:
+         if (!result->ok) {
+            /* A notice rather than an error screen: a failed refresh should
+             * leave whatever was already on screen readable. */
+            set_notice(app, result->message, true);
+         } else {
+            /* Carries the "your timeline is empty" explanation on success. */
+            set_notice(app, result->message, result->message[0] != '\0');
+         }
          break;
 
       case COBALT_JOB_NONE:
@@ -398,6 +431,12 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
    switch (app->screen) {
       case COBALT_SCREEN_DIAGNOSTICS:
          if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
+            app->screen = COBALT_SCREEN_HOME;
+         }
+         break;
+
+      case COBALT_SCREEN_TIMELINE:
+         if (cobalt_timeline_update(&app->timeline, in) == COBALT_TIMELINE_BACK) {
             app->screen = COBALT_SCREEN_HOME;
          }
          break;
@@ -722,6 +761,10 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    switch (app->screen) {
       case COBALT_SCREEN_DIAGNOSTICS:
          draw_diagnostics(app, r, surface);
+         break;
+
+      case COBALT_SCREEN_TIMELINE:
+         cobalt_timeline_draw(&app->timeline, r, surface);
          break;
 
       case COBALT_SCREEN_SIGN_IN:

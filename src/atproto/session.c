@@ -1,10 +1,13 @@
 #include "atproto/session.h"
+#include "atproto/feed.h"
 #include "cache/session_store.h"
 #include "util/log.h"
 #include "util/paths.h"
 #include "util/rng.h"
 
 #ifdef COBALT_HAS_WOLFRAM
+#include <wolfram/agent.h>
+#include <wolfram/feed_typed.h>
 #include <wolfram/session.h>
 #include <wolfram/xrpc.h>
 #endif
@@ -27,6 +30,8 @@ typedef struct {
    char service[COBALT_SERVICE_MAX];
    char identifier[COBALT_IDENTIFIER_MAX];
    char password[COBALT_PASSWORD_MAX];
+   /* Timeline only: append the next page rather than replacing the feed. */
+   bool paging;
 } job_input;
 
 static struct {
@@ -59,9 +64,13 @@ static struct {
    char did[COBALT_DID_MAX];
    char service[COBALT_SERVICE_MAX];
 
+   /* Published by the worker alongside the auth state, and read by the
+    * timeline screen. Guarded by `lock` on write, read while idle. */
+   cobalt_feed feed;
+
 #ifdef COBALT_HAS_WOLFRAM
    /* Owned by the worker while a job runs; only touched off-thread when idle. */
-   wf_session *wf;
+   wf_agent *wf;
 #endif
 } s;
 
@@ -282,39 +291,36 @@ describe_failure(cobalt_job_result *r, wf_status status, cobalt_job_kind kind)
 /*
  * Mirror the live session into the on-card store and the UI snapshot.
  *
- * Runs on the worker thread with the lock not held, so the UI-visible strings
- * are written under it here rather than being edited in place while a frame
- * might be reading them.
+ * Reads the credentials back out of the agent rather than being handed them,
+ * because the agent refreshes tokens transparently mid-request: whatever it
+ * holds now is newer than anything the caller could pass in. Called after every
+ * job, so a refresh that happened during a timeline fetch is persisted too.
  */
 static bool
-publish_session(const char *service)
+publish_session(void)
 {
-   const wf_session_data *d = &s.wf->data;
-   char resolved[COBALT_SERVICE_MAX];
-   snprintf(resolved, sizeof(resolved), "%s", service);
-
-   /* An account's real PDS is discovered at login from didDoc#atproto_pds and
-    * is frequently not the host the user typed (every bsky.social handle on a
-    * self-hosted PDS, for one). Re-point the client so subsequent calls go to
-    * the right place, and persist that, not the entry point. */
-   if (d->pds_url && d->pds_url[0] && strcmp(d->pds_url, resolved) != 0) {
-      if (wf_xrpc_client_set_base_url(s.wf->client, d->pds_url) == WF_OK) {
-         COBALT_LOGI("session: PDS resolved to %s", d->pds_url);
-         snprintf(resolved, sizeof(resolved), "%s", d->pds_url);
-      } else {
-         COBALT_LOGW("session: could not re-point client at %s", d->pds_url);
-      }
+   wf_session_data data;
+   memset(&data, 0, sizeof(data));
+   if (wf_agent_get_session_data(s.wf, &data) != WF_OK) {
+      return false;
    }
 
    cobalt_stored_session stored;
    memset(&stored, 0, sizeof(stored));
-   snprintf(stored.service, sizeof(stored.service), "%s", resolved);
-   snprintf(stored.handle, sizeof(stored.handle), "%s", d->handle ? d->handle : "");
-   snprintf(stored.did, sizeof(stored.did), "%s", d->did ? d->did : "");
+
+   /* wf_agent_login re-points the client at the account's real PDS, discovered
+    * from didDoc#atproto_pds — frequently not the host the user typed. Persist
+    * where the tokens are actually valid, not the entry point. */
+   const char *service = (data.pds_url && data.pds_url[0]) ? data.pds_url : s.service;
+   snprintf(stored.service, sizeof(stored.service), "%s", service);
+   snprintf(stored.handle, sizeof(stored.handle), "%s", data.handle ? data.handle : "");
+   snprintf(stored.did, sizeof(stored.did), "%s", data.did ? data.did : "");
    snprintf(stored.access_jwt, sizeof(stored.access_jwt), "%s",
-            d->access_jwt ? d->access_jwt : "");
+            data.access_jwt ? data.access_jwt : "");
    snprintf(stored.refresh_jwt, sizeof(stored.refresh_jwt), "%s",
-            d->refresh_jwt ? d->refresh_jwt : "");
+            data.refresh_jwt ? data.refresh_jwt : "");
+
+   wf_agent_session_data_free(&data);
 
    bool saved = cobalt_session_store_save(&stored);
 
@@ -328,56 +334,38 @@ publish_session(const char *service)
    return saved;
 }
 
-/*
- * Installed on the XRPC client so an expired access token is refreshed and the
- * request re-issued once, transparently. Runs on the worker thread, inside the
- * request that tripped it; Wolfram's re-entrancy guard stops the refresh call
- * from recursing.
- */
-static wf_status
-refresh_handler(void *userdata)
-{
-   (void) userdata;
-   COBALT_LOGI("session: access token expired, refreshing");
-
-   wf_status status = wf_session_refresh(s.wf);
-   if (status != WF_OK) {
-      COBALT_LOGW("session: refresh failed (%d)", (int) status);
-      return status;
-   }
-
-   char service[COBALT_SERVICE_MAX];
-   SDL_LockMutex(s.lock);
-   snprintf(service, sizeof(service), "%s", s.service);
-   SDL_UnlockMutex(s.lock);
-
-   /* Refresh rotates both tokens, so the stored copy is stale the moment this
-    * succeeds. Persist immediately: losing power now would otherwise leave a
-    * refresh JWT on the card that the server has already retired. */
-   publish_session(service);
-   return WF_OK;
-}
-
 static void
 teardown_wf(void)
 {
    if (s.wf) {
-      wf_session_free(s.wf);
+      wf_agent_free(s.wf);
       s.wf = NULL;
    }
 }
 
-/* Create the wf_session and apply the settings every job needs. */
-static wf_session *
-new_wf_session(const char *service)
+/*
+ * Create the agent and apply the settings every job needs.
+ *
+ * wf_agent rather than wf_session: the agent installs its own transparent
+ * refresh-and-retry, re-points itself at the account's real PDS after login,
+ * and carries the whole read/write surface — timeline, threads, likes, posting
+ * — that this client is being built out towards. It only became usable here
+ * once Wolfram grew wf_agent_set_ca_bundle and wf_agent_set_tls_rng, since
+ * neither is reachable through an opaque agent and neither has a working
+ * default on this console.
+ */
+static wf_agent *
+new_wf_agent(const char *service)
 {
-   wf_session *sess = wf_session_new(service);
-   if (!sess) {
+   wf_agent *agent = wf_agent_new(service);
+   if (!agent) {
       return NULL;
    }
 
-   if (s.have_ca) {
-      wf_xrpc_client_set_ca_bundle(sess->client, s.ca_path);
+   if (s.have_ca && wf_agent_set_ca_bundle(agent, s.ca_path) != WF_OK) {
+      COBALT_LOGE("session: could not set the CA bundle");
+      wf_agent_free(agent);
+      return NULL;
    }
 
    /*
@@ -387,16 +375,15 @@ new_wf_session(const char *service)
     * counter — see util/rng.h. cobalt_session_init() has already refused to
     * come up if this could not work, so a failure here is a real surprise.
     */
-   wf_status rng = wf_xrpc_client_set_tls_rng(sess->client, cobalt_rng_mbedtls, NULL);
+   wf_status rng = wf_agent_set_tls_rng(agent, cobalt_rng_mbedtls, NULL);
    if (rng != WF_OK) {
       COBALT_LOGE("session: could not install the TLS RNG (%d) — refusing to "
                   "hand the handshake to a tick-seeded generator", (int) rng);
-      wf_session_free(sess);
+      wf_agent_free(agent);
       return NULL;
    }
 
-   wf_xrpc_client_set_refresh_handler(sess->client, refresh_handler, NULL);
-   return sess;
+   return agent;
 }
 
 static void
@@ -404,14 +391,15 @@ run_login(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
 {
    teardown_wf();
 
-   s.wf = new_wf_session(in->service);
+   snprintf(s.service, sizeof(s.service), "%s", in->service);
+   s.wf = new_wf_agent(in->service);
    if (!s.wf) {
-      set_message(r, "Out of memory.");
+      set_message(r, "Could not create the client.");
       return;
    }
 
    COBALT_LOGI("session: createSession at %s", in->service);
-   wf_status status = wf_session_login(s.wf, in->identifier, in->password);
+   wf_status status = wf_agent_login(s.wf, in->identifier, in->password);
    if (status != WF_OK) {
       COBALT_LOGW("session: login failed (%d)", (int) status);
       describe_failure(r, status, COBALT_JOB_LOGIN);
@@ -419,7 +407,7 @@ run_login(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
       return;
    }
 
-   if (!publish_session(in->service)) {
+   if (!publish_session()) {
       /* Signed in, but the credentials will not outlive this run. Worth saying
        * out loud rather than silently making the user retype next boot. */
       set_message(r, "Signed in, but the session could not be saved to the SD "
@@ -446,10 +434,11 @@ run_resume(cobalt_job_result *r, cobalt_auth_state *state)
    snprintf(service, sizeof(service), "%s",
             stored.service[0] ? stored.service : DEFAULT_SERVICE);
 
-   s.wf = new_wf_session(service);
+   snprintf(s.service, sizeof(s.service), "%s", service);
+   s.wf = new_wf_agent(service);
    if (!s.wf) {
       memset(&stored, 0, sizeof(stored));
-      set_message(r, "Out of memory.");
+      set_message(r, "Could not create the client.");
       return;
    }
 
@@ -465,7 +454,7 @@ run_resume(cobalt_job_result *r, cobalt_auth_state *state)
    data.active = -1;
 
    COBALT_LOGI("session: resuming %s at %s", stored.handle, service);
-   wf_status status = wf_session_resume(s.wf, &data);
+   wf_status status = wf_agent_resume(s.wf, &data);
    memset(&stored, 0, sizeof(stored));
 
    if (status != WF_OK) {
@@ -481,13 +470,91 @@ run_resume(cobalt_job_result *r, cobalt_auth_state *state)
       return;
    }
 
-   /* wf_session_resume refreshes as part of resuming, so the tokens in hand are
-    * already newer than the ones just read off the card. */
-   publish_session(service);
+   /* Resuming refreshes as part of resuming, so the tokens in hand are already
+    * newer than the ones just read off the card. */
+   publish_session();
 
    *state = COBALT_AUTH_SIGNED_IN;
    r->ok = true;
    COBALT_LOGI("session: resumed as %s", s.handle);
+}
+
+
+/*
+ * How many posts to ask for per page. The window holds 60, and a smaller page
+ * gets something on screen sooner on a console whose upstream is often a slow
+ * wireless link — the cost of a second request is far less than the cost of
+ * staring at a blank feed.
+ */
+#define TIMELINE_PAGE 20
+
+static void
+run_timeline(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in to see your timeline.");
+      return;
+   }
+
+   /* Paging uses the cursor from the last page; a refresh deliberately does
+    * not, so pulling down after an hour away gets the top of the feed rather
+    * than resuming where the old cursor pointed. */
+   const char *cursor = NULL;
+   if (in->paging) {
+      SDL_LockMutex(s.lock);
+      cursor = s.feed.cursor[0] ? s.feed.cursor : NULL;
+      SDL_UnlockMutex(s.lock);
+
+      if (!cursor) {
+         /* Nothing further to fetch: report success with no new posts rather
+          * than an error, since the user did nothing wrong. */
+         *state = COBALT_AUTH_SIGNED_IN;
+         r->ok = true;
+         return;
+      }
+   }
+
+   wf_agent_feed_list list;
+   memset(&list, 0, sizeof(list));
+
+   COBALT_LOGI("session: getTimeline limit=%d cursor=%s", TIMELINE_PAGE,
+               cursor ? cursor : "(top)");
+   wf_status status = wf_agent_get_timeline_typed(s.wf, TIMELINE_PAGE, cursor, &list);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: getTimeline failed (%d)", (int) status);
+      describe_failure(r, status, COBALT_JOB_TIMELINE);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   /* Resolved once per page rather than per post: a feed rendered across a
+    * second boundary showing two different "now" values would be worse than
+    * one that is a moment stale. */
+   const int64_t now = cobalt_time_now();
+
+   SDL_LockMutex(s.lock);
+   if (!in->paging) {
+      cobalt_feed_reset(&s.feed);
+   }
+   const int added = cobalt_feed_append_from_wolfram(&s.feed, &list, now);
+   const int total = s.feed.count;
+   SDL_UnlockMutex(s.lock);
+
+   wf_agent_feed_list_free(&list);
+
+   COBALT_LOGI("session: timeline +%d posts (%d held)", added, total);
+
+   if (total == 0) {
+      set_message(r, "Your timeline is empty. Follow some accounts on another "
+                     "device and they will show up here.");
+   }
+
+   /* The session refreshes its tokens transparently, so a fetch may have
+    * rotated them; persist whatever the agent holds now. */
+   publish_session();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
 }
 
 static void
@@ -497,7 +564,7 @@ run_logout(cobalt_job_result *r, cobalt_auth_state *state)
       /* Best effort. Wolfram clears the local session either way, and a user
        * who asked to sign out must end up signed out even if the PDS is
        * unreachable — so a failure here is logged, not surfaced. */
-      wf_status status = wf_session_delete(s.wf);
+      wf_status status = wf_agent_logout(s.wf);
       if (status != WF_OK) {
          COBALT_LOGW("session: deleteSession failed (%d) — clearing locally anyway",
                      (int) status);
@@ -510,6 +577,10 @@ run_logout(cobalt_job_result *r, cobalt_auth_state *state)
    SDL_LockMutex(s.lock);
    s.handle[0] = '\0';
    s.did[0] = '\0';
+   /* The feed belongs to the account that just signed out. */
+   cobalt_feed_reset(&s.feed);
+   s.feed.cursor[0] = '\0';
+   s.feed.has_more = false;
    SDL_UnlockMutex(s.lock);
 
    *state = COBALT_AUTH_SIGNED_OUT;
@@ -536,6 +607,7 @@ run_job(cobalt_job_kind kind, const job_input *in, cobalt_auth_state *state)
       case COBALT_JOB_LOGIN:  run_login(in, &r, state);  break;
       case COBALT_JOB_RESUME: run_resume(&r, state);     break;
       case COBALT_JOB_LOGOUT: run_logout(&r, state);     break;
+      case COBALT_JOB_TIMELINE: run_timeline(in, &r, state); break;
       case COBALT_JOB_NONE:
       default:                                           break;
    }
@@ -811,6 +883,21 @@ cobalt_session_begin_logout(void)
    job_input in;
    memset(&in, 0, sizeof(in));
    return submit(COBALT_JOB_LOGOUT, &in);
+}
+
+bool
+cobalt_session_begin_timeline(bool paging)
+{
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   in.paging = paging;
+   return submit(COBALT_JOB_TIMELINE, &in);
+}
+
+const cobalt_feed *
+cobalt_session_feed(void)
+{
+   return &s.feed;
 }
 
 bool
