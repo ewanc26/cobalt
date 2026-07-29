@@ -33,6 +33,19 @@ endif
 WOLFRAM_ROOT ?= $(ROOT)/../wolfram
 HAVE_WOLFRAM := $(wildcard $(WOLFRAM_ROOT)/include/wolfram/session.h)
 
+# A *host* build of Wolfram, if one exists, additionally enables the link check
+# below. Build it with:
+#   cmake -S ../wolfram -B ../wolfram/build-host -DWOLFRAM_BUILD_EXAMPLES=OFF
+#   cmake --build ../wolfram/build-host -j8 --target wolfram
+WOLFRAM_HOST_BUILD ?= $(WOLFRAM_ROOT)/build-host
+HAVE_WOLFRAM_LIB := $(firstword $(wildcard $(WOLFRAM_HOST_BUILD)/libwolfram.so \
+                                           $(WOLFRAM_HOST_BUILD)/libwolfram.a))
+# Wolfram pulls cJSON in through FetchContent, so the host build carries its own
+# copy rather than using a system one.
+WOLFRAM_CJSON := $(firstword $(wildcard \
+   $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.so \
+   $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.a))
+
 CFLAGS  := -std=gnu11 -g -O1 -Wall -Wextra -I$(SRC) $(SDL_CFLAGS) $(CURL_CFLAGS) \
            -include $(CURDIR)/host_sdl_compat.h
 LDLIBS  := $(SDL_LIBS) $(CURL_LIBS) -lmbedcrypto -lm -lpthread
@@ -79,9 +92,9 @@ SWEEP_SOURCES := $(filter-out \
 	$(SRC)/main.c $(SRC)/net/net.c $(SRC)/util/log.c $(SRC)/util/paths.c, \
 	$(wildcard $(SRC)/*.c $(SRC)/*/*.c))
 
-.PHONY: all check sweep clean
+.PHONY: all check sweep linkcheck clean
 
-all: sweep check
+all: sweep linkcheck check
 
 #---------------------------------------------------------------------------------
 sweep:
@@ -99,6 +112,35 @@ else
 	done
 endif
 	@echo "sweep ... ok"
+
+#---------------------------------------------------------------------------------
+# Link check.
+#
+# The sweep above is -fsyntax-only and therefore never resolves a symbol: a
+# function deleted while callers remained compiles clean and fails only at link
+# time. The unit-test binary catches that, but only for the without-Wolfram
+# configuration — so the halves of feed.c, notifications.c and session.c behind
+# COBALT_HAS_WOLFRAM had no link coverage at all. This gives them some.
+#
+# Needs a host build of Wolfram and is skipped without one, so a checkout with
+# only the headers still gets the sweep and the unit tests.
+#---------------------------------------------------------------------------------
+LINK_BIN := $(OUT)/cobalt-linkcheck
+
+linkcheck:
+ifeq ($(HAVE_WOLFRAM_LIB),)
+	@echo "linkcheck ... skipped (no host Wolfram build at $(WOLFRAM_HOST_BUILD))"
+else
+	@echo "linkcheck ... linking the Wolfram configuration"
+	@mkdir -p $(OUT)
+	@$(CC) $(CFLAGS) -DCOBALT_HAS_WOLFRAM=1 -I$(WOLFRAM_ROOT)/include \
+		$(CJSON_CFLAGS) -o $(LINK_BIN) \
+		linkcheck_main.c linkcheck_stubs.c host_stubs.c $(SWEEP_SOURCES) \
+		$(HAVE_WOLFRAM_LIB) $(WOLFRAM_CJSON) $(LDLIBS) \
+		-Wl,-rpath,$(abspath $(WOLFRAM_HOST_BUILD)) \
+		-Wl,-rpath,$(abspath $(dir $(WOLFRAM_CJSON)))
+	@echo "linkcheck ... ok"
+endif
 
 #---------------------------------------------------------------------------------
 check: $(TEST_BIN)

@@ -376,7 +376,11 @@ Two things are resolved at parse time rather than left to the screen:
 
 `make test` runs both. It is a filter on the obvious failures, not evidence anything works — every milestone's acceptance test is still the console.
 
-**Known limit worth remembering:** the sweep is `-fsyntax-only`, so it does not link. A function that was deleted while still being called compiles clean and only fails at link time — which has already happened once, caught by the unit-test binary rather than the sweep. The unit tests link every module except the four that need devkitPro headers, but only in the *without-Wolfram* configuration, so the Wolfram-dependent halves of `feed.c` and `session.c` are syntax-checked and never linked.
+There is a **third** step for the same reason. The sweep is `-fsyntax-only`, so it never resolves a symbol: a function deleted while callers remained compiles perfectly and fails only at link time — which has already happened here once. The unit-test binary catches that, but links only the *without-Wolfram* configuration, leaving the halves of `feed.c`, `notifications.c` and `session.c` behind `COBALT_HAS_WOLFRAM` with no link coverage at all.
+
+`make -C tests linkcheck` links exactly those, against a host build of Wolfram, into a binary that is never run. It needs `../wolfram/build-host` and is skipped without one, so a checkout with only the headers still gets the sweep and the unit tests. Two small stub sets make it possible (`tests/linkcheck_stubs.c`): `net/net.c` is excluded from the sweep because it needs `<nn/ac.h>`, and `wf_wiiu_*` exist only in Wolfram's Wii U build by design.
+
+Verified to work by deleting a function that only the Wolfram-side code calls: the sweep passed, the link check failed.
 
 ---
 

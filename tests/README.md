@@ -25,9 +25,10 @@ GX2, VPAD or the network is not — that is what the hardware pass is for.
 ## Running
 
 ```sh
-make -C tests            # compile sweep + unit tests
-make -C tests check      # unit tests only
+make -C tests            # sweep + link check + unit tests
 make -C tests sweep      # compile sweep only
+make -C tests linkcheck  # link the Wolfram configuration
+make -C tests check      # unit tests only
 ```
 
 Requires host `libsdl2-dev`, `libsdl2-ttf-dev`, `libmbedtls-dev` and a cJSON
@@ -35,5 +36,18 @@ header. A sibling `../wolfram` checkout is picked up automatically if present,
 which is what makes the sweep able to check Cobalt's calls against the real SDK
 signatures; without it the sweep runs in the no-Wolfram configuration only.
 
-Neither the sweep nor the unit tests are a substitute for running the build on
-the console. They only rule out the failures that do not need hardware to find.
+**A link check**, because the other two miss a whole class between them. The
+sweep never resolves a symbol, and the unit tests link only the without-Wolfram
+configuration — so a function deleted while callers remained slips past both if
+it lives behind `COBALT_HAS_WOLFRAM`. `linkcheck` links that configuration into
+a binary it never runs. It needs a host build of Wolfram:
+
+```sh
+cmake -S ../wolfram -B ../wolfram/build-host -DWOLFRAM_BUILD_EXAMPLES=OFF
+cmake --build ../wolfram/build-host -j8 --target wolfram
+```
+
+and is skipped without one.
+
+None of the three is a substitute for running the build on the console. They
+only rule out the failures that do not need hardware to find.

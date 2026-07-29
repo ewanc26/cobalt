@@ -350,9 +350,12 @@ fill_from_view(cobalt_post *post, const wf_agent_post_view *view, int64_t now)
                cobalt_feed_embed_note(json_string(view->embed, "$type")));
    }
 
-   /* Assume the post is its own root; a reply overwrites this below. */
-   snprintf(post->root_uri, sizeof(post->root_uri), "%s", post->uri);
-   snprintf(post->root_cid, sizeof(post->root_cid), "%s", post->cid);
+   /* Assume the post is its own root; a reply overwrites this below.
+    * memcpy rather than snprintf: source and destination are members of the
+    * same struct, which the compiler cannot prove do not overlap, and the
+    * arrays are the same size by construction. */
+   memcpy(post->root_uri, post->uri, sizeof(post->root_uri));
+   memcpy(post->root_cid, post->cid, sizeof(post->root_cid));
 }
 
 /*
@@ -480,8 +483,8 @@ fill_from_thread_post(cobalt_post *post, const wf_agent_thread_post *view,
                cobalt_feed_embed_note(json_string(view->embed, "$type")));
    }
 
-   snprintf(post->root_uri, sizeof(post->root_uri), "%s", post->uri);
-   snprintf(post->root_cid, sizeof(post->root_cid), "%s", post->cid);
+   memcpy(post->root_uri, post->uri, sizeof(post->root_uri));
+   memcpy(post->root_cid, post->cid, sizeof(post->root_cid));
    /* A thread node carries its reply ref inside the record, unlike a feed
     * item, which carries it alongside. */
    fill_root(post, cJSON_GetObjectItemCaseSensitive(view->record, "reply"));
