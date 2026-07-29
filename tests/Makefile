@@ -71,6 +71,8 @@ UNIT_SOURCES := \
 	$(SRC)/app/compose.c \
 	$(SRC)/app/notify.c \
 	$(SRC)/atproto/notifications.c \
+	$(SRC)/atproto/profile.c \
+	$(SRC)/app/profile.c \
 	$(SRC)/ui/postcard.c \
 	$(SRC)/ui/render.c \
 	$(SRC)/ui/theme.c \

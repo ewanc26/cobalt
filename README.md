@@ -31,9 +31,9 @@ nothing has been run on a Wii U yet.
 | Like and repost, with undo | done |
 | Posting and replying | done |
 | Notifications, with mark-as-seen | done |
-| Images, avatars, link cards | markers only |
-| Profiles, search | next |
-| Custom feeds, lists, mutes and blocks | not started |
+| Profiles, follow and unfollow | done |
+| Images, avatars, link cards | next — markers for now |
+| Search, custom feeds, lists, mutes and blocks | not started |
 | Video, GIFs, DMs, push notifications | not planned — see below |
 
 **Nothing here has run on a Wii U yet.** It builds, and an extensive host test

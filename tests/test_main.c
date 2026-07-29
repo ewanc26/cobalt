@@ -1025,6 +1025,113 @@ test_time_format(void)
    CHECK(!cobalt_time_format_rfc3339(0, NULL, 32));
 }
 
+
+/* --- regressions --- */
+
+static void
+test_paging_stops_when_the_window_fills(void)
+{
+   begin("paging stops when the window fills");
+
+   /*
+    * Regression. The window is fixed, so once it is full every further page
+    * appends nothing while the server still hands back a cursor. Screens read
+    * `has_more` to decide whether to auto-page on reaching the last row, so a
+    * full window meant requesting the next page forever — spinning the worker,
+    * holding `busy` true so no like or thread-open ever ran, and earning a
+    * rate limit. The screen looked alive and was permanently unresponsive.
+    */
+   static cobalt_feed feed;
+   memset(&feed, 0, sizeof(feed));
+
+   /* Nothing fetched yet: no cursor, nothing to page towards. */
+   CHECK(!cobalt_feed_can_page(&feed));
+
+   /* A partly-filled window with a cursor is the normal paging case. */
+   feed.count = 20;
+   feed.has_more = true;
+   CHECK(cobalt_feed_can_page(&feed));
+
+   /* Full window, and the server still sent a cursor. This is the bug. */
+   feed.count = COBALT_FEED_MAX_POSTS;
+   CHECK(!cobalt_feed_can_page(&feed));
+
+   /* One short of full still pages, so the cap is not off by one. */
+   feed.count = COBALT_FEED_MAX_POSTS - 1;
+   CHECK(cobalt_feed_can_page(&feed));
+
+   /* No cursor means the end regardless of how full it is. */
+   feed.has_more = false;
+   CHECK(!cobalt_feed_can_page(&feed));
+
+   CHECK(!cobalt_feed_can_page(NULL));
+
+   /* Notifications carry the same rule and the same window problem. */
+   static cobalt_notifications notes;
+   memset(&notes, 0, sizeof(notes));
+   notes.count = 5;
+   notes.has_more = true;
+   CHECK(cobalt_notifications_can_page(&notes));
+   notes.count = COBALT_NOTIFICATIONS_MAX;
+   CHECK(!cobalt_notifications_can_page(&notes));
+   CHECK(!cobalt_notifications_can_page(NULL));
+}
+
+static void
+test_selection_survives_a_shrinking_list(void)
+{
+   begin("selection survives a list shrinking under it");
+
+   /*
+    * Regression. Replying re-roots the thread on the parent, which is usually
+    * far shorter than what was on screen. The cursor stayed where it was, and
+    * the scroll maths only ever raises `scroll` to meet `selected` — so it
+    * could not recover. The draw loop started past the end, the screen went
+    * blank, and it took one press of UP per row to escape. The user's own
+    * reply was invisible, which is the one thing that path exists to show.
+    */
+   int selected = 25;
+   int scroll = 25;
+
+   cobalt_list_clamp(&selected, &scroll, 4);
+   CHECK(selected == 3);
+   CHECK(scroll == 0);
+
+   /* An in-range cursor is left alone — this must not fight normal scrolling. */
+   selected = 7;
+   scroll = 5;
+   cobalt_list_clamp(&selected, &scroll, 20);
+   CHECK(selected == 7);
+   CHECK(scroll == 5);
+
+   /* `scroll` is never allowed past `selected`, which would draw the cursor
+    * off the top of the viewport. */
+   selected = 2;
+   scroll = 9;
+   cobalt_list_clamp(&selected, &scroll, 20);
+   CHECK(selected == 2);
+   CHECK(scroll == 2);
+
+   /* An empty list reports -1 rather than 0, so a caller that forgot its own
+    * emptiness check indexes out of range loudly rather than reading row 0. */
+   selected = 7;
+   scroll = 3;
+   cobalt_list_clamp(&selected, &scroll, 0);
+   CHECK(selected == -1);
+   CHECK(scroll == 0);
+
+   /* Negative input is brought back rather than propagated. */
+   selected = -5;
+   scroll = -5;
+   cobalt_list_clamp(&selected, &scroll, 10);
+   CHECK(selected == 0);
+   CHECK(scroll == 0);
+
+   /* NULL is ignored rather than crashing. */
+   cobalt_list_clamp(NULL, &scroll, 10);
+   cobalt_list_clamp(&selected, NULL, 10);
+}
+
 /* --- the async request handshake --- */
 
 /*
@@ -1174,6 +1281,8 @@ main(int argc, char **argv)
    test_compose();
    test_post_refuses_partial_refs();
    test_notification_wording();
+   test_paging_stops_when_the_window_fills();
+   test_selection_survives_a_shrinking_list();
    test_session_request_handshake();
    test_signin_validation();
 
