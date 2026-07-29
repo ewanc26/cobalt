@@ -1,5 +1,6 @@
 #include "app/notify.h"
 #include "atproto/session.h"
+#include "ui/postcard.h"
 #include "ui/theme.h"
 #include "util/log.h"
 
@@ -111,6 +112,11 @@ cobalt_notify_view_update(cobalt_notify_view *view, const cobalt_input *in)
 
 /* --- drawing --- */
 
+/* Matches the post card's, so a notification and the post it is about show the
+ * same account at the same size. */
+#define NOTIFY_AVATAR_SIDE(m) ((m)->font_body * 2)
+#define NOTIFY_AVATAR_GAP(m)  ((m)->pad_tile / 2)
+
 static int
 row_height(cobalt_render *r, const cobalt_notification *item,
            const cobalt_metrics *m)
@@ -123,6 +129,13 @@ row_height(cobalt_render *r, const cobalt_notification *item,
       h += TEXT_LINES * (caption_h + m->line_gap);
    }
    h += m->pad_tile;
+
+   /* Same reasoning as the post card: the avatar column can be the taller of
+    * the two and the row has to grow rather than let it overrun. */
+   const int avatar_min = m->pad_tile + NOTIFY_AVATAR_SIDE(m) + m->pad_tile;
+   if (h < avatar_min) {
+      h = avatar_min;
+   }
    return h > 0 ? h : m->font_body * 3;
 }
 
@@ -146,8 +159,15 @@ draw_row(cobalt_render *r, const cobalt_notification *item, const SDL_Rect *rect
       cobalt_fill_rect(r, &bar, COBALT_COLOUR_ACCENT);
    }
 
-   const int actor_w = cobalt_draw_text(r, COBALT_FONT_BODY, item->actor, left, y,
-                                        COBALT_COLOUR_TEXT);
+   cobalt_avatar_draw(r, item->avatar, item->actor, item->handle, left, y,
+                      NOTIFY_AVATAR_SIDE(m));
+   const int text_left = left + NOTIFY_AVATAR_SIDE(m) + NOTIFY_AVATAR_GAP(m);
+   if (right - text_left <= 0) {
+      return;
+   }
+
+   const int actor_w = cobalt_draw_text(r, COBALT_FONT_BODY, item->actor,
+                                        text_left, y, COBALT_COLOUR_TEXT);
 
    int age_w = 0;
    if (item->age[0]) {
@@ -159,7 +179,7 @@ draw_row(cobalt_render *r, const cobalt_notification *item, const SDL_Rect *rect
 
    /* "liked your post" sits right after the name and is dropped rather than
     * overlapped when a long display name has taken the row. */
-   const int summary_x = left + actor_w + m->pad_tile / 2;
+   const int summary_x = text_left + actor_w + m->pad_tile / 2;
    const int summary_room = (right - age_w) - summary_x;
    if (summary_room > 0) {
       int summary_w = 0;
@@ -172,8 +192,9 @@ draw_row(cobalt_render *r, const cobalt_notification *item, const SDL_Rect *rect
    y += body_h;
 
    if (item->text[0]) {
-      cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, item->text, left, y,
-                               right - left, TEXT_LINES, COBALT_COLOUR_TEXT);
+      cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, item->text, text_left, y,
+                               right - text_left, TEXT_LINES,
+                               COBALT_COLOUR_TEXT);
    }
 }
 

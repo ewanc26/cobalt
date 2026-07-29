@@ -47,6 +47,9 @@ struct cobalt_render {
    text_entry cache[TEXT_CACHE_SIZE];
    uint32_t clock;
 
+   /* Borrowed, not owned — see cobalt_render_set_images(). */
+   cobalt_imagecache *images;
+
    bool warned_long_string;
 };
 
@@ -383,6 +386,45 @@ cobalt_draw_tile(cobalt_render *r, const SDL_Rect *rect, float focus)
       set_draw_colour(r, edge);
       SDL_RenderDrawRect(r->renderer, &body);
    }
+}
+
+void
+cobalt_draw_texture(cobalt_render *r, SDL_Texture *texture, const SDL_Rect *dst)
+{
+   if (!r || !r->renderer || !texture || !dst) {
+      return;
+   }
+   SDL_RenderCopy(r->renderer, texture, NULL, dst);
+}
+
+SDL_Texture *
+cobalt_render_upload(cobalt_render *r, SDL_Surface *surface)
+{
+   if (!r || !r->renderer || !surface) {
+      return NULL;
+   }
+
+   SDL_Texture *texture = SDL_CreateTextureFromSurface(r->renderer, surface);
+   if (!texture) {
+      COBALT_LOGW("texture upload failed: %s", SDL_GetError());
+      return NULL;
+   }
+   SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+   return texture;
+}
+
+void
+cobalt_render_set_images(cobalt_render *r, cobalt_imagecache *cache)
+{
+   if (r) {
+      r->images = cache;
+   }
+}
+
+cobalt_imagecache *
+cobalt_render_images(cobalt_render *r)
+{
+   return r ? r->images : NULL;
 }
 
 /* --- text --- */
