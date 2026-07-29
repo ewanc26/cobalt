@@ -22,6 +22,7 @@
 
 #include "app/app.h"
 #include "atproto/atproto.h"
+#include "atproto/session.h"
 #include "input/input.h"
 #include "net/net.h"
 #include "ui/render.h"
@@ -63,6 +64,11 @@ shutdown_all(cobalt_context *ctx)
       cobalt_app_destroy(ctx->app);
       ctx->app = NULL;
    }
+
+   /* Before cobalt_atproto_shutdown(): the worker thread owns a wf_session, so
+    * it has to be joined and its session freed while Wolfram's platform layer
+    * is still up. */
+   cobalt_session_shutdown();
 
    cobalt_atproto_shutdown();
 
@@ -150,6 +156,11 @@ startup(cobalt_context *ctx)
 
    /* Not fatal: the diagnostics screen reports the SDK status either way. */
    cobalt_atproto_init();
+
+   /* Also not fatal. It returns false when signing in could not work — no
+    * Wolfram, or no bundled trust store — and the app still boots so the
+    * diagnostics screen can say which. */
+   cobalt_session_init();
 
    cobalt_input_init(&ctx->input);
 
