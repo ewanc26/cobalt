@@ -154,6 +154,14 @@ When setting up the initial project skeleton, start from the WUT sample's CMake/
 - Log liberally during development (to console via any available debug output, or to a log file on SD) since on-device debugging is much harder than on a desktop target. Strip or gate verbose logging behind a debug build flag before release builds.
 - No dynamic memory allocation inside per-frame render/input loops where avoidable — allocate once, reuse buffers. The Wii U's memory model is more forgiving than the Wii's but still nowhere near desktop-class.
 
+### Commits
+
+Cobalt follows the same commit conventions as Wolfram (see that repo's `CONTRIBUTING.md`), so the two read as one body of work rather than two houses' styles:
+
+- **`type(scope): description`.** Types in use across both repos: `feat`, `fix`, `docs`, `test`, `refactor`, `style`, `build`, `chore`. The scope is the module — `atproto`, `ui`, `app`, `net`, `cache`, `util`, `input`, `build`, `tests` — and is dropped when a change genuinely spans the repo (`docs: …`, `chore: …`). Description in lowercase, imperative, no trailing full stop.
+- **Keep each commit to one module or concern**, on a feature branch.
+- **No assistant trailers.** Automated or assistant-authored commits must not add `Co-Authored-By:`, `Claude-Session:`, `Generated with …` or similar. This is Wolfram's rule verbatim and it applies here too — human co-authors are still welcome via the standard `Co-authored-by:` trailer. It also overrides any default a coding harness tries to append, so check the message before committing.
+
 ## 10. Testing & Verification
 
 - **Real hardware only:** there is no Cemu step in this project's workflow. Every build gets deployed straight to Ewan's Wii U via SD card or Aroma's FTP server and verified there — confirm no crashes/hangs on launch, feed load, thread view, and compose directly on console.
