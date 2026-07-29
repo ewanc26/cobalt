@@ -1,5 +1,7 @@
 #include "app/app.h"
+#include "app/compose.h"
 #include "app/signin.h"
+#include "app/thread.h"
 #include "app/timeline.h"
 #include "atproto/atproto.h"
 #include "atproto/session.h"
@@ -15,6 +17,7 @@
 
 typedef enum {
    ACTION_TIMELINE = 0,
+   ACTION_COMPOSE,
    ACTION_ACCOUNT,
    ACTION_DIAGNOSTICS,
    ACTION_TOGGLE_DISPLAY,
@@ -29,6 +32,7 @@ typedef enum {
  */
 static const menu_action MENU[] = {
    ACTION_TIMELINE,
+   ACTION_COMPOSE,
    ACTION_ACCOUNT,
    ACTION_DIAGNOSTICS,
    ACTION_TOGGLE_DISPLAY,
@@ -48,6 +52,10 @@ struct cobalt_app {
 
    cobalt_signin signin;
    cobalt_timeline timeline;
+   cobalt_thread_view thread;
+   cobalt_compose compose;
+   /* Where to return after composing — the timeline or the thread. */
+   cobalt_screen compose_return;
 
    /* Last completed request's message, shown on the home and account screens
     * so an auto-resume that failed while nobody was looking is not silent. */
@@ -90,6 +98,7 @@ menu_label(int index)
 {
    switch (MENU[index]) {
       case ACTION_TIMELINE:       return "Timeline";
+      case ACTION_COMPOSE:        return "New post";
       case ACTION_ACCOUNT:        return signed_in() ? "Account" : "Sign in";
       case ACTION_DIAGNOSTICS:    return "Diagnostics";
       case ACTION_TOGGLE_DISPLAY: return "TV display";
@@ -105,6 +114,8 @@ menu_hint(int index)
       case ACTION_TIMELINE:
          return signed_in() ? "Your Bluesky home feed"
                             : "Sign in to read your feed";
+      case ACTION_COMPOSE:
+         return signed_in() ? "Write something" : "Sign in to post";
       case ACTION_ACCOUNT:
          if (signed_in()) {
             return cobalt_session_handle();
@@ -127,6 +138,7 @@ menu_enabled(int index)
 {
    switch (MENU[index]) {
       case ACTION_TIMELINE:
+      case ACTION_COMPOSE:
          return signed_in();
       case ACTION_ACCOUNT:
          return cobalt_session_available() || signed_in();
@@ -150,6 +162,7 @@ cobalt_app_create(void)
 
    cobalt_signin_init(&app->signin);
    cobalt_timeline_init(&app->timeline);
+   cobalt_thread_view_init(&app->thread);
 
    curl_version_info_data *curl_info = curl_version_info(CURLVERSION_NOW);
    snprintf(app->curl_version, sizeof(app->curl_version), "curl %s / %s",
@@ -207,6 +220,13 @@ activate(cobalt_app *app, int index)
             cobalt_session_begin_timeline(false);
          }
          COBALT_LOGI("menu: opened timeline");
+         break;
+
+      case ACTION_COMPOSE:
+         cobalt_compose_init(&app->compose);
+         app->compose_return = COBALT_SCREEN_HOME;
+         app->screen = COBALT_SCREEN_COMPOSE;
+         COBALT_LOGI("menu: composing a new post");
          break;
 
       case ACTION_ACCOUNT:
@@ -299,8 +319,43 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          set_notice(app, "Signed out.", false);
          cobalt_signin_init(&app->signin);
          cobalt_timeline_init(&app->timeline);
+   cobalt_thread_view_init(&app->thread);
          app->screen = COBALT_SCREEN_HOME;
          app->selected = 1;
+         break;
+
+      case COBALT_JOB_POST:
+         if (result->ok) {
+            set_notice(app, cobalt_compose_is_reply(&app->compose)
+                               ? "Reply posted." : "Posted.", false);
+            /* Back to where composing started, and refresh so the new post is
+             * actually visible rather than only claimed. */
+            app->screen = app->compose_return;
+            if (app->compose_return == COBALT_SCREEN_THREAD &&
+                app->compose.parent_uri[0]) {
+               cobalt_session_begin_thread(app->compose.parent_uri);
+            } else {
+               cobalt_session_begin_timeline(false);
+               cobalt_timeline_rewind(&app->timeline);
+            }
+            cobalt_compose_init(&app->compose);
+         } else {
+            /* Stay on the compose screen with the text intact — a failed post
+             * must not silently eat something someone typed on a D-pad. */
+            set_notice(app, result->message, true);
+         }
+         break;
+
+      case COBALT_JOB_THREAD:
+      case COBALT_JOB_LIKE:
+      case COBALT_JOB_REPOST:
+         /* Success is visible in the card itself — the count moved and the
+          * marker appeared — so only failures are worth saying out loud. */
+         if (!result->ok) {
+            set_notice(app, result->message, true);
+         } else if (result->message[0]) {
+            set_notice(app, result->message, false);
+         }
          break;
 
       case COBALT_JOB_TIMELINE:
@@ -436,8 +491,58 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
          break;
 
       case COBALT_SCREEN_TIMELINE:
-         if (cobalt_timeline_update(&app->timeline, in) == COBALT_TIMELINE_BACK) {
-            app->screen = COBALT_SCREEN_HOME;
+         switch (cobalt_timeline_update(&app->timeline, in)) {
+            case COBALT_TIMELINE_BACK:
+               app->screen = COBALT_SCREEN_HOME;
+               break;
+            case COBALT_TIMELINE_OPEN_THREAD:
+               cobalt_thread_view_reset(&app->thread);
+               app->screen = COBALT_SCREEN_THREAD;
+               break;
+            case COBALT_TIMELINE_STAY:
+            default:
+               break;
+         }
+         break;
+
+      case COBALT_SCREEN_THREAD:
+         switch (cobalt_thread_view_update(&app->thread, in)) {
+            case COBALT_THREAD_VIEW_BACK:
+               app->screen = COBALT_SCREEN_TIMELINE;
+               break;
+            case COBALT_THREAD_VIEW_REPLY: {
+               const cobalt_thread *conv = cobalt_session_thread();
+               if (app->thread.selected < conv->count) {
+                  cobalt_compose_reply_to(&app->compose,
+                                          &conv->posts[app->thread.selected]);
+                  app->compose_return = COBALT_SCREEN_THREAD;
+                  app->screen = COBALT_SCREEN_COMPOSE;
+               }
+               break;
+            }
+            case COBALT_THREAD_VIEW_STAY:
+            default:
+               break;
+         }
+         break;
+
+      case COBALT_SCREEN_COMPOSE:
+         switch (cobalt_compose_update(&app->compose, in)) {
+            case COBALT_COMPOSE_CANCELLED:
+               app->screen = app->compose_return;
+               break;
+            case COBALT_COMPOSE_SUBMIT:
+               if (!cobalt_session_begin_post(app->compose.text,
+                                              app->compose.parent_uri,
+                                              app->compose.parent_cid,
+                                              app->compose.root_uri,
+                                              app->compose.root_cid)) {
+                  set_notice(app, "Could not start that post.", true);
+               }
+               break;
+            case COBALT_COMPOSE_STAY:
+            default:
+               break;
          }
          break;
 
@@ -765,6 +870,14 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_TIMELINE:
          cobalt_timeline_draw(&app->timeline, r, surface);
+         break;
+
+      case COBALT_SCREEN_THREAD:
+         cobalt_thread_view_draw(&app->thread, r, surface);
+         break;
+
+      case COBALT_SCREEN_COMPOSE:
+         cobalt_compose_draw(&app->compose, r, surface);
          break;
 
       case COBALT_SCREEN_SIGN_IN:

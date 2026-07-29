@@ -8,6 +8,7 @@
 #ifdef COBALT_HAS_WOLFRAM
 #include <wolfram/agent.h>
 #include <wolfram/feed_typed.h>
+#include <wolfram/thread_typed.h>
 #include <wolfram/session.h>
 #include <wolfram/xrpc.h>
 #endif
@@ -32,6 +33,17 @@ typedef struct {
    char password[COBALT_PASSWORD_MAX];
    /* Timeline only: append the next page rather than replacing the feed. */
    bool paging;
+
+   /* Interactions and thread fetches: which post, and for an undo, which
+    * record of the viewer's own to delete. */
+   char uri[COBALT_POST_URI_MAX];
+   char cid[COBALT_POST_CID_MAX];
+   char record_uri[COBALT_POST_URI_MAX];
+
+   /* Composing. `text` is the post body; the refs are empty for a new post. */
+   char text[COBALT_COMPOSE_TEXT_MAX];
+   char root_uri[COBALT_POST_URI_MAX];
+   char root_cid[COBALT_POST_CID_MAX];
 } job_input;
 
 static struct {
@@ -67,6 +79,8 @@ static struct {
    /* Published by the worker alongside the auth state, and read by the
     * timeline screen. Guarded by `lock` on write, read while idle. */
    cobalt_feed feed;
+   /* Named to stay clear of `thread`, which is the worker. */
+   cobalt_thread conversation;
 
 #ifdef COBALT_HAS_WOLFRAM
    /* Owned by the worker while a job runs; only touched off-thread when idle. */
@@ -557,6 +571,175 @@ run_timeline(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state
    r->ok = true;
 }
 
+
+static void
+run_thread(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in to read threads.");
+      return;
+   }
+
+   wf_agent_thread thread;
+   memset(&thread, 0, sizeof(thread));
+
+   /*
+    * Depth 6 is a compromise. Deeper costs response size and parse time on a
+    * console for replies that would be pinned at the maximum indent anyway
+    * (COBALT_THREAD_MAX_DEPTH), and the flattened buffer would fill before
+    * they were reached.
+    */
+   COBALT_LOGI("session: getPostThread %s", in->uri);
+   wf_status status = wf_agent_get_post_thread_typed(s.wf, in->uri, 6, &thread);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: getPostThread failed (%d)", (int) status);
+      describe_failure(r, status, COBALT_JOB_THREAD);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   const int64_t now = cobalt_time_now();
+
+   SDL_LockMutex(s.lock);
+   cobalt_thread_from_wolfram(&s.conversation, &thread, now);
+   const int count = s.conversation.count;
+   const bool truncated = s.conversation.truncated;
+   SDL_UnlockMutex(s.lock);
+
+   wf_agent_thread_free(&thread);
+
+   COBALT_LOGI("session: thread %d posts%s", count, truncated ? " (truncated)" : "");
+   if (truncated) {
+      set_message(r, "This conversation is longer than Cobalt can show.");
+   }
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+/*
+ * Like and repost share everything but two function calls, so they share an
+ * implementation. `undo` is decided by the caller from the post's viewer
+ * state; passing the record URI in rather than looking it up again keeps the
+ * worker from touching the feed before it has to.
+ */
+static void
+run_interaction(const job_input *in, cobalt_job_result *r,
+                cobalt_auth_state *state, bool is_like)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in first.");
+      return;
+   }
+
+   const bool undo = in->record_uri[0] != '\0';
+   const char *what = is_like ? "like" : "repost";
+   wf_status status;
+   char created[COBALT_POST_URI_MAX] = "";
+
+   if (undo) {
+      COBALT_LOGI("session: removing %s %s", what, in->record_uri);
+      status = is_like ? wf_agent_unlike(s.wf, in->record_uri)
+                       : wf_agent_delete_repost(s.wf, in->record_uri);
+   } else {
+      wf_agent_post_result result;
+      memset(&result, 0, sizeof(result));
+
+      COBALT_LOGI("session: %s %s", what, in->uri);
+      status = is_like ? wf_agent_like(s.wf, in->uri, in->cid, &result)
+                       : wf_agent_repost(s.wf, in->uri, in->cid, &result);
+
+      if (status == WF_OK) {
+         snprintf(created, sizeof(created), "%s", result.uri ? result.uri : "");
+      }
+      wf_agent_post_result_free(&result);
+   }
+
+   if (status != WF_OK) {
+      COBALT_LOGW("session: %s failed (%d)", what, (int) status);
+      /* Named so the message says which action failed — "the request failed"
+       * on a screen with two buttons is not much help. */
+      set_message(r, "Could not %s that post (wolfram status %d).",
+                  undo ? (is_like ? "remove the like from" : "un-repost")
+                       : (is_like ? "like" : "repost"),
+                  (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   /*
+    * Reflect it locally rather than refetching the whole feed for one
+    * changed number. The next refresh reconciles with the server.
+    */
+   /*
+    * Reflect it locally rather than refetching the whole feed for one changed
+    * number. Both the feed and the loaded thread are updated, since the same
+    * post is frequently on screen in both at once. The next refresh
+    * reconciles with the server.
+    */
+   const char *record = undo ? NULL : created;
+
+   SDL_LockMutex(s.lock);
+   if (is_like) {
+      cobalt_feed_apply_like(&s.feed, in->uri, record);
+      cobalt_thread_apply_like(&s.conversation, in->uri, record);
+   } else {
+      cobalt_feed_apply_repost(&s.feed, in->uri, record);
+      cobalt_thread_apply_repost(&s.conversation, in->uri, record);
+   }
+   SDL_UnlockMutex(s.lock);
+
+   publish_session();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+
+static void
+run_post(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in first.");
+      return;
+   }
+
+   wf_agent_post_result result;
+   memset(&result, 0, sizeof(result));
+
+   wf_status status;
+   if (in->uri[0]) {
+      /*
+       * A reply. wf_agent_reply_refs rather than wf_agent_reply, because the
+       * latter uses the parent as its own root — correct only when replying to
+       * a top-level post, and silently wrong for a reply to a reply.
+       */
+      COBALT_LOGI("session: replying to %s (root %s)", in->uri, in->root_uri);
+      status = wf_agent_reply_refs(s.wf, in->text, in->root_uri, in->root_cid,
+                                   in->uri, in->cid, &result);
+   } else {
+      COBALT_LOGI("session: posting %d bytes", (int) strlen(in->text));
+      status = wf_agent_post(s.wf, in->text, &result);
+   }
+
+   if (status != WF_OK) {
+      COBALT_LOGW("session: post failed (%d)", (int) status);
+      set_message(r, "Could not publish that (wolfram status %d). Nothing was "
+                     "posted.", (int) status);
+      wf_agent_post_result_free(&result);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   COBALT_LOGI("session: posted %s", result.uri ? result.uri : "(no uri)");
+   wf_agent_post_result_free(&result);
+
+   publish_session();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
 static void
 run_logout(cobalt_job_result *r, cobalt_auth_state *state)
 {
@@ -581,6 +764,7 @@ run_logout(cobalt_job_result *r, cobalt_auth_state *state)
    cobalt_feed_reset(&s.feed);
    s.feed.cursor[0] = '\0';
    s.feed.has_more = false;
+   cobalt_thread_reset(&s.conversation);
    SDL_UnlockMutex(s.lock);
 
    *state = COBALT_AUTH_SIGNED_OUT;
@@ -608,6 +792,10 @@ run_job(cobalt_job_kind kind, const job_input *in, cobalt_auth_state *state)
       case COBALT_JOB_RESUME: run_resume(&r, state);     break;
       case COBALT_JOB_LOGOUT: run_logout(&r, state);     break;
       case COBALT_JOB_TIMELINE: run_timeline(in, &r, state); break;
+      case COBALT_JOB_THREAD:   run_thread(in, &r, state);   break;
+      case COBALT_JOB_LIKE:     run_interaction(in, &r, state, true);  break;
+      case COBALT_JOB_REPOST:   run_interaction(in, &r, state, false); break;
+      case COBALT_JOB_POST:     run_post(in, &r, state);      break;
       case COBALT_JOB_NONE:
       default:                                           break;
    }
@@ -898,6 +1086,112 @@ const cobalt_feed *
 cobalt_session_feed(void)
 {
    return &s.feed;
+}
+
+const cobalt_thread *
+cobalt_session_thread(void)
+{
+   return &s.conversation;
+}
+
+bool
+cobalt_session_begin_thread(const char *uri)
+{
+   if (!uri || !uri[0]) {
+      return false;
+   }
+
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", uri);
+   return submit(COBALT_JOB_THREAD, &in);
+}
+
+/*
+ * Decide the direction here rather than making the caller do it: the viewer
+ * state lives next to the post, so a screen that passed its own idea of
+ * "liked" could disagree with what was last fetched and send the wrong verb.
+ */
+static bool
+begin_interaction(cobalt_job_kind kind, const char *uri, const char *cid,
+                  bool is_like)
+{
+   if (!uri || !uri[0] || !cid || !cid[0]) {
+      return false;
+   }
+
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", uri);
+   snprintf(in.cid, sizeof(in.cid), "%s", cid);
+
+   /* Look for the post in whichever of the two views has it. An empty record
+    * URI means "not yet done", which the worker reads as create-not-delete. */
+   SDL_LockMutex(s.lock);
+   for (int i = 0; i < s.feed.count; i++) {
+      if (strcmp(s.feed.posts[i].uri, uri) == 0) {
+         const char *record = is_like ? s.feed.posts[i].viewer_like
+                                      : s.feed.posts[i].viewer_repost;
+         snprintf(in.record_uri, sizeof(in.record_uri), "%s", record);
+         break;
+      }
+   }
+   if (in.record_uri[0] == '\0') {
+      for (int i = 0; i < s.conversation.count; i++) {
+         if (strcmp(s.conversation.posts[i].uri, uri) == 0) {
+            const char *record = is_like ? s.conversation.posts[i].viewer_like
+                                         : s.conversation.posts[i].viewer_repost;
+            snprintf(in.record_uri, sizeof(in.record_uri), "%s", record);
+            break;
+         }
+      }
+   }
+   SDL_UnlockMutex(s.lock);
+
+   return submit(kind, &in);
+}
+
+bool
+cobalt_session_begin_post(const char *text, const char *parent_uri,
+                          const char *parent_cid, const char *root_uri,
+                          const char *root_cid)
+{
+   if (!text || !text[0]) {
+      return false;
+   }
+
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.text, sizeof(in.text), "%s", text);
+
+   const bool is_reply = parent_uri && parent_uri[0];
+   if (is_reply) {
+      /* All four refs or none. A reply missing its root is worse than a
+       * refused request: it publishes into the wrong conversation. */
+      if (!parent_cid || !parent_cid[0] || !root_uri || !root_uri[0] ||
+          !root_cid || !root_cid[0]) {
+         COBALT_LOGE("session: refusing a reply with incomplete refs");
+         return false;
+      }
+      snprintf(in.uri, sizeof(in.uri), "%s", parent_uri);
+      snprintf(in.cid, sizeof(in.cid), "%s", parent_cid);
+      snprintf(in.root_uri, sizeof(in.root_uri), "%s", root_uri);
+      snprintf(in.root_cid, sizeof(in.root_cid), "%s", root_cid);
+   }
+
+   return submit(COBALT_JOB_POST, &in);
+}
+
+bool
+cobalt_session_begin_like(const char *uri, const char *cid)
+{
+   return begin_interaction(COBALT_JOB_LIKE, uri, cid, true);
+}
+
+bool
+cobalt_session_begin_repost(const char *uri, const char *cid)
+{
+   return begin_interaction(COBALT_JOB_REPOST, uri, cid, false);
 }
 
 bool

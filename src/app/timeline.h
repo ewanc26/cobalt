@@ -28,6 +28,7 @@ extern "C" {
 typedef enum {
    COBALT_TIMELINE_STAY = 0,
    COBALT_TIMELINE_BACK,
+   COBALT_TIMELINE_OPEN_THREAD,
 } cobalt_timeline_action;
 
 typedef struct {
