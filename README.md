@@ -56,7 +56,9 @@ the app needs and which is not part of the `.wuhb`.
 # Toolchain (once)
 sudo dkp-pacman -S wiiu-dev wiiu-sdl2 wiiu-sdl2_ttf wiiu-curl wiiu-mbedtls
 
-# Wolfram — the AT Protocol SDK, as a sibling checkout
+# Wolfram — the AT Protocol SDK, as a sibling checkout.
+# Needs a version with wf_xrpc_client_set_tls_rng(); an older one will fail to
+# compile rather than quietly build without the TLS randomness fix.
 git clone https://github.com/ewanc26/wolfram ../wolfram
 cd ../wolfram
 cmake -S . -B build-wiiu \
@@ -116,7 +118,7 @@ overlay: touch on the GamePad, or the D-pad and A from a Pro Controller.
 |---|---|
 | `sd:/wiiu/apps/cobalt/session.dat` | Your PDS session, encrypted |
 | `sd:/wiiu/apps/cobalt/device.key` | The key that file is encrypted under |
-| `sd:/wiiu/apps/cobalt/entropy.bin` | Entropy seed (see below) |
+| `sd:/wiiu/apps/cobalt/entropy.bin` | Entropy seed — required, see below |
 | `sd:/wiiu/apps/cobalt/cobalt.log` | Debug log |
 
 Signing out overwrites `session.dat` and `device.key` before deleting them, so
@@ -131,21 +133,33 @@ the card as you would treat a logged-in device.
 
 ### The entropy seed
 
+**Cobalt will not connect to anything without one.** This is the part of the
+setup most likely to trip you up, so it is worth understanding why.
+
 The Wii U has no application-facing cryptographically secure random number
 generator. devkitPro's mbedTLS does provide `mbedtls_hardware_poll`, but it is
-`srand(OSGetSystemTick())` followed by `rand()` — a timer-seeded libc PRNG, not
-an entropy source. Since that feeds P-256 key generation and ECDSA signing,
-Wolfram refuses it and fails closed.
+`srand(OSGetSystemTick())` followed by `rand()`, once per byte — a timer-seeded
+libc PRNG, not an entropy source — and the portlib is built with
+`MBEDTLS_NO_PLATFORM_ENTROPY`, so nothing sits behind it. Everything drawing on
+that pool is a function of how long the console has been switched on.
 
-`make bundle` therefore generates a 64-byte seed into
-`dist/wiiu/apps/cobalt/entropy.bin`, which Cobalt reads at boot and rotates for
-the next one. It is **one per installation and must not be shared** — the DRBG
-is deterministic, so a common seed would give every console identical key
-material. It is git-ignored for the same reason.
+That is not only a signing problem. It also covers the random values in every
+HTTPS handshake, which is why Cobalt supplies its own generator to libcurl
+rather than letting it use mbedTLS's.
 
-A missing seed is not fatal. Reading and app-password sign-in are unaffected
-(curl runs its own TLS stack); only operations that sign with a local key are
-disabled, and the diagnostics screen tells you which state you are in.
+`make bundle` generates a 64-byte seed into `dist/wiiu/apps/cobalt/entropy.bin`,
+which Cobalt reads at boot and rotates for the next one. It is **one per
+installation and must not be shared** — the generators are deterministic, so a
+common seed would give every console identical key material and identical
+handshake values. It is git-ignored for the same reason.
+
+If the seed is missing, Cobalt boots but refuses to sign in and tells you so on
+the Diagnostics screen. That is deliberate. It could connect anyway, and the
+connection would look completely normal to you while being far weaker than it
+appears — so it doesn't.
+
+This is also why copying `cobalt.wuhb` on its own is not enough; copy the whole
+`dist/wiiu` tree.
 
 ## Debugging on hardware
 

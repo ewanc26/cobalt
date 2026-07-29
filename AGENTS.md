@@ -212,18 +212,33 @@ So Cobalt must **not** call `ProcUIInit`/`ProcUIProcessMessages`/`ProcUIShutdown
 
 Build Wolfram before Cobalt; the Makefile picks it up automatically from `../wolfram/build-wiiu` and defines `COBALT_HAS_WOLFRAM`. Without it Cobalt still builds and boots, and the diagnostics screen says the SDK is absent. Everything protocol-shaped goes behind `src/atproto/`.
 
-### The Wii U has no usable CSPRNG — signing fails closed
+### The Wii U has no usable CSPRNG — everything unpredictable fails closed
 
-devkitPro's mbedTLS for Wii U does define `mbedtls_hardware_poll`, so seeding a DRBG from it compiles and runs. Disassembly shows it is `srand(OSGetSystemTick()); rand()` — a timer-seeded libc PRNG whose entire state is the console's tick counter.
+devkitPro's mbedTLS for Wii U does define `mbedtls_hardware_poll`, so seeding a DRBG from it compiles and runs. The package source (`wut-packages/mbedtls/mbedtls-2.28.8.patch`) shows it is, per byte:
 
-This matters because Wolfram's `wii_tls_random` feeds **P-256 key generation and ECDSA signing**. Wolfram already refuses exactly this class of entropy on the Wii, so the Wii U now follows the same rule: `src/crypto/wiiu_random.c` fails closed until the application provisions 64 real bytes via `wf_wiiu_set_entropy_seed()`.
+```c
+srand(OSGetSystemTick());
+output[i] = rand() & 0xff;
+```
+
+and the `PKGBUILD` enables `MBEDTLS_NO_PLATFORM_ENTROPY`, so that is the **only** source in the pool — nothing sits behind it. Every draw from `mbedtls_entropy_func()` on this console is a function of the tick counter.
+
+It also cannot be replaced at link time. The patch puts the function in `library/entropy.c`, the same translation unit that registers it in `mbedtls_entropy_init()`, so a competing definition collides and `ld --wrap` does not redirect an intra-unit reference. This was checked before designing around it.
+
+Three consumers were affected, and all three now fail closed:
+
+- **Wolfram's P-256 signing and key generation.** Wolfram already refuses this class of entropy on the Wii; `src/crypto/wiiu_random.c` does the same on Wii U until the application provisions 64 real bytes via `wf_wiiu_set_entropy_seed()`.
+- **libcurl's TLS handshake** — client randoms and ephemeral key agreement for every HTTPS request. curl holds its own mbedTLS entropy context, so Wolfram's seed did not reach it. Fixed via `wf_xrpc_client_set_tls_rng()` (added to Wolfram for this), which installs `CURLOPT_SSL_CTX_FUNCTION` and calls `mbedtls_ssl_conf_rng()` on the config curl hands the callback. curl runs that callback after its own `mbedtls_ssl_conf_rng()` and before `mbedtls_ssl_setup()`, so ours covers the whole handshake — verified against curl 8.7.1, which is what `wiiu-curl` ships.
+- **The credential store's device key and CTR nonces** (`src/cache/session_store.c`). A device key drawn from the tick counter is recoverable from the console's uptime when the file was created, and a repeated CTR nonce leaks the XOR of two saved sessions.
+
+All three draw from one seed file. `src/util/rng.c` is Cobalt's own CTR-DRBG, seeded from it and never from `mbedtls_entropy_func()`; `provision_entropy()` in `src/atproto/atproto.c` seeds both it and Wolfram, then rotates.
 
 Consequences to design around:
-- Read-only use (timeline, threads) is unaffected.
-- App-password login is unaffected — curl runs its own TLS stack.
-- **Seed provisioning is implemented**, following Channel Blue rather than inventing a second scheme. `make bundle` generates a fresh 64-byte seed with `openssl rand` into `dist/wiiu/apps/cobalt/entropy.bin`; the app reads it from `sd:/wiiu/apps/cobalt/entropy.bin` and on every boot does load → set → rotate → save → commit (`provision_entropy()` in `src/atproto/atproto.c`, `src/util/entropy.c`). The ordering is load-bearing: the DRBG is deterministic, so booting twice on one seed regenerates identical key material, and the commit is withheld unless the replacement actually reached the card. A missing seed is not fatal — the app boots and reports it, and only signing is disabled.
+- **A missing seed disables networking.** This is a deliberate change from the earlier "not fatal" position, which was written believing curl's TLS was independent of the seed — it is not. `cobalt_session_init()` reports a `no entropy seed` blocker and the sign-in screen refuses. Cobalt could complete a handshake in that state and it would look entirely normal to the user, which is exactly why it must not.
+- **Seed provisioning follows Channel Blue** rather than inventing a second scheme. `make bundle` generates a fresh 64-byte seed with `openssl rand` into `dist/wiiu/apps/cobalt/entropy.bin`; the app reads it from `sd:/wiiu/apps/cobalt/entropy.bin` and on every boot does load → seed both DRBGs → rotate → save → commit. The ordering is load-bearing: both DRBGs are deterministic, so booting twice on one seed regenerates identical key material *and* identical TLS client randoms, and the commit is withheld unless the replacement actually reached the card.
 - The seed is **not distributable**. One per installation; `.gitignore` blocks `entropy.bin` and `dist/`.
-- **Still unresolved:** curl/mbedTLS's *own* TLS randomness on Wii U draws on the same weak poll. That affects client randoms and ephemeral ECDHE keys for every HTTPS request, and Wolfram's seed does not fix it, because curl has its own mbedTLS entropy context. Worth a decision before treating the transport as trustworthy for anything sensitive.
+- **Cobalt now requires a Wolfram with `wf_xrpc_client_set_tls_rng()`.** An older checkout will fail to compile rather than silently building without the fix, which is the right way round.
+- **Worth reporting upstream.** The poll affects every Wii U homebrew using mbedTLS, not just Cobalt. No devkitPro issue for it was found. An honest upstream fix may have to be "fail" rather than "return tick bytes", since no PowerPC-reachable hardware RNG is documented for this console — IOSU gatekeeps the crypto hardware. Note that is *not found*, not *proven absent*; the WiiUBrew `/dev/crypto` page could not be read while checking.
 
 ### Assets and font
 
@@ -245,7 +260,7 @@ devkitPro's `wiiu-curl` is built against mbedTLS and the Wii U has no system cer
 
 `make` therefore runs `tools/fetch_cacert.sh` into `romfs/cacert.pem`, and `src/atproto/session.c` hands that path to `wf_xrpc_client_set_ca_bundle()`. The bundle is git-ignored on purpose — the Mozilla set expires, and a stale copy committed to the repo would fail on console months later looking like a network bug. `make cacert` forces a refresh. An offline build is not a hard failure: it produces a working RPX that simply cannot reach a PDS, and the diagnostics screen reports the trust store as missing.
 
-**Still unresolved from the entropy note above:** a trust store fixes certificate *verification*. It does not fix curl/mbedTLS's own TLS randomness on this platform, which still draws on the weak poll for client randoms and ephemeral ECDHE keys. That remains open.
+A trust store fixes certificate *verification* only. Handshake *randomness* is a separate problem on this platform and is dealt with in the entropy section above — both have to be right before the transport is worth trusting.
 
 ### Network I/O runs on a worker thread
 
@@ -259,8 +274,9 @@ Any future network call belongs behind the same job mechanism. Adding a synchron
 
 `wf_agent` is the ergonomic entry point, but it is opaque and exposes no way to reach its XRPC client — which means no way to set the CA bundle, which on this platform means no TLS at all. So Cobalt composes the layer below it instead: `wf_session_new()` (a public struct, so `session->client` is reachable), `wf_xrpc_client_set_ca_bundle()`, and `wf_xrpc_client_set_refresh_handler()` for transparent token refresh. Timeline work should follow the same shape — `wf_xrpc_query_params()` on that client, then Wolfram's own `wf_agent_parse_feed()` on the body — rather than reaching for `wf_agent` and losing the CA bundle.
 
-Two things are worth fixing in Wolfram rather than working around here (§8: extend the shared SDK, do not fork it):
+Things worth fixing in Wolfram rather than working around here (§8: extend the shared SDK, do not fork it):
 
+- **Done — `wf_xrpc_client_set_tls_rng()`.** Added to Wolfram so the application can supply the TLS handshake RNG. See the entropy section above for why it was necessary.
 - **No CA bundle accessor on `wf_agent`.** A `wf_agent_set_ca_bundle()` would make the high-level API usable on platforms without a system trust store, which is every console.
 - **`wf_session_login` swallows the XRPC error envelope.** It returns a bare `wf_status`, so a wrong password, a takendown account and a missing 2FA token are all `WF_ERR_HTTP`. Cobalt's sign-in errors are written to be useful without it, but that is a workaround — the envelope is right there in the response.
 

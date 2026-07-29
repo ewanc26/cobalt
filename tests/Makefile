@@ -50,6 +50,7 @@ UNIT_SOURCES := \
 	$(SRC)/atproto/session.c \
 	$(SRC)/app/signin.c \
 	$(SRC)/ui/keyboard.c \
+	$(SRC)/util/rng.c \
 	$(SRC)/ui/render.c \
 	$(SRC)/ui/theme.c \
 	$(SRC)/input/input.c

@@ -2,6 +2,7 @@
 #include "cache/session_store.h"
 #include "util/log.h"
 #include "util/paths.h"
+#include "util/rng.h"
 
 #ifdef COBALT_HAS_WOLFRAM
 #include <wolfram/session.h>
@@ -378,6 +379,22 @@ new_wf_session(const char *service)
    if (s.have_ca) {
       wf_xrpc_client_set_ca_bundle(sess->client, s.ca_path);
    }
+
+   /*
+    * Hand libcurl's mbedTLS backend the application's DRBG for the handshake.
+    * Without this it draws client randoms and ephemeral key-agreement material
+    * from devkitPro's mbedtls_hardware_poll, which is the console's tick
+    * counter — see util/rng.h. cobalt_session_init() has already refused to
+    * come up if this could not work, so a failure here is a real surprise.
+    */
+   wf_status rng = wf_xrpc_client_set_tls_rng(sess->client, cobalt_rng_mbedtls, NULL);
+   if (rng != WF_OK) {
+      COBALT_LOGE("session: could not install the TLS RNG (%d) — refusing to "
+                  "hand the handshake to a tick-seeded generator", (int) rng);
+      wf_session_free(sess);
+      return NULL;
+   }
+
    wf_xrpc_client_set_refresh_handler(sess->client, refresh_handler, NULL);
    return sess;
 }
@@ -636,11 +653,29 @@ cobalt_session_init(void)
 
    s.initialised = true;
 
+   /*
+    * Fail closed on anything that would leave a request weakly protected.
+    * Order is deliberate — the first blocker found is the one reported, and
+    * these run most-fundamental first.
+    *
+    * The entropy check is the one worth spelling out. Without a provisioned
+    * seed, libcurl's mbedTLS falls back to devkitPro's tick-derived poll for
+    * every client random and ephemeral key. Cobalt could still complete a
+    * handshake in that state, and it would look completely normal to the
+    * person using it, which is exactly why it must not.
+    */
 #ifndef COBALT_HAS_WOLFRAM
    s.blocker = "Wolfram not built in";
 #else
    if (!s.have_ca) {
       s.blocker = "no TLS trust store";
+   } else if (!cobalt_rng_ready()) {
+      s.blocker = "no entropy seed";
+   } else if (!wf_xrpc_tls_rng_supported()) {
+      /* Wolfram compiles the hook for Wii U and checks libcurl's backend at
+       * runtime, so this means curl is not the mbedTLS build it was linked
+       * against — in which case the handshake RNG cannot be replaced. */
+      s.blocker = "TLS RNG hook unavailable";
    }
 #endif
 

@@ -1,10 +1,9 @@
 #include "cache/session_store.h"
 #include "util/log.h"
 #include "util/paths.h"
+#include "util/rng.h"
 
 #include <mbedtls/aes.h>
-#include <mbedtls/ctr_drbg.h>
-#include <mbedtls/entropy.h>
 
 #include <stdint.h>
 #include <stdio.h>
@@ -102,43 +101,28 @@ data_file(char *out, size_t out_size, const char *name)
 /* --- randomness --- */
 
 /*
- * Draws from mbedTLS's entropy pool, which on this platform means the weak
- * timer-seeded poll described in AGENTS.md §13. That is acceptable for the two
- * things it is used for here and only those two:
+ * Both the device key and the CTR nonce come from the application's own
+ * generator (util/rng.h), NOT from mbedtls_entropy_func().
  *
- *   - the CTR nonce, which must be unique per save but need not be secret; and
- *   - the device key, whose threat model (see session_store.h) already assumes
- *     an attacker holding the SD card has the key file itself.
+ * That distinction is the whole point. mbedTLS's pool on this platform is a
+ * single source that reduces to srand(OSGetSystemTick()), so a device key
+ * drawn from it would be recoverable from the console's uptime at the moment
+ * the file was created — which is a far weaker guarantee than the one
+ * session_store.h describes. A nonce from it might not even be unique, and
+ * CTR nonce reuse under one key leaks the XOR of the two sessions.
  *
- * Nothing that needs real entropy — signing, key agreement — goes through here.
- * That is Wolfram's provisioned seed, and it fails closed without one.
+ * cobalt_rng_bytes() fails rather than substituting anything weaker, so a
+ * console with no provisioned seed does not get a quietly guessable key file.
  */
 static bool
 random_bytes(unsigned char *out, size_t len, const char *purpose)
 {
-   mbedtls_entropy_context entropy;
-   mbedtls_ctr_drbg_context drbg;
-   bool ok = false;
-
-   mbedtls_entropy_init(&entropy);
-   mbedtls_ctr_drbg_init(&drbg);
-
-   int rc = mbedtls_ctr_drbg_seed(&drbg, mbedtls_entropy_func, &entropy,
-                                  (const unsigned char *) purpose, strlen(purpose));
-   if (rc != 0) {
-      COBALT_LOGE("session store: ctr_drbg seed failed (-0x%04x)", (unsigned) -rc);
-   } else {
-      rc = mbedtls_ctr_drbg_random(&drbg, out, len);
-      if (rc != 0) {
-         COBALT_LOGE("session store: ctr_drbg draw failed (-0x%04x)", (unsigned) -rc);
-      } else {
-         ok = true;
-      }
+   if (!cobalt_rng_bytes(out, len)) {
+      COBALT_LOGE("session store: no randomness available for %s — an entropy "
+                  "seed must be provisioned first", purpose);
+      return false;
    }
-
-   mbedtls_ctr_drbg_free(&drbg);
-   mbedtls_entropy_free(&entropy);
-   return ok;
+   return true;
 }
 
 /* --- device key --- */

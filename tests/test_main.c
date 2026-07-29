@@ -11,6 +11,8 @@
 #include "atproto/session.h"
 #include "cache/session_store.h"
 #include "ui/keyboard.h"
+#include "util/entropy.h"
+#include "util/rng.h"
 
 #include <SDL.h>
 
@@ -96,6 +98,84 @@ test_normalise_service(void)
    oversized[sizeof(oversized) - 1] = '\0';
    CHECK(!cobalt_session_normalise_service(oversized, out, sizeof(out)));
    CHECK_STR(out, "");
+}
+
+/* --- the application RNG --- */
+
+/* A fixed stand-in for the 64 bytes `make bundle` writes to entropy.bin. */
+static void
+fill_test_seed(unsigned char seed[COBALT_ENTROPY_SEED_SIZE], unsigned char tag)
+{
+   for (size_t i = 0; i < COBALT_ENTROPY_SEED_SIZE; i++) {
+      seed[i] = (unsigned char) (i * 7u + tag);
+   }
+}
+
+static void
+test_rng(void)
+{
+   begin("application RNG");
+
+   unsigned char buffer[64];
+
+   /* Unseeded, it must refuse rather than return anything at all — the whole
+    * reason this module exists is that the platform's own fallback is not
+    * usable, so falling back is never the right answer. */
+   cobalt_rng_shutdown();
+   CHECK(!cobalt_rng_ready());
+   memset(buffer, 0xAA, sizeof(buffer));
+   CHECK(!cobalt_rng_bytes(buffer, sizeof(buffer)));
+
+   /* And it zeroes the caller's buffer, so a failure cannot be mistaken for
+    * randomness by a caller that forgot to check. */
+   bool all_zero = true;
+   for (size_t i = 0; i < sizeof(buffer); i++) {
+      if (buffer[i] != 0) {
+         all_zero = false;
+      }
+   }
+   CHECK(all_zero);
+
+   /* The mbedTLS-shaped entry point must report failure in mbedTLS's terms,
+    * because this is what libcurl calls mid-handshake. */
+   CHECK(cobalt_rng_mbedtls(NULL, buffer, sizeof(buffer)) != 0);
+
+   unsigned char seed[COBALT_ENTROPY_SEED_SIZE];
+   fill_test_seed(seed, 0x11);
+   CHECK(cobalt_rng_init(seed, sizeof(seed)));
+   CHECK(cobalt_rng_ready());
+
+   unsigned char first[64];
+   CHECK(cobalt_rng_bytes(first, sizeof(first)));
+   CHECK(cobalt_rng_mbedtls(NULL, buffer, sizeof(buffer)) == 0);
+
+   /* Successive draws differ — a DRBG that returned its state verbatim would
+    * pass a "did it produce bytes" check but nothing else. */
+   CHECK(memcmp(first, buffer, sizeof(first)) != 0);
+
+   /* Re-seeding with the same seed reproduces the same stream. That is the
+    * DRBG being deterministic, which is exactly why the seed has to be
+    * rotated on every boot (see provision_entropy in atproto/atproto.c). */
+   CHECK(cobalt_rng_init(seed, sizeof(seed)));
+   unsigned char again[64];
+   CHECK(cobalt_rng_bytes(again, sizeof(again)));
+   CHECK(memcmp(first, again, sizeof(first)) == 0);
+
+   /* A different seed gives a different stream. */
+   unsigned char other_seed[COBALT_ENTROPY_SEED_SIZE];
+   fill_test_seed(other_seed, 0x77);
+   CHECK(cobalt_rng_init(other_seed, sizeof(other_seed)));
+   unsigned char different[64];
+   CHECK(cobalt_rng_bytes(different, sizeof(different)));
+   CHECK(memcmp(first, different, sizeof(first)) != 0);
+
+   /* Rubbish input is refused rather than producing a weakly seeded generator. */
+   CHECK(!cobalt_rng_init(NULL, 64));
+   CHECK(!cobalt_rng_init(seed, 0));
+
+   /* Leave it seeded for the store tests that follow. */
+   CHECK(cobalt_rng_init(seed, sizeof(seed)));
+   CHECK(cobalt_rng_ready());
 }
 
 /* --- credential store --- */
@@ -291,6 +371,33 @@ test_session_store_rejects_damage(const char *root)
    CHECK(!cobalt_session_store_load(&read));
 
    cobalt_session_store_clear();
+}
+
+static void
+test_session_store_needs_entropy(void)
+{
+   begin("credential store refuses to run without entropy");
+
+   cobalt_stored_session written;
+   fill_session(&written);
+
+   /*
+    * With no seeded generator there is no safe way to mint a device key or a
+    * CTR nonce, and the platform's own fallback is the tick counter. Saving
+    * has to fail rather than produce a file whose key is guessable from the
+    * console's uptime.
+    */
+   cobalt_rng_shutdown();
+   CHECK(!cobalt_session_store_save(&written));
+   CHECK(!cobalt_session_store_exists());
+
+   unsigned char seed[COBALT_ENTROPY_SEED_SIZE];
+   fill_test_seed(seed, 0x11);
+   CHECK(cobalt_rng_init(seed, sizeof(seed)));
+   CHECK(cobalt_session_store_save(&written));
+
+   cobalt_session_store_clear();
+   memset(&written, 0, sizeof(written));
 }
 
 /* --- keyboard --- */
@@ -576,9 +683,11 @@ main(int argc, char **argv)
    printf("cobalt host tests\n");
 
    test_normalise_service();
+   test_rng();
    test_session_store_roundtrip(root);
    test_session_store_clear(root);
    test_session_store_rejects_damage(root);
+   test_session_store_needs_entropy();
    test_keyboard_typing();
    test_keyboard_bounds();
    test_keyboard_multibyte();
