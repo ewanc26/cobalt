@@ -11,6 +11,7 @@
 #include "app/signin.h"
 #include "atproto/session.h"
 #include "atproto/feed.h"
+#include "atproto/notifications.h"
 #include "cache/session_store.h"
 #include "ui/keyboard.h"
 #include "util/entropy.h"
@@ -944,6 +945,86 @@ test_post_refuses_partial_refs(void)
    cobalt_session_shutdown();
 }
 
+
+/* --- notifications --- */
+
+static void
+test_notification_wording(void)
+{
+   begin("notification wording and subject resolution");
+
+   CHECK_STR(cobalt_notification_summary("like"), "liked your post");
+   CHECK_STR(cobalt_notification_summary("repost"), "reposted your post");
+   CHECK_STR(cobalt_notification_summary("follow"), "followed you");
+   CHECK_STR(cobalt_notification_summary("reply"), "replied to you");
+   CHECK_STR(cobalt_notification_summary("quote"), "quoted your post");
+   CHECK_STR(cobalt_notification_summary("mention"), "mentioned you");
+
+   /*
+    * Bluesky adds reasons over time. An unrecognised one shows verbatim —
+    * which reads like a lexicon but at least says what happened, rather than
+    * a generic "did something" that says nothing.
+    */
+   CHECK_STR(cobalt_notification_summary("some-future-reason"),
+             "some-future-reason");
+   CHECK_STR(cobalt_notification_summary(NULL), "");
+
+   /*
+    * Which field holds the thing to open. A reply, mention or quote IS a post
+    * and is its own subject; a like or repost points at what the viewer wrote.
+    * Getting this backwards opens a plausible-looking wrong post.
+    */
+   CHECK(cobalt_notification_subject_is_self("reply"));
+   CHECK(cobalt_notification_subject_is_self("mention"));
+   CHECK(cobalt_notification_subject_is_self("quote"));
+   CHECK(!cobalt_notification_subject_is_self("like"));
+   CHECK(!cobalt_notification_subject_is_self("repost"));
+   CHECK(!cobalt_notification_subject_is_self("follow"));
+   CHECK(!cobalt_notification_subject_is_self(NULL));
+
+   static cobalt_notifications list;
+   memset(&list, 0, sizeof(list));
+   list.count = 3;
+   list.unread = 2;
+   cobalt_notifications_reset(&list);
+   CHECK(list.count == 0);
+   CHECK(list.unread == 0);
+}
+
+static void
+test_time_format(void)
+{
+   begin("RFC 3339 formatting");
+
+   char out[32];
+
+   CHECK(cobalt_time_format_rfc3339(0, out, sizeof(out)));
+   CHECK_STR(out, "1970-01-01T00:00:00Z");
+
+   CHECK(cobalt_time_format_rfc3339(1785320130, out, sizeof(out)));
+   CHECK_STR(out, "2026-07-29T10:15:30Z");
+
+   /* Leap day, the case the arithmetic is most likely to get wrong. */
+   CHECK(cobalt_time_format_rfc3339(1709208000, out, sizeof(out)));
+   CHECK_STR(out, "2024-02-29T12:00:00Z");
+
+   /* Round-trips with the parser, which is the property that actually
+    * matters — the two have to agree about the same instant. */
+   const int64_t samples[] = { 0, 1, 951782400, 1709208000, 1785320130,
+                               2000000000 };
+   for (size_t i = 0; i < sizeof(samples) / sizeof(samples[0]); i++) {
+      CHECK(cobalt_time_format_rfc3339(samples[i], out, sizeof(out)));
+      int64_t back = -1;
+      CHECK(cobalt_time_parse_rfc3339(out, &back));
+      CHECK(back == samples[i]);
+   }
+
+   /* Too small a buffer is refused rather than truncated into a wrong date. */
+   char tiny[8];
+   CHECK(!cobalt_time_format_rfc3339(0, tiny, sizeof(tiny)));
+   CHECK(!cobalt_time_format_rfc3339(0, NULL, 32));
+}
+
 /* --- the async request handshake --- */
 
 /*
@@ -1085,12 +1166,14 @@ main(int argc, char **argv)
    test_keyboard_display();
    test_time_parse();
    test_time_relative();
+   test_time_format();
    test_feed_text();
    test_feed_counts();
    test_feed_embeds();
    test_interactions();
    test_compose();
    test_post_refuses_partial_refs();
+   test_notification_wording();
    test_session_request_handshake();
    test_signin_validation();
 

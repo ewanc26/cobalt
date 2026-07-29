@@ -29,6 +29,7 @@
  */
 
 #include "atproto/feed.h"
+#include "atproto/notifications.h"
 #include "cache/session_store.h"
 
 #include <stdbool.h>
@@ -62,6 +63,7 @@ typedef enum {
    COBALT_JOB_LIKE,
    COBALT_JOB_REPOST,
    COBALT_JOB_POST,
+   COBALT_JOB_NOTIFICATIONS,
 } cobalt_job_kind;
 
 typedef struct {
@@ -172,6 +174,16 @@ bool cobalt_session_begin_repost(const char *uri, const char *cid);
 bool cobalt_session_begin_post(const char *text, const char *parent_uri,
                                const char *parent_cid, const char *root_uri,
                                const char *root_cid);
+
+/*
+ * Fetch notifications. `paging` appends the next page; false replaces the list.
+ * A successful non-paging fetch also tells the server everything up to now has
+ * been seen, which is what clears the unread badge everywhere else.
+ */
+bool cobalt_session_begin_notifications(bool paging);
+
+/* Notifications as last fetched; never NULL. */
+const cobalt_notifications *cobalt_session_notifications(void);
 
 /*
  * True exactly once per completed request, handing back its outcome. Call it

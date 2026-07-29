@@ -40,6 +40,18 @@ bool cobalt_time_parse_rfc3339(const char *text, int64_t *out_epoch);
  */
 void cobalt_time_relative(int64_t epoch, int64_t now, char *out, size_t out_size);
 
+/*
+ * The inverse: render an epoch as "2026-07-29T10:15:30Z".
+ *
+ * Needed because some XRPC inputs take a timestamp rather than returning one —
+ * updateSeen is the current case. Written arithmetically for the same reason
+ * the parser is: strftime would go through libc's timezone handling, and this
+ * has to be UTC regardless of what the console thinks its timezone is.
+ *
+ * Needs 21 bytes. Returns false without writing if `out` is smaller.
+ */
+bool cobalt_time_format_rfc3339(int64_t epoch, char *out, size_t out_size);
+
 /* Seconds since the Unix epoch, or 0 if the platform clock is unusable. */
 int64_t cobalt_time_now(void);
 
