@@ -28,6 +28,7 @@
  *     }
  */
 
+#include "atproto/feed.h"
 #include "cache/session_store.h"
 
 #include <stdbool.h>
@@ -52,6 +53,7 @@ typedef enum {
    COBALT_JOB_LOGIN,
    COBALT_JOB_RESUME,
    COBALT_JOB_LOGOUT,
+   COBALT_JOB_TIMELINE,
 } cobalt_job_kind;
 
 typedef struct {
@@ -120,6 +122,19 @@ bool cobalt_session_begin_resume(void);
 
 /* Delete the session server-side and wipe the stored credentials. */
 bool cobalt_session_begin_logout(void);
+
+/*
+ * Fetch the timeline. `paging` appends the next page using the cursor from the
+ * last one; false replaces the feed with the top of it. Paging past the end is
+ * not an error — it completes with nothing added.
+ */
+bool cobalt_session_begin_timeline(bool paging);
+
+/*
+ * The feed as last fetched. Only valid while no request is in flight, which is
+ * how the UI already gates its drawing; never NULL.
+ */
+const cobalt_feed *cobalt_session_feed(void);
 
 /*
  * True exactly once per completed request, handing back its outcome. Call it

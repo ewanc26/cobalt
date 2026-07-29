@@ -25,11 +25,19 @@ counterpart.
 | Diagnostics screen (paths, network, TLS, session) | done |
 | Sign in with an app password, on-screen keyboard | done |
 | Session saved across boots, sign out | done |
-| Timeline | next |
-| Threads, profiles, posting, notifications | not started |
+| Timeline — text posts, reposts, paging | done |
+| Images, avatars, link cards | markers only |
+| Threads, profiles, posting, likes | next |
+| Notifications, search, DMs, feeds, lists, moderation | not started |
 
-The build order is deliberate: networking had to be proven against a real PDS on
-real hardware before any UI was built on top of it. See §12 of `AGENTS.md`.
+**Nothing here has run on a Wii U yet.** It builds, and an extensive host test
+suite passes, but every milestone's real acceptance test is the console and none
+of them have had one. Treat the "done" column as "written and host-tested".
+
+Embedded media is shown as a marker — a post with a picture reads `[image]`
+rather than displaying it. Fetching and decoding blobs is real work that has
+not been done, and silently dropping the embed would make an image-only post
+look like an empty card.
 
 ## Requirements
 
