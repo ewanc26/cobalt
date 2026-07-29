@@ -9,10 +9,12 @@
 
 #include "app/signin.h"
 #include "atproto/session.h"
+#include "atproto/feed.h"
 #include "cache/session_store.h"
 #include "ui/keyboard.h"
 #include "util/entropy.h"
 #include "util/rng.h"
+#include "util/timefmt.h"
 
 #include <SDL.h>
 
@@ -553,6 +555,201 @@ test_keyboard_display(void)
    CHECK_STR(shown, "_");
 }
 
+
+/* --- timestamps --- */
+
+static void
+test_time_parse(void)
+{
+   begin("RFC 3339 parsing");
+
+   int64_t epoch = 0;
+
+   /* The epoch itself, and a value checked against a known Unix time. */
+   CHECK(cobalt_time_parse_rfc3339("1970-01-01T00:00:00Z", &epoch));
+   CHECK(epoch == 0);
+
+   CHECK(cobalt_time_parse_rfc3339("2026-07-29T10:15:30Z", &epoch));
+   CHECK(epoch == 1785320130);
+
+   /* Fractional seconds are what a PDS actually emits, so this is the common
+    * case rather than an edge one. */
+   CHECK(cobalt_time_parse_rfc3339("2026-07-29T10:15:30.123Z", &epoch));
+   CHECK(epoch == 1785320130);
+
+   /* Leap-day handling, which is where hand-rolled date maths usually breaks:
+    * 2000 is a leap year, 1900 and 2100 are not. */
+   CHECK(cobalt_time_parse_rfc3339("2000-02-29T00:00:00Z", &epoch));
+   CHECK(epoch == 951782400);
+   CHECK(cobalt_time_parse_rfc3339("2024-02-29T12:00:00Z", &epoch));
+   CHECK(epoch == 1709208000);
+
+   /* Lowercase separators are legal RFC 3339. */
+   CHECK(cobalt_time_parse_rfc3339("2026-07-29t10:15:30z", &epoch));
+   CHECK(epoch == 1785320130);
+
+   /*
+    * A numeric offset must be refused, not read as if it were UTC. Accepting
+    * it would put posts hours out of order in the feed, which is worse than
+    * showing no timestamp at all.
+    */
+   CHECK(!cobalt_time_parse_rfc3339("2026-07-29T10:15:30+01:00", &epoch));
+
+   /* Malformed input of various shapes. */
+   CHECK(!cobalt_time_parse_rfc3339("", &epoch));
+   CHECK(!cobalt_time_parse_rfc3339(NULL, &epoch));
+   CHECK(!cobalt_time_parse_rfc3339("2026-07-29", &epoch));
+   CHECK(!cobalt_time_parse_rfc3339("2026-07-29T10:15:30", &epoch));
+   CHECK(!cobalt_time_parse_rfc3339("not-a-timestamp-at-all", &epoch));
+   CHECK(!cobalt_time_parse_rfc3339("2026-13-01T00:00:00Z", &epoch));
+   CHECK(!cobalt_time_parse_rfc3339("2026-07-29T10:15:30Ztrailing", &epoch));
+}
+
+static void
+test_time_relative(void)
+{
+   begin("relative timestamps");
+
+   char out[COBALT_RELATIVE_MAX];
+   const int64_t now = 1785320130;
+
+   cobalt_time_relative(now, now, out, sizeof(out));
+   CHECK_STR(out, "0s");
+
+   cobalt_time_relative(now - 45, now, out, sizeof(out));
+   CHECK_STR(out, "45s");
+
+   cobalt_time_relative(now - 60, now, out, sizeof(out));
+   CHECK_STR(out, "1m");
+
+   cobalt_time_relative(now - 3599, now, out, sizeof(out));
+   CHECK_STR(out, "59m");
+
+   cobalt_time_relative(now - 3600, now, out, sizeof(out));
+   CHECK_STR(out, "1h");
+
+   cobalt_time_relative(now - 86400 * 3, now, out, sizeof(out));
+   CHECK_STR(out, "3d");
+
+   cobalt_time_relative(now - 86400 * 20, now, out, sizeof(out));
+   CHECK_STR(out, "2w");
+
+   cobalt_time_relative(now - 86400 * 800, now, out, sizeof(out));
+   CHECK_STR(out, "2y");
+
+   /* A console with a slow clock produces future-dated posts. Clamping to
+    * "now" is odd; "-4h" on every post would be worse. */
+   cobalt_time_relative(now + 9999, now, out, sizeof(out));
+   CHECK_STR(out, "0s");
+}
+
+/* --- feed formatting --- */
+
+static void
+test_feed_text(void)
+{
+   begin("post text truncation");
+
+   char out[16];
+
+   cobalt_feed_copy_text(out, sizeof(out), "short");
+   CHECK_STR(out, "short");
+
+   cobalt_feed_copy_text(out, sizeof(out), "");
+   CHECK_STR(out, "");
+
+   cobalt_feed_copy_text(out, sizeof(out), NULL);
+   CHECK_STR(out, "");
+
+   /* Exactly filling the buffer must not be treated as overflow. */
+   cobalt_feed_copy_text(out, sizeof(out), "123456789012345");
+   CHECK_STR(out, "123456789012345");
+
+   /* One byte over: truncated with an ellipsis, still NUL-terminated. */
+   cobalt_feed_copy_text(out, sizeof(out), "1234567890123456");
+   CHECK(strlen(out) < sizeof(out));
+   CHECK(strcmp(out, "1234567890123456") != 0);
+   CHECK(strstr(out, "...") != NULL);
+
+   /*
+    * Post text is arbitrary UTF-8 (AGENTS.md §5). A cut through a multi-byte
+    * sequence would render as tofu, so truncation has to land on a codepoint
+    * boundary — checked by confirming no trailing continuation byte survives.
+    */
+   char wide[24];
+   cobalt_feed_copy_text(wide, sizeof(wide),
+                         "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"
+                         "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"
+                         "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e");
+   size_t n = strlen(wide);
+   CHECK(n < sizeof(wide));
+   for (size_t i = 0; i < n; i++) {
+      /* Every lead byte must be followed by its full complement of
+       * continuation bytes; a dangling one means the cut was mid-sequence. */
+      unsigned char c = (unsigned char) wide[i];
+      if ((c & 0xE0) == 0xC0) {
+         CHECK(i + 1 < n && ((unsigned char) wide[i + 1] & 0xC0) == 0x80);
+      } else if ((c & 0xF0) == 0xE0) {
+         CHECK(i + 2 < n && ((unsigned char) wide[i + 2] & 0xC0) == 0x80);
+      }
+   }
+}
+
+static void
+test_feed_counts(void)
+{
+   begin("engagement counts");
+
+   char out[COBALT_POST_META_MAX];
+
+   /* A post nobody has touched gets no line at all, rather than three zeroes. */
+   cobalt_feed_format_counts(out, sizeof(out), 0, 0, 0);
+   CHECK_STR(out, "");
+
+   cobalt_feed_format_counts(out, sizeof(out), 0, 0, 1);
+   CHECK_STR(out, "1 like");
+
+   cobalt_feed_format_counts(out, sizeof(out), 1, 0, 0);
+   CHECK_STR(out, "1 reply");
+
+   /* Plurals, and the separator only between present items. */
+   cobalt_feed_format_counts(out, sizeof(out), 2, 0, 5);
+   CHECK_STR(out, "2 replies \xc2\xb7 5 likes");
+
+   cobalt_feed_format_counts(out, sizeof(out), 12, 30, 88);
+   CHECK_STR(out, "12 replies \xc2\xb7 30 reposts \xc2\xb7 88 likes");
+
+   /* Negative counts should never arrive, but must not produce "-1 likes". */
+   cobalt_feed_format_counts(out, sizeof(out), -1, 0, 3);
+   CHECK_STR(out, "3 likes");
+
+   /* A tiny buffer drops what will not fit rather than overflowing. */
+   char tiny[12];
+   cobalt_feed_format_counts(tiny, sizeof(tiny), 1000000, 2000000, 3000000);
+   CHECK(strlen(tiny) < sizeof(tiny));
+}
+
+static void
+test_feed_embeds(void)
+{
+   begin("embed notes");
+
+   /* The wire carries view variants, so matching is on prefix. */
+   CHECK_STR(cobalt_feed_embed_note("app.bsky.embed.images#view"), "[image]");
+   CHECK_STR(cobalt_feed_embed_note("app.bsky.embed.video#view"), "[video]");
+   CHECK_STR(cobalt_feed_embed_note("app.bsky.embed.external#view"), "[link]");
+   CHECK_STR(cobalt_feed_embed_note("app.bsky.embed.record#viewRecord"), "[quote]");
+
+   /* recordWithMedia is a longer prefix than record and must win. */
+   CHECK_STR(cobalt_feed_embed_note("app.bsky.embed.recordWithMedia#view"),
+             "[quote + media]");
+
+   /* An unknown or missing type draws nothing rather than a wrong guess. */
+   CHECK_STR(cobalt_feed_embed_note("app.bsky.embed.somethingNew#view"), "");
+   CHECK_STR(cobalt_feed_embed_note(""), "");
+   CHECK_STR(cobalt_feed_embed_note(NULL), "");
+}
+
 /* --- the async request handshake --- */
 
 /*
@@ -692,6 +889,11 @@ main(int argc, char **argv)
    test_keyboard_bounds();
    test_keyboard_multibyte();
    test_keyboard_display();
+   test_time_parse();
+   test_time_relative();
+   test_feed_text();
+   test_feed_counts();
+   test_feed_embeds();
    test_session_request_handshake();
    test_signin_validation();
 

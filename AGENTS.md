@@ -190,7 +190,9 @@ Cobalt follows the same commit conventions as Wolfram (see that repo's `CONTRIBU
 
 Treat steps 1–2 as blocking for everything else — if networking doesn't reliably work on real hardware, nothing downstream matters yet.
 
-**Where this stands:** step 1 is done. Step 2 is written and passes the host checks, but has *not* been through a hardware pass yet — the first console run is the one that settles whether curl completes a TLS handshake against a real PDS, whether `SDL_CreateThread` works under the Wii U SDL port, and whether `createSession` comes back. Step 5's session persistence and sign-out landed alongside it, since resuming a stored session is the same code path. Step 3 (timeline) is deliberately not started: per the paragraph above, it waits on step 2 being confirmed on the console rather than on the build machine.
+**Where this stands:** steps 1–3 and 5 are written and pass the host checks. **None of it has been through a hardware pass.** That is a deliberate departure from the rule above, made on Ewan's instruction to keep building — so the risk it was guarding against is real and now larger: the first console run has to settle the TLS handshake, `SDL_CreateThread` under the Wii U SDL port, `createSession`, *and* the timeline fetch and render all at once. If that run goes badly, bisecting it will be slower than it would have been.
+
+Step 4 (the GamePad/Off-TV split) was satisfied structurally from the start rather than as a later step: every screen lays itself out per surface. Steps 6–8 are untouched.
 
 ---
 
@@ -278,15 +280,32 @@ Wolfram's transport is blocking libcurl. A sign-in against a cold PDS is several
 
 Any future network call belongs behind the same job mechanism. Adding a synchronous one anywhere on the frame path reintroduces the freeze.
 
-### The session layer drives `wf_session`, not `wf_agent`
+### The session layer drives `wf_agent`
 
-`wf_agent` is the ergonomic entry point, but it is opaque and exposes no way to reach its XRPC client — which means no way to set the CA bundle, which on this platform means no TLS at all. So Cobalt composes the layer below it instead: `wf_session_new()` (a public struct, so `session->client` is reachable), `wf_xrpc_client_set_ca_bundle()`, and `wf_xrpc_client_set_refresh_handler()` for transparent token refresh. Timeline work should follow the same shape — `wf_xrpc_query_params()` on that client, then Wolfram's own `wf_agent_parse_feed()` on the body — rather than reaching for `wf_agent` and losing the CA bundle.
+It briefly did not. `wf_agent` is the ergonomic entry point but it is opaque, and on a console with no system trust store and no usable entropy source its settings were unreachable — so the first cut composed `wf_session` by hand instead. That was a workaround, and it capped the client at whatever could be rebuilt call by call.
 
-Things worth fixing in Wolfram rather than working around here (§8: extend the shared SDK, do not fork it):
+Both gaps were closed in Wolfram rather than around it (§8: extend the shared SDK, do not fork it), so `src/atproto/session.c` now uses `wf_agent` with `wf_agent_set_ca_bundle()` and `wf_agent_set_tls_rng()`. Three things came with that and are worth knowing before changing it:
 
-- **Done — `wf_xrpc_client_set_tls_rng()`.** Added to Wolfram so the application can supply the TLS handshake RNG. See the entropy section above for why it was necessary.
-- **No CA bundle accessor on `wf_agent`.** A `wf_agent_set_ca_bundle()` would make the high-level API usable on platforms without a system trust store, which is every console.
+- The agent installs **its own** transparent refresh-and-retry. Cobalt's hand-rolled refresh handler is gone; do not add another.
+- `wf_agent_login()` re-points the client at the account's real PDS from `didDoc#atproto_pds`. Cobalt no longer does this itself.
+- Because refreshes happen inside a request, `publish_session()` reads credentials back **out of** the agent and runs after every job, not just after sign-in. A timeline fetch can rotate the tokens.
+
+Still worth fixing in Wolfram:
+
 - **`wf_session_login` swallows the XRPC error envelope.** It returns a bare `wf_status`, so a wrong password, a takendown account and a missing 2FA token are all `WF_ERR_HTTP`. Cobalt's sign-in errors are written to be useful without it, but that is a workaround — the envelope is right there in the response.
+- **`struct wf_agent` is defined twice**, in `agent.c` and `_internal.h`, hand-synced. If they drift, translation units disagree about field offsets with no diagnostic.
+
+### The feed is flattened once, not walked per frame
+
+Wolfram returns `wf_agent_feed_list`, which keeps `record`, `embed` and `reason` as owned cJSON subtrees so it stays bounded whatever a PDS sends. That is right for an SDK and wrong for a render loop — the UI would be parsing JSON every frame, against §9's no-allocation-on-the-frame-path rule.
+
+So `src/atproto/feed.c` flattens a fetch into fixed-size structs with everything pre-formatted: relative age, counts line, repost attribution, embed marker. Drawing then touches nothing but `char` arrays. Fixed sizes rather than heap strings are also a bound on hostile input — a display name cannot make the client allocate.
+
+Two consequences to keep in mind:
+- The window is 60 posts (`COBALT_FEED_MAX_POSTS`). Paging past it drops the tail rather than growing.
+- Embeds are **markers**, not content: `[image]`, `[link]`, `[quote]`. Nothing is downloaded or drawn. An unrecognised embed type renders as nothing rather than a guess, so a new lexicon shows as absent rather than as the wrong thing.
+
+Timestamps go through `src/util/timefmt.c`, which does the civil-date conversion arithmetically rather than via `timegm` (not portable to devkitPPC) or `mktime` (drags in local time, and the console's timezone is not worth trusting). It only accepts the UTC form — a numeric offset read as if it were Zulu would put posts hours out of order, which is worse than showing no timestamp.
 
 ### Credentials are stored encrypted, and that is worth less than it sounds
 
