@@ -3,6 +3,7 @@
 
 #ifdef COBALT_HAS_WOLFRAM
 #include <wolfram/feed_typed.h>
+#include <wolfram/thread_typed.h>
 #endif
 
 #include <stdio.h>
@@ -21,6 +22,24 @@ cobalt_feed_reset(cobalt_feed *feed)
    if (feed) {
       feed->count = 0;
    }
+}
+
+void
+cobalt_thread_reset(cobalt_thread *thread)
+{
+   if (thread) {
+      thread->count = 0;
+      thread->focus = 0;
+      thread->truncated = false;
+   }
+}
+
+/* Rebuild the drawn counts line after a local change. */
+static void
+refresh_meta(cobalt_post *post)
+{
+   cobalt_feed_format_counts(post->meta, sizeof(post->meta), post->reply_count,
+                             post->repost_count, post->like_count);
 }
 
 /* True if `b` is a UTF-8 continuation byte (10xxxxxx). */
@@ -62,6 +81,98 @@ cobalt_feed_copy_text(char *out, size_t out_size, const char *text)
 
    memcpy(out, text, cut);
    memcpy(out + cut, ELLIPSIS, ellipsis_len + 1);
+}
+
+/* The post-level half of an interaction, shared by the feed and the thread —
+ * the same post is frequently on screen in both at once. */
+static void
+apply_to_post(cobalt_post *post, const char *record_uri, bool is_like)
+{
+   char *slot = is_like ? post->viewer_like : post->viewer_repost;
+   const size_t slot_size = is_like ? sizeof(post->viewer_like)
+                                    : sizeof(post->viewer_repost);
+   int *count = is_like ? &post->like_count : &post->repost_count;
+
+   const bool before = slot[0] != '\0';
+   const bool now = record_uri && record_uri[0];
+
+   snprintf(slot, slot_size, "%s", now ? record_uri : "");
+
+   /* Only move the count when the state actually changed, so a duplicate
+    * confirmation cannot drive it away from the server's value. */
+   if (now && !before) {
+      (*count)++;
+   } else if (!now && before && *count > 0) {
+      (*count)--;
+   }
+
+   refresh_meta(post);
+}
+
+static cobalt_post *
+find_post(cobalt_post *posts, int count, const char *post_uri)
+{
+   if (!posts || !post_uri) {
+      return NULL;
+   }
+   for (int i = 0; i < count; i++) {
+      if (strcmp(posts[i].uri, post_uri) == 0) {
+         return &posts[i];
+      }
+   }
+   /* A refresh can replace the feed while a request is in flight, so the post
+    * legitimately may not be here any more. */
+   return NULL;
+}
+
+bool
+cobalt_feed_apply_like(cobalt_feed *feed, const char *post_uri,
+                       const char *record_uri)
+{
+   cobalt_post *post = feed ? find_post(feed->posts, feed->count, post_uri) : NULL;
+   if (!post) {
+      return false;
+   }
+   apply_to_post(post, record_uri, true);
+   return true;
+}
+
+bool
+cobalt_feed_apply_repost(cobalt_feed *feed, const char *post_uri,
+                         const char *record_uri)
+{
+   cobalt_post *post = feed ? find_post(feed->posts, feed->count, post_uri) : NULL;
+   if (!post) {
+      return false;
+   }
+   apply_to_post(post, record_uri, false);
+   return true;
+}
+
+bool
+cobalt_thread_apply_like(cobalt_thread *thread, const char *post_uri,
+                         const char *record_uri)
+{
+   cobalt_post *post = thread ? find_post(thread->posts, thread->count, post_uri)
+                              : NULL;
+   if (!post) {
+      return false;
+   }
+   apply_to_post(post, record_uri, true);
+   return true;
+}
+
+bool
+cobalt_thread_apply_repost(cobalt_thread *thread, const char *post_uri,
+                           const char *record_uri)
+{
+   cobalt_post *post = thread ? find_post(thread->posts, thread->count, post_uri)
+                              : NULL;
+   if (!post) {
+      return false;
+   }
+   apply_to_post(post, record_uri, false);
+   return true;
 }
 
 /* Append "<n> <singular|plural>" to a counts line, with the separator if the
@@ -221,14 +332,51 @@ fill_from_view(cobalt_post *post, const wf_agent_post_view *view, int64_t now)
       post->age[0] = '\0';
    }
 
-   cobalt_feed_format_counts(post->meta, sizeof(post->meta),
-                             view->has_reply_count ? view->reply_count : 0,
-                             view->has_repost_count ? view->repost_count : 0,
-                             view->has_like_count ? view->like_count : 0);
+   post->reply_count = view->has_reply_count ? view->reply_count : 0;
+   post->repost_count = view->has_repost_count ? view->repost_count : 0;
+   post->like_count = view->has_like_count ? view->like_count : 0;
+   refresh_meta(post);
+
+   /* The viewer's own like/repost records. Without these an interaction is
+    * one-way: the UI cannot show what has already been done, and there is no
+    * record URI to delete to undo it. */
+   snprintf(post->viewer_like, sizeof(post->viewer_like), "%s",
+            view->viewer.like ? view->viewer.like : "");
+   snprintf(post->viewer_repost, sizeof(post->viewer_repost), "%s",
+            view->viewer.repost ? view->viewer.repost : "");
 
    if (view->embed) {
       snprintf(post->embed_note, sizeof(post->embed_note), "%s",
                cobalt_feed_embed_note(json_string(view->embed, "$type")));
+   }
+
+   /* Assume the post is its own root; a reply overwrites this below. */
+   snprintf(post->root_uri, sizeof(post->root_uri), "%s", post->uri);
+   snprintf(post->root_cid, sizeof(post->root_cid), "%s", post->cid);
+}
+
+/*
+ * Pull the thread root out of a replyRef ({ root: {uri,cid}, parent: {...} }).
+ * Leaves the post as its own root when the ref is absent or malformed, which
+ * is the correct reading for a top-level post and a safe fallback otherwise —
+ * a reply naming itself as root is wrong, but a reply naming a *guessed* root
+ * would be wrong and hard to notice.
+ */
+static void
+fill_root(cobalt_post *post, const cJSON *reply_ref)
+{
+   if (!reply_ref) {
+      return;
+   }
+   const cJSON *root = cJSON_GetObjectItemCaseSensitive(reply_ref, "root");
+   if (!root) {
+      return;
+   }
+   const char *uri = json_string(root, "uri");
+   const char *cid = json_string(root, "cid");
+   if (uri && cid) {
+      snprintf(post->root_uri, sizeof(post->root_uri), "%s", uri);
+      snprintf(post->root_cid, sizeof(post->root_cid), "%s", cid);
    }
 }
 
@@ -256,6 +404,9 @@ cobalt_feed_append_from_wolfram(cobalt_feed *feed,
 
       fill_from_view(post, &item->post, now);
       fill_reason(post, item->reason);
+      /* The feed sends the reply ref alongside the post rather than inside the
+       * record, so it is read from the item. */
+      fill_root(post, item->reply);
 
       feed->count++;
       added++;
@@ -272,6 +423,165 @@ cobalt_feed_append_from_wolfram(cobalt_feed *feed,
    }
 
    return added;
+}
+
+
+/* --- threads --- */
+
+/*
+ * A thread node carries the same fields as a feed post view under different
+ * names, so this mirrors fill_from_view rather than sharing with it — the two
+ * Wolfram structs are not related by inheritance and a shared helper would
+ * need a parameter for every field anyway.
+ */
+static void
+fill_from_thread_post(cobalt_post *post, const wf_agent_thread_post *view,
+                      int64_t now)
+{
+   memset(post, 0, sizeof(*post));
+
+   snprintf(post->uri, sizeof(post->uri), "%s", view->uri ? view->uri : "");
+   snprintf(post->cid, sizeof(post->cid), "%s", view->cid ? view->cid : "");
+
+   const char *display = view->author.display_name;
+   const char *handle = view->author.handle ? view->author.handle : "";
+   if (!display || display[0] == '\0') {
+      display = handle;
+   }
+   cobalt_feed_copy_text(post->author, sizeof(post->author), display);
+   snprintf(post->handle, sizeof(post->handle), "@%s", handle);
+
+   const char *text = json_string(view->record, "text");
+   cobalt_feed_copy_text(post->text, sizeof(post->text), text ? text : "");
+
+   const char *created = json_string(view->record, "createdAt");
+   if (!created) {
+      created = view->indexed_at;
+   }
+   int64_t epoch = 0;
+   if (created && cobalt_time_parse_rfc3339(created, &epoch) && now > 0) {
+      cobalt_time_relative(epoch, now, post->age, sizeof(post->age));
+   }
+
+   /* A thread post view always sends its counts, unlike a feed view where they
+    * are optional, so there are no has_* flags to consult here. */
+   post->reply_count = view->reply_count;
+   post->repost_count = view->repost_count;
+   post->like_count = view->like_count;
+   refresh_meta(post);
+
+   snprintf(post->viewer_like, sizeof(post->viewer_like), "%s",
+            view->viewer_like ? view->viewer_like : "");
+   snprintf(post->viewer_repost, sizeof(post->viewer_repost), "%s",
+            view->viewer_repost ? view->viewer_repost : "");
+
+   if (view->embed) {
+      snprintf(post->embed_note, sizeof(post->embed_note), "%s",
+               cobalt_feed_embed_note(json_string(view->embed, "$type")));
+   }
+
+   snprintf(post->root_uri, sizeof(post->root_uri), "%s", post->uri);
+   snprintf(post->root_cid, sizeof(post->root_cid), "%s", post->cid);
+   /* A thread node carries its reply ref inside the record, unlike a feed
+    * item, which carries it alongside. */
+   fill_root(post, cJSON_GetObjectItemCaseSensitive(view->record, "reply"));
+}
+
+/* Append one node. Returns false once the buffer is full. */
+static bool
+push_node(cobalt_thread *out, const wf_agent_thread_node *node, int depth,
+          int64_t now)
+{
+   if (out->count >= COBALT_THREAD_MAX_POSTS) {
+      out->truncated = true;
+      return false;
+   }
+
+   cobalt_post *post = &out->posts[out->count];
+
+   if (node->kind == WF_AGENT_THREAD_KIND_POST) {
+      fill_from_thread_post(post, &node->post, now);
+   } else {
+      /*
+       * A blocked or deleted post still occupies a place in the conversation.
+       * Showing a placeholder keeps the reply structure honest — dropping it
+       * would silently reattach its replies to the wrong parent.
+       */
+      memset(post, 0, sizeof(*post));
+      snprintf(post->uri, sizeof(post->uri), "%s", node->uri ? node->uri : "");
+      snprintf(post->author, sizeof(post->author), "%s",
+               node->kind == WF_AGENT_THREAD_KIND_BLOCKED ? "Blocked post"
+                                                          : "Deleted post");
+      snprintf(post->text, sizeof(post->text), "%s",
+               node->kind == WF_AGENT_THREAD_KIND_BLOCKED
+                  ? "You cannot see this post."
+                  : "This post is no longer available.");
+   }
+
+   out->depth[out->count] = (unsigned char) (depth > COBALT_THREAD_MAX_DEPTH
+                                                ? COBALT_THREAD_MAX_DEPTH
+                                                : depth);
+   out->count++;
+   return true;
+}
+
+/* Replies, depth-first, so a reply sits directly under what it answers. */
+static bool
+push_replies(cobalt_thread *out, const wf_agent_thread_node *node, int depth,
+             int64_t now)
+{
+   for (size_t i = 0; i < node->replies_count; i++) {
+      const wf_agent_thread_node *reply = &node->replies[i];
+      if (!push_node(out, reply, depth, now)) {
+         return false;
+      }
+      if (!push_replies(out, reply, depth + 1, now)) {
+         return false;
+      }
+   }
+   return true;
+}
+
+void
+cobalt_thread_from_wolfram(cobalt_thread *out, const struct wf_agent_thread *src,
+                           int64_t now)
+{
+   if (!out) {
+      return;
+   }
+   cobalt_thread_reset(out);
+   if (!src) {
+      return;
+   }
+
+   const wf_agent_thread *typed = (const wf_agent_thread *) src;
+   const wf_agent_thread_node *root = &typed->root;
+
+   /*
+    * Ancestors are a linked list running the wrong way — each node points at
+    * its parent — so they are collected upward and emitted in reverse. The cap
+    * is the buffer's, since a long chain would otherwise crowd out the replies
+    * the user actually opened the thread to read.
+    */
+   const wf_agent_thread_node *ancestors[COBALT_THREAD_MAX_POSTS];
+   int ancestor_count = 0;
+   for (const wf_agent_thread_node *p = root->parent;
+        p && ancestor_count < COBALT_THREAD_MAX_POSTS / 2; p = p->parent) {
+      ancestors[ancestor_count++] = p;
+   }
+
+   for (int i = ancestor_count - 1; i >= 0; i--) {
+      if (!push_node(out, ancestors[i], 0, now)) {
+         return;
+      }
+   }
+
+   out->focus = out->count;
+   if (!push_node(out, root, 0, now)) {
+      return;
+   }
+
+   push_replies(out, root, 1, now);
 }
 
 #endif /* COBALT_HAS_WOLFRAM */

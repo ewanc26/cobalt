@@ -7,6 +7,7 @@
  * that talks to a PDS are verified on the Wii U or not at all.
  */
 
+#include "app/compose.h"
 #include "app/signin.h"
 #include "atproto/session.h"
 #include "atproto/feed.h"
@@ -750,6 +751,199 @@ test_feed_embeds(void)
    CHECK_STR(cobalt_feed_embed_note(NULL), "");
 }
 
+
+/* --- optimistic interactions --- */
+
+static void
+seed_feed(cobalt_feed *feed, const char *uri, int likes, int reposts)
+{
+   memset(feed, 0, sizeof(*feed));
+   feed->count = 1;
+   snprintf(feed->posts[0].uri, sizeof(feed->posts[0].uri), "%s", uri);
+   feed->posts[0].like_count = likes;
+   feed->posts[0].repost_count = reposts;
+}
+
+static void
+test_interactions(void)
+{
+   begin("optimistic like and repost");
+
+   static cobalt_feed feed;
+   const char *uri = "at://did:plc:abc/app.bsky.feed.post/xyz";
+
+   seed_feed(&feed, uri, 10, 4);
+
+   /* Liking records the record URI and moves the count. */
+   CHECK(cobalt_feed_apply_like(&feed, uri, "at://did:plc:me/app.bsky.feed.like/1"));
+   CHECK(feed.posts[0].like_count == 11);
+   CHECK(feed.posts[0].viewer_like[0] != '\0');
+   CHECK(strstr(feed.posts[0].meta, "11 likes") != NULL);
+
+   /*
+    * A duplicate confirmation must not double-count. The server can answer the
+    * same request twice from the app's point of view — a retry after a refresh
+    * handler fired mid-request — and the count has to stay where the server
+    * thinks it is.
+    */
+   CHECK(cobalt_feed_apply_like(&feed, uri, "at://did:plc:me/app.bsky.feed.like/1"));
+   CHECK(feed.posts[0].like_count == 11);
+
+   /* Undoing puts it back and clears the record. */
+   CHECK(cobalt_feed_apply_like(&feed, uri, NULL));
+   CHECK(feed.posts[0].like_count == 10);
+   CHECK(feed.posts[0].viewer_like[0] == '\0');
+
+   /* And a duplicate undo does not go below the server's value. */
+   CHECK(cobalt_feed_apply_like(&feed, uri, NULL));
+   CHECK(feed.posts[0].like_count == 10);
+
+   /* Reposts are independent of likes. */
+   CHECK(cobalt_feed_apply_repost(&feed, uri, "at://did:plc:me/app.bsky.feed.repost/1"));
+   CHECK(feed.posts[0].repost_count == 5);
+   CHECK(feed.posts[0].like_count == 10);
+   CHECK(feed.posts[0].viewer_like[0] == '\0');
+   CHECK(feed.posts[0].viewer_repost[0] != '\0');
+
+   /* A count already at zero must never go negative. */
+   seed_feed(&feed, uri, 0, 0);
+   CHECK(cobalt_feed_apply_like(&feed, uri, NULL));
+   CHECK(feed.posts[0].like_count == 0);
+
+   /*
+    * A refresh can replace the feed while a request is in flight, so the post
+    * may be gone by the time the answer arrives. That has to be a clean miss,
+    * not a write into whatever is at that index now.
+    */
+   CHECK(!cobalt_feed_apply_like(&feed, "at://did:plc:abc/app.bsky.feed.post/gone",
+                                 "at://x"));
+   CHECK(!cobalt_feed_apply_like(NULL, uri, NULL));
+
+   /* The same helpers drive a loaded thread, since a post is frequently on
+    * screen in both places at once. */
+   static cobalt_thread thread;
+   memset(&thread, 0, sizeof(thread));
+   thread.count = 1;
+   snprintf(thread.posts[0].uri, sizeof(thread.posts[0].uri), "%s", uri);
+   thread.posts[0].like_count = 2;
+
+   CHECK(cobalt_thread_apply_like(&thread, uri, "at://did:plc:me/app.bsky.feed.like/2"));
+   CHECK(thread.posts[0].like_count == 3);
+   CHECK(!cobalt_thread_apply_like(&thread, "at://nope", NULL));
+}
+
+
+/* --- composing --- */
+
+static void
+test_compose(void)
+{
+   begin("composing a post or reply");
+
+   cobalt_compose compose;
+   cobalt_compose_init(&compose);
+
+   CHECK(!cobalt_compose_is_reply(&compose));
+   CHECK(cobalt_compose_remaining(&compose) == COBALT_COMPOSE_GRAPHEMES);
+   CHECK(compose.text[0] == '\0');
+
+   /* The keyboard writes straight into the buffer, so the counter has to track
+    * bytes actually present rather than anything the screen remembers. */
+   snprintf(compose.text, sizeof(compose.text), "hello");
+   CHECK(cobalt_compose_remaining(&compose) == COBALT_COMPOSE_GRAPHEMES - 5);
+
+   /*
+    * Counted in codepoints, not bytes. A post of accented or CJK text would
+    * otherwise appear to blow the limit at a third of its real length — the
+    * exact case AGENTS.md §5 warns about treating as ASCII.
+    */
+   snprintf(compose.text, sizeof(compose.text), "caf\xc3\xa9");
+   CHECK(cobalt_compose_remaining(&compose) == COBALT_COMPOSE_GRAPHEMES - 4);
+
+   snprintf(compose.text, sizeof(compose.text),
+            "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e");
+   CHECK(cobalt_compose_remaining(&compose) == COBALT_COMPOSE_GRAPHEMES - 3);
+
+   /* Over the limit reads negative rather than clamping, so the UI can say by
+    * how much. */
+   memset(compose.text, 'a', COBALT_COMPOSE_GRAPHEMES + 10);
+   compose.text[COBALT_COMPOSE_GRAPHEMES + 10] = '\0';
+   CHECK(cobalt_compose_remaining(&compose) == -10);
+
+   CHECK(cobalt_compose_remaining(NULL) == COBALT_COMPOSE_GRAPHEMES);
+
+   /*
+    * A reply must carry its thread root. The feed and thread parsers record a
+    * top-level post as its own root, so replying to one produces refs that
+    * point at itself — which is correct, and is what stops a reply to a
+    * top-level post being sent with an empty root.
+    */
+   cobalt_post parent;
+   memset(&parent, 0, sizeof(parent));
+   snprintf(parent.uri, sizeof(parent.uri), "at://did:plc:a/app.bsky.feed.post/1");
+   snprintf(parent.cid, sizeof(parent.cid), "cid-one");
+   snprintf(parent.root_uri, sizeof(parent.root_uri), "%s", parent.uri);
+   snprintf(parent.root_cid, sizeof(parent.root_cid), "%s", parent.cid);
+   snprintf(parent.handle, sizeof(parent.handle), "@someone.bsky.social");
+
+   cobalt_compose_reply_to(&compose, &parent);
+   CHECK(cobalt_compose_is_reply(&compose));
+   CHECK_STR(compose.parent_uri, parent.uri);
+   CHECK_STR(compose.root_uri, parent.uri);
+   CHECK_STR(compose.reply_to, "@someone.bsky.social");
+   /* Starting a reply clears any draft from a previous compose. */
+   CHECK(compose.text[0] == '\0');
+
+   /* Replying to something that is itself a reply keeps the real root, not the
+    * parent — getting this wrong puts the reply in the wrong conversation for
+    * every other client. */
+   snprintf(parent.uri, sizeof(parent.uri), "at://did:plc:b/app.bsky.feed.post/2");
+   snprintf(parent.cid, sizeof(parent.cid), "cid-two");
+   snprintf(parent.root_uri, sizeof(parent.root_uri),
+            "at://did:plc:a/app.bsky.feed.post/1");
+   snprintf(parent.root_cid, sizeof(parent.root_cid), "cid-one");
+
+   cobalt_compose_reply_to(&compose, &parent);
+   CHECK_STR(compose.parent_uri, "at://did:plc:b/app.bsky.feed.post/2");
+   CHECK_STR(compose.parent_cid, "cid-two");
+   CHECK_STR(compose.root_uri, "at://did:plc:a/app.bsky.feed.post/1");
+   CHECK_STR(compose.root_cid, "cid-one");
+}
+
+static void
+test_post_refuses_partial_refs(void)
+{
+   begin("a reply with incomplete refs is refused");
+
+   cobalt_session_init();
+
+   /* Empty text is nothing to send. */
+   CHECK(!cobalt_session_begin_post("", NULL, NULL, NULL, NULL));
+   CHECK(!cobalt_session_begin_post(NULL, NULL, NULL, NULL, NULL));
+
+   /*
+    * A parent without a root, or a root without a cid, must be refused rather
+    * than sent. A reply naming the wrong conversation is worse than one that
+    * never got posted: it is visible, wrong, and not obviously Cobalt's fault.
+    */
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", NULL, NULL, NULL));
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", NULL, NULL));
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", "at://root", NULL));
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", "at://root", ""));
+
+   /* A complete set is accepted (and fails later for want of an SDK, which is
+    * not what is being checked here). */
+   CHECK(cobalt_session_begin_post("hi", "at://parent", "cid", "at://root",
+                                   "rcid"));
+
+   cobalt_job_result result;
+   for (int i = 0; i < 500 && !cobalt_session_poll(&result); i++) {
+      SDL_Delay(10);
+   }
+
+   cobalt_session_shutdown();
+}
+
 /* --- the async request handshake --- */
 
 /*
@@ -894,6 +1088,9 @@ main(int argc, char **argv)
    test_feed_text();
    test_feed_counts();
    test_feed_embeds();
+   test_interactions();
+   test_compose();
+   test_post_refuses_partial_refs();
    test_session_request_handshake();
    test_signin_validation();
 

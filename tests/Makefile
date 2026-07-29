@@ -54,6 +54,9 @@ UNIT_SOURCES := \
 	$(SRC)/util/timefmt.c \
 	$(SRC)/atproto/feed.c \
 	$(SRC)/app/timeline.c \
+	$(SRC)/app/thread.c \
+	$(SRC)/app/compose.c \
+	$(SRC)/ui/postcard.c \
 	$(SRC)/ui/render.c \
 	$(SRC)/ui/theme.c \
 	$(SRC)/input/input.c

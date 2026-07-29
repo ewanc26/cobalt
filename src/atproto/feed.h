@@ -62,9 +62,35 @@ typedef struct {
     */
    char embed_note[32];
 
+   /*
+    * Raw counts as well as the formatted line, because an interaction updates
+    * them locally before the server has been asked again — reformatting needs
+    * the numbers back.
+    */
+   int reply_count;
+   int repost_count;
+   int like_count;
+
+   /*
+    * The viewer's own like/repost record URIs, empty when they have not done
+    * either. These are what an "unlike" deletes, so they are the difference
+    * between an interaction being reversible and not.
+    */
+   char viewer_like[COBALT_POST_URI_MAX];
+   char viewer_repost[COBALT_POST_URI_MAX];
+
    /* Kept for interactions and thread view, not drawn. */
    char uri[COBALT_POST_URI_MAX];
    char cid[COBALT_POST_CID_MAX];
+
+   /*
+    * The conversation this post belongs to. A reply record must name both its
+    * parent and the thread root; getting the root wrong produces a reply that
+    * every other client renders in the wrong place. When the post is itself a
+    * root these mirror uri/cid, so a caller never has to special-case it.
+    */
+   char root_uri[COBALT_POST_URI_MAX];
+   char root_cid[COBALT_POST_CID_MAX];
 } cobalt_post;
 
 typedef struct {
@@ -77,8 +103,57 @@ typedef struct {
    bool has_more;
 } cobalt_feed;
 
+/*
+ * A post and its surrounding conversation.
+ *
+ * Flattened from Wolfram's recursive node tree into a list with an indent
+ * level per row, because that is what a scrolling list can draw and what the
+ * D-pad can move through. The tree shape is preserved only as far as the
+ * indent conveys it — beyond a few levels the GamePad runs out of width, so
+ * deeper replies are pinned at the maximum indent rather than disappearing.
+ */
+#define COBALT_THREAD_MAX_POSTS 40
+#define COBALT_THREAD_MAX_DEPTH 4
+
+typedef struct {
+   cobalt_post posts[COBALT_THREAD_MAX_POSTS];
+   unsigned char depth[COBALT_THREAD_MAX_POSTS];
+   int count;
+
+   /* Index of the post the thread was opened on, so the view can start there
+    * rather than at the top of a long ancestor chain. */
+   int focus;
+
+   /* Set when the conversation did not fit. Shown to the user: a thread that
+    * silently stops looks like the end of the conversation. */
+   bool truncated;
+} cobalt_thread;
+
 /* Drop every post. Does not touch the cursor. */
 void cobalt_feed_reset(cobalt_feed *feed);
+
+void cobalt_thread_reset(cobalt_thread *thread);
+
+/*
+ * Apply a like or repost locally, without refetching.
+ *
+ * Interactions are reflected immediately and reconciled by the next refresh,
+ * which is what every other client does and what makes a button on a console
+ * feel connected to anything. `record_uri` is the created record's URI, or
+ * NULL when undoing. Returns false if the post is no longer in the feed —
+ * a refresh can replace it while the request is in flight.
+ */
+bool cobalt_feed_apply_like(cobalt_feed *feed, const char *post_uri,
+                            const char *record_uri);
+bool cobalt_feed_apply_repost(cobalt_feed *feed, const char *post_uri,
+                              const char *record_uri);
+
+/* The same, for a loaded thread. A post is frequently on screen in both the
+ * feed and a thread at once, and both copies have to move together. */
+bool cobalt_thread_apply_like(cobalt_thread *thread, const char *post_uri,
+                              const char *record_uri);
+bool cobalt_thread_apply_repost(cobalt_thread *thread, const char *post_uri,
+                                const char *record_uri);
 
 /*
  * Copy `text` into `out`, truncating on a UTF-8 boundary and appending an
@@ -116,6 +191,12 @@ struct wf_agent_feed_list;
 int cobalt_feed_append_from_wolfram(cobalt_feed *feed,
                                     const struct wf_agent_feed_list *list,
                                     int64_t now);
+
+/* Flatten a getPostThread tree. Ancestors first, then the requested post
+ * (recorded in `focus`), then replies depth-first. */
+struct wf_agent_thread;
+void cobalt_thread_from_wolfram(cobalt_thread *out,
+                                const struct wf_agent_thread *src, int64_t now);
 #endif
 
 #ifdef __cplusplus

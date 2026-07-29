@@ -1,5 +1,6 @@
 #include "app/timeline.h"
 #include "atproto/session.h"
+#include "ui/postcard.h"
 #include "util/log.h"
 
 #include <stdio.h>
@@ -75,9 +76,31 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
    if (view->hit_valid && in->touch_ended) {
       for (int i = 0; i < view->hit_count; i++) {
          if (cobalt_input_tapped(in, &view->hit[i])) {
+            /* A tap selects; opening the thread is a second, deliberate press.
+             * A single tap that navigated would make scrolling by touch on a
+             * dense list feel like a minefield. */
             view->selected = view->hit_index[i];
             break;
          }
+      }
+   }
+
+   /*
+    * Left and right are free on a vertical list, so they carry the two
+    * interactions. Putting them on the D-pad rather than behind a menu is what
+    * makes them usable one-handed with the GamePad resting on a lap, and the
+    * footer names them so they are discoverable.
+    */
+   if (!busy && view->selected < feed->count) {
+      const cobalt_post *post = &feed->posts[view->selected];
+      if (cobalt_input_pressed(in, COBALT_BTN_LEFT)) {
+         cobalt_session_begin_like(post->uri, post->cid);
+      } else if (cobalt_input_pressed(in, COBALT_BTN_RIGHT)) {
+         cobalt_session_begin_repost(post->uri, post->cid);
+      } else if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
+         COBALT_LOGI("timeline: opening thread %s", post->uri);
+         cobalt_session_begin_thread(post->uri);
+         return COBALT_TIMELINE_OPEN_THREAD;
       }
    }
 
@@ -111,100 +134,6 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
 }
 
 /* --- drawing --- */
-
-static int
-card_height(cobalt_render *r, const cobalt_post *post, const cobalt_metrics *m)
-{
-   const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
-   const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
-
-   int h = m->pad_tile;                    /* top padding */
-   if (post->reposted_by[0]) {
-      h += caption_h;
-   }
-   h += body_h;                            /* author row */
-   h += TEXT_LINES * (body_h + m->line_gap);
-   if (post->meta[0] || post->embed_note[0]) {
-      h += caption_h;
-   }
-   h += m->pad_tile;                       /* bottom padding */
-
-   /* A degenerate value here would make the scroll maths divide the screen
-    * into an unbounded number of cards; the font failing to load is already
-    * reported on the diagnostics screen. */
-   return h > 0 ? h : m->font_body * 4;
-}
-
-static void
-draw_card(cobalt_render *r, const cobalt_post *post, const SDL_Rect *rect,
-          bool focused, const cobalt_metrics *m)
-{
-   cobalt_draw_tile(r, rect, focused ? 1.0f : 0.0f);
-
-   const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
-   const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
-   const int left = rect->x + m->pad_tile;
-   const int width = rect->w - 2 * m->pad_tile;
-   int y = rect->y + m->pad_tile;
-
-   if (post->reposted_by[0]) {
-      char banner[COBALT_POST_NAME_MAX + 16];
-      snprintf(banner, sizeof(banner), "Reposted by %s", post->reposted_by);
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, banner, left, y,
-                       COBALT_COLOUR_TEXT_DIM);
-      y += caption_h;
-   }
-
-   /* Author row. The age is right-aligned, so it is measured and placed from
-    * the right edge rather than flowed after the handle, whose width varies
-    * wildly with the display name. */
-   int name_w = cobalt_draw_text(r, COBALT_FONT_BODY, post->author, left, y,
-                                 COBALT_COLOUR_TEXT);
-
-   int age_w = 0;
-   if (post->age[0]) {
-      cobalt_text_size(r, COBALT_FONT_CAPTION, post->age, &age_w, NULL);
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, post->age,
-                       rect->x + rect->w - m->pad_tile - age_w,
-                       y + (body_h - caption_h) / 2, COBALT_COLOUR_TEXT_DIM);
-   }
-
-   /* The handle fills whatever is left between the name and the age. It is
-    * dropped rather than overlapped when there is no room — on a narrow
-    * GamePad card a long display name legitimately uses the whole row. */
-   const int handle_x = left + name_w + m->pad_tile / 2;
-   const int handle_room = (rect->x + rect->w - m->pad_tile - age_w - m->pad_tile)
-                           - handle_x;
-   if (handle_room > 0) {
-      int handle_w = 0;
-      cobalt_text_size(r, COBALT_FONT_CAPTION, post->handle, &handle_w, NULL);
-      if (handle_w <= handle_room) {
-         cobalt_draw_text(r, COBALT_FONT_CAPTION, post->handle, handle_x,
-                          y + (body_h - caption_h) / 2, COBALT_COLOUR_TEXT_DIM);
-      }
-   }
-   y += body_h;
-
-   /* An image-only post has no text at all, which is legitimate — the embed
-    * note below is then the only thing describing it. */
-   if (post->text[0]) {
-      cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, post->text, left, y, width,
-                               TEXT_LINES, COBALT_COLOUR_TEXT);
-   }
-   y += TEXT_LINES * (body_h + m->line_gap);
-
-   if (post->meta[0] || post->embed_note[0]) {
-      char footer[COBALT_POST_META_MAX + 40];
-      if (post->meta[0] && post->embed_note[0]) {
-         snprintf(footer, sizeof(footer), "%s   %s", post->meta, post->embed_note);
-      } else {
-         snprintf(footer, sizeof(footer), "%s",
-                  post->meta[0] ? post->meta : post->embed_note);
-      }
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, footer, left, y,
-                       COBALT_COLOUR_TEXT_DIM);
-   }
-}
 
 static void
 draw_empty(cobalt_render *r, const cobalt_metrics *m, int top)
@@ -284,7 +213,7 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
 
    for (int i = view->scroll; i < feed->count; i++) {
       const cobalt_post *post = &feed->posts[i];
-      const int h = card_height(r, post, m);
+      const int h = cobalt_postcard_height(r, post, TEXT_LINES);
 
       /* Stop before drawing a card that would run off the bottom. Always draw
        * at least one, so a card taller than the viewport is still readable
@@ -294,7 +223,8 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
       }
 
       SDL_Rect rect = { m->pad_edge, y, m->width - 2 * m->pad_edge, h };
-      draw_card(r, post, &rect, i == view->selected, m);
+      cobalt_postcard_draw(r, post, &rect, i == view->selected,
+                           TEXT_LINES, 0);
 
       if (touchable && view->hit_count < COBALT_FEED_MAX_POSTS) {
          view->hit[view->hit_count] = rect;
@@ -313,8 +243,8 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
 
    SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
    const char *footer = cobalt_session_busy()
-                           ? "Loading more..."
-                           : "D-pad: move    +: refresh    B: back";
+                           ? "Working..."
+                           : "A: thread   Left: like   Right: repost   +: refresh";
    cobalt_draw_text(r, COBALT_FONT_CAPTION, footer, m->pad_edge,
                     m->height - m->pad_edge - 20, hint);
 }

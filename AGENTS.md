@@ -190,9 +190,24 @@ Cobalt follows the same commit conventions as Wolfram (see that repo's `CONTRIBU
 
 Treat steps 1–2 as blocking for everything else — if networking doesn't reliably work on real hardware, nothing downstream matters yet.
 
-**Where this stands:** steps 1–3 and 5 are written and pass the host checks. **None of it has been through a hardware pass.** That is a deliberate departure from the rule above, made on Ewan's instruction to keep building — so the risk it was guarding against is real and now larger: the first console run has to settle the TLS handshake, `SDL_CreateThread` under the Wii U SDL port, `createSession`, *and* the timeline fetch and render all at once. If that run goes badly, bisecting it will be slower than it would have been.
+**Where this stands:** steps 1–5 are written, plus threads, likes, reposts and composing from step 6's neighbourhood. All of it passes the host checks. **None of it has been through a hardware pass.**
 
-Step 4 (the GamePad/Off-TV split) was satisfied structurally from the start rather than as a later step: every screen lays itself out per surface. Steps 6–8 are untouched.
+That is a deliberate departure from the rule above, made on Ewan's instruction to keep building, and the risk it was guarding against grows with every increment: the first console run now has to settle the TLS handshake, `SDL_CreateThread` under the Wii U SDL port, `createSession`, the timeline, the thread view, and record writes all at once. If it goes badly, bisecting will be slow. A hardware pass is worth more than the next feature.
+
+Step 4 (the GamePad/Off-TV split) was satisfied structurally from the start rather than as a later step: every screen lays itself out per surface.
+
+### Parity with `bluesky-social/social-app`
+
+The stated goal is to go as far as the hardware allows. Some of it never will, and those should not be attempted:
+
+| Not viable | Why |
+|---|---|
+| OAuth sign-in | §7 — nowhere to host a redirect target; app passwords are the ceiling, so accounts with 2FA cannot sign in at all |
+| Video | No decoder, and no realistic path to one at Espresso's clock |
+| Push notifications | No service the console can register with |
+| GIFs / animated media | Same decode problem as video, plus per-frame budget |
+
+Reachable, in rough order of value: **images and avatars** (blob fetch, decode, texture cache — real work, and the biggest visible gap), profiles, notifications, search, custom feeds, lists, mutes and blocks, threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
 
 ---
 
@@ -319,11 +334,37 @@ Do not oversell it in the README or anywhere else. The key lives beside the file
 
 It obeys §5's two-input rule by construction: touch on the GamePad, and a focus moved by D-pad or stick for someone on a Pro Controller. B is backspace; leaving a field is the Cancel key.
 
+### Interactions are applied locally, then reconciled
+
+A like or repost updates the post in place — count moved, marker shown — instead of refetching the feed for one changed number. That is what every other client does, and on a console the alternative is a visible stall for a button press.
+
+Two rules keep it honest, and both are tested:
+- The count only moves when the state actually **changed**. A duplicate confirmation (a retry after the agent's refresh handler fired mid-request) must not double-count.
+- A count already at zero never goes negative.
+
+The same post is frequently on screen in the feed *and* a loaded thread, so both copies are updated together — `cobalt_feed_apply_*` and `cobalt_thread_apply_*` share one post-level implementation.
+
+The direction of a toggle is decided inside `session.c` from the post's own viewer state, not passed in by the screen. A screen that passed its own idea of "liked" could disagree with what was last fetched and send the wrong verb.
+
+### A reply must name its root, and Cobalt refuses to guess
+
+An ATProto reply record names both its parent and the thread root. Naming the wrong root does not fail — it publishes, and lands in the wrong conversation for every other client, which is the kind of bug that looks like someone else's.
+
+So the root is carried on every `cobalt_post` from the moment it is parsed: from the feed item's `reply` ref, or from the record's own `reply` for a thread node. A post that is not a reply records **itself** as its root, so there is no special case at the call site and no path that sends an empty ref. `cobalt_session_begin_post()` refuses a reply with a partial ref set rather than filling in a plausible value, and `wf_agent_reply_refs` is used rather than `wf_agent_reply` — the latter uses the parent as its own root, which is correct only for a reply to a top-level post.
+
+### Composing asks before it posts
+
+Posting is public and irreversible, and OK on a games-console keyboard is one D-pad slip from a key someone was aiming at. So the compose screen commits to a confirmation row (Post / Keep editing / Discard) rather than straight to the network, and B from there returns to editing rather than discarding — losing a post typed on a D-pad would be a genuinely bad outcome.
+
+The character count is codepoints, not bytes: Bluesky's limit is 300 graphemes, and counting bytes would make a post of CJK or accented text appear to blow the limit at a third of its real length. Codepoints disagree with graphemes only on emoji sequences and combining marks, and erring towards refusing a post the server would have taken is the safer direction.
+
 ### There is a host test harness, and it is not a substitute for hardware
 
 `tests/` does two things with the build machine's own compiler. It runs a `-fsyntax-only -Werror` sweep over every translation unit that does not need devkitPro headers — in both the with-Wolfram and without-Wolfram configurations, so a changed SDK signature is caught in a second rather than after a card swap. And it unit tests the genuinely platform-independent logic §10 carves out: the credential store's round trip and its refusal of damaged or foreign files, the service-URL normaliser, the keyboard's text model, and the async request handshake.
 
 `make test` runs both. It is a filter on the obvious failures, not evidence anything works — every milestone's acceptance test is still the console.
+
+**Known limit worth remembering:** the sweep is `-fsyntax-only`, so it does not link. A function that was deleted while still being called compiles clean and only fails at link time — which has already happened once, caught by the unit-test binary rather than the sweep. The unit tests link every module except the four that need devkitPro headers, but only in the *without-Wolfram* configuration, so the Wolfram-dependent halves of `feed.c` and `session.c` are syntax-checked and never linked.
 
 ---
 

@@ -26,9 +26,13 @@ counterpart.
 | Sign in with an app password, on-screen keyboard | done |
 | Session saved across boots, sign out | done |
 | Timeline — text posts, reposts, paging | done |
+| Threads, with replies and re-rooting | done |
+| Like and repost, with undo | done |
+| Posting and replying | done |
 | Images, avatars, link cards | markers only |
-| Threads, profiles, posting, likes | next |
-| Notifications, search, DMs, feeds, lists, moderation | not started |
+| Profiles, notifications, search | next |
+| Custom feeds, lists, mutes and blocks | not started |
+| Video, GIFs, DMs, push notifications | not planned — see below |
 
 **Nothing here has run on a Wii U yet.** It builds, and an extensive host test
 suite passes, but every milestone's real acceptance test is the console and none
@@ -38,6 +42,12 @@ Embedded media is shown as a marker — a post with a picture reads `[image]`
 rather than displaying it. Fetching and decoding blobs is real work that has
 not been done, and silently dropping the embed would make an image-only post
 look like an empty card.
+
+Some things in the official client are not coming, because the console cannot
+do them rather than because nobody has got to them yet: **video** and **GIFs**
+(no decoder, and no realistic path to one at this clock speed), **push
+notifications** (no service the console can register with), and **OAuth
+sign-in** (nowhere to host a redirect target — see Authentication below).
 
 ## Requirements
 
