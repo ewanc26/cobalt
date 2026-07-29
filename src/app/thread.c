@@ -62,6 +62,15 @@ cobalt_thread_view_update(cobalt_thread_view *view, const cobalt_input *in)
       view->centred = true;
    }
 
+   /*
+    * A fetch can replace the conversation with a shorter one — re-rooting on a
+    * reply does exactly that — leaving the cursor past the end. Nothing else
+    * clamps downwards: the scroll maths below only ever raises `scroll` to
+    * meet `selected`, so an out-of-range cursor renders an empty list that
+    * takes one press of UP per row to escape.
+    */
+   cobalt_list_clamp(&view->selected, &view->scroll, thread->count);
+
    if (cobalt_input_pressed(in, COBALT_BTN_DOWN) &&
        view->selected < thread->count - 1) {
       view->selected++;

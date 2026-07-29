@@ -30,6 +30,7 @@
 
 #include "atproto/feed.h"
 #include "atproto/notifications.h"
+#include "atproto/profile.h"
 #include "cache/session_store.h"
 
 #include <stdbool.h>
@@ -64,6 +65,8 @@ typedef enum {
    COBALT_JOB_REPOST,
    COBALT_JOB_POST,
    COBALT_JOB_NOTIFICATIONS,
+   COBALT_JOB_PROFILE,
+   COBALT_JOB_FOLLOW,
 } cobalt_job_kind;
 
 typedef struct {
@@ -141,8 +144,13 @@ bool cobalt_session_begin_logout(void);
 bool cobalt_session_begin_timeline(bool paging);
 
 /*
- * The feed as last fetched. Only valid while no request is in flight, which is
- * how the UI already gates its drawing; never NULL.
+ * The feed, thread, notifications and profile as last fetched. Never NULL.
+ *
+ * These are the worker's own buffers, not copies, so a caller MUST hold the
+ * session lock across every read — including the whole of a draw, since the
+ * worker rewrites them in place while a screen is still on screen (a like
+ * updates a count; a refresh clears and refills the list). See
+ * cobalt_session_lock().
  */
 const cobalt_feed *cobalt_session_feed(void);
 
@@ -184,6 +192,42 @@ bool cobalt_session_begin_notifications(bool paging);
 
 /* Notifications as last fetched; never NULL. */
 const cobalt_notifications *cobalt_session_notifications(void);
+
+/*
+ * Fetch an actor's profile and their posts together. `actor` is a handle or a
+ * DID. One job rather than two: they are one screen, and a worker that takes
+ * one request at a time would serialise them anyway.
+ */
+bool cobalt_session_begin_profile(const char *actor);
+
+/* The profile and author feed as last fetched; never NULL. */
+const cobalt_profile *cobalt_session_profile(void);
+const cobalt_feed *cobalt_session_author_feed(void);
+
+/*
+ * Toggle following the loaded profile. Like the post interactions, the
+ * direction comes from the profile's own viewer state rather than the caller's.
+ */
+bool cobalt_session_begin_follow(void);
+
+/*
+ * Guard for the shared snapshots above.
+ *
+ * The worker mutates the feed, thread, notification list and profile in place
+ * while the UI is drawing them — that is the whole point of applying an
+ * interaction locally rather than refetching. Without this the UI can read a
+ * counts line mid-rewrite, which is not a one-frame flicker: the text cache
+ * keys on string contents, so a torn read gets stored under the wrong key and
+ * renders wrongly until it is evicted.
+ *
+ * The lock is never held across network I/O, so a screen blocks on it for the
+ * length of a memcpy at worst. It is reentrant (SDL mutexes are), so the
+ * accessors that take it internally are safe to call while it is held.
+ *
+ * Bracket the whole of update-and-draw, not each accessor.
+ */
+void cobalt_session_lock(void);
+void cobalt_session_unlock(void);
 
 /*
  * True exactly once per completed request, handing back its outcome. Call it

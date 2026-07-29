@@ -56,6 +56,9 @@ typedef struct {
 
 void cobalt_notifications_reset(cobalt_notifications *list);
 
+/* As cobalt_feed_can_page, for the same reason. */
+bool cobalt_notifications_can_page(const cobalt_notifications *list);
+
 /*
  * Turn a lexicon reason into something readable. Returns the reason verbatim
  * for anything unrecognised rather than inventing wording — a new notification

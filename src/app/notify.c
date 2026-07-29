@@ -58,6 +58,8 @@ cobalt_notify_view_update(cobalt_notify_view *view, const cobalt_input *in)
       return COBALT_NOTIFY_STAY;
    }
 
+   cobalt_list_clamp(&view->selected, &view->scroll, list->count);
+
    if (cobalt_input_pressed(in, COBALT_BTN_DOWN) &&
        view->selected < list->count - 1) {
       view->selected++;
@@ -87,7 +89,9 @@ cobalt_notify_view_update(cobalt_notify_view *view, const cobalt_input *in)
       view->scroll = 0;
    }
 
-   if (!busy && cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
+   /* Bounded before indexing, matching the other two list screens. */
+   if (!busy && view->selected < list->count &&
+       cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
       const cobalt_notification *item = &list->items[view->selected];
       /* A follow has nothing to open. Doing nothing is better than opening
        * something arbitrary, and the row already says what happened. */
@@ -98,7 +102,7 @@ cobalt_notify_view_update(cobalt_notify_view *view, const cobalt_input *in)
       }
    }
 
-   if (!busy && list->has_more && view->selected >= list->count - 1) {
+   if (!busy && cobalt_notifications_can_page(list) && view->selected >= list->count - 1) {
       cobalt_session_begin_notifications(true);
    }
 
