@@ -44,9 +44,25 @@ extern "C" {
 #define COBALT_POST_META_MAX    96
 #define COBALT_CURSOR_MAX      256
 
+/*
+ * Long enough for the CDN URLs Bluesky serves avatars from, which run to about
+ * 130 bytes, with room for a self-hosted PDS that is less terse. Sized to match
+ * COBALT_IMAGECACHE_URL_MAX: truncating here would produce a URL that fetches
+ * the wrong image or nothing at all, and either is worse than the placeholder.
+ */
+#define COBALT_POST_AVATAR_MAX 256
+
 typedef struct {
    char author[COBALT_POST_NAME_MAX];   /* display name, or the handle */
    char handle[COBALT_POST_NAME_MAX];   /* always the handle, with a leading @ */
+
+   /*
+    * Where the author's avatar lives, empty when they have not set one. Only a
+    * URL: fetching and decoding happen in ui/imagecache.c, off the frame loop,
+    * and the card draws a lettered placeholder until one arrives.
+    */
+   char avatar[COBALT_POST_AVATAR_MAX];
+
    char text[COBALT_POST_TEXT_MAX];
    char age[COBALT_RELATIVE_MAX];       /* "3h" */
    char meta[COBALT_POST_META_MAX];     /* "12 replies · 30 reposts · 88 likes" */

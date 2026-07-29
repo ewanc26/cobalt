@@ -8,6 +8,7 @@
 #include "atproto/atproto.h"
 #include "atproto/session.h"
 #include "net/net.h"
+#include "ui/imagecache.h"
 #include "util/log.h"
 #include "util/paths.h"
 
@@ -847,7 +848,7 @@ draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    const char *ca = cobalt_session_ca_path();
    const char *blocker = cobalt_session_blocker();
 
-   char lines[14][160];
+   char lines[16][160];
    int count = 0;
 
    snprintf(lines[count++], sizeof(lines[0]), "Surface: %s (%dx%d) frame %u",
@@ -872,6 +873,24 @@ draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    snprintf(lines[count++], sizeof(lines[0]), "Net worker: %s",
             cobalt_session_threaded() ? "background thread"
                                       : "SYNCHRONOUS - requests stall the frame");
+
+   /*
+    * Avatars fail quietly by design — a card falls back to its initial — so
+    * without a counter here there is no way to tell "nobody has set one" from
+    * "every fetch is failing", which are very different problems.
+    */
+   cobalt_imagecache *images = cobalt_render_images(r);
+   if (!images) {
+      snprintf(lines[count++], sizeof(lines[0]), "Avatars: off (%s)",
+               cobalt_imagecache_supported() ? "cache unavailable"
+                                             : "no SDL2_image");
+   } else {
+      int ready = 0, loading = 0, failed = 0;
+      cobalt_imagecache_stats(images, &ready, &loading, &failed);
+      snprintf(lines[count++], sizeof(lines[0]),
+               "Avatars: %d ready, %d loading, %d failed", ready, loading,
+               failed);
+   }
 
    switch (cobalt_session_state()) {
       case COBALT_AUTH_SIGNED_IN:
@@ -906,7 +925,7 @@ draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
       bool bad = (strstr(lines[i], "NOT FOUND") != NULL) ||
                  (strstr(lines[i], "MISSING") != NULL) ||
                  (strstr(lines[i], "SYNCHRONOUS") != NULL) ||
-                 (i == 8 && blocker != NULL) ||
+                 (blocker != NULL && strncmp(lines[i], "Sign-in:", 8) == 0) ||
                  (net != COBALT_NET_UP && strncmp(lines[i], "Network:", 8) == 0);
 
       cobalt_draw_text_wrapped(r, font, lines[i],

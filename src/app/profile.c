@@ -127,6 +127,14 @@ cobalt_profile_view_update(cobalt_profile_view *view, const cobalt_input *in)
 
 /* --- drawing --- */
 
+/*
+ * The profile avatar is drawn larger than a card's, because this screen is
+ * about the account rather than about a post. Sized from the heading font for
+ * the same reason the card's is sized from the body font: the two surfaces have
+ * their own type scales.
+ */
+#define PROFILE_AVATAR_SIDE(m) ((m)->font_heading * 3)
+
 static int
 header_height(cobalt_render *r, const cobalt_profile *profile,
               const cobalt_metrics *m)
@@ -135,6 +143,16 @@ header_height(cobalt_render *r, const cobalt_profile *profile,
    const int heading_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
 
    int h = m->pad_tile + heading_h + caption_h;   /* name, handle */
+
+   /* The name and handle sit beside the avatar; anything below it clears the
+    * whole column, so the header grows when the avatar is the taller of the
+    * two rather than letting the circle overrun the bio. */
+   const int beside = heading_h + caption_h;
+   const int avatar = PROFILE_AVATAR_SIDE(m);
+   if (avatar > beside) {
+      h += avatar - beside;
+   }
+
    if (profile->description[0]) {
       h += 2 * (caption_h + m->line_gap);
    }
@@ -158,13 +176,19 @@ draw_header(cobalt_render *r, const cobalt_profile *profile,
    const int width = rect->w - 2 * m->pad_tile;
    int y = rect->y + m->pad_tile;
 
-   cobalt_draw_text(r, COBALT_FONT_HEADING, profile->display_name, left, y,
-                    COBALT_COLOUR_TEXT);
-   y += heading_h;
+   const int avatar = PROFILE_AVATAR_SIDE(m);
+   cobalt_avatar_draw(r, profile->avatar, profile->display_name,
+                      profile->handle, left, y, avatar);
 
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, profile->handle, left, y,
-                    COBALT_COLOUR_TEXT_DIM);
-   y += caption_h;
+   /* Name and handle beside the avatar; everything after clears it. */
+   const int name_left = left + avatar + m->pad_tile / 2;
+   cobalt_draw_text(r, COBALT_FONT_HEADING, profile->display_name, name_left, y,
+                    COBALT_COLOUR_TEXT);
+   cobalt_draw_text(r, COBALT_FONT_CAPTION, profile->handle, name_left,
+                    y + heading_h, COBALT_COLOUR_TEXT_DIM);
+
+   const int beside = heading_h + caption_h;
+   y += (avatar > beside) ? avatar : beside;
 
    if (profile->description[0]) {
       cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, profile->description,

@@ -25,6 +25,8 @@
 #include "atproto/session.h"
 #include "input/input.h"
 #include "net/net.h"
+#include "ui/imagecache.h"
+#include "ui/postcard.h"
 #include "ui/render.h"
 #include "ui/theme.h"
 #include "util/log.h"
@@ -48,9 +50,15 @@ typedef struct {
    cobalt_app *app;
    cobalt_input input;
 
+   /* One per surface: a texture belongs to the renderer that made it, and the
+    * two surfaces have separate renderers. */
+   cobalt_imagecache *tv_images;
+   cobalt_imagecache *drc_images;
+
    bool sdl_up;
    bool ttf_up;
    bool net_up;
+   bool images_up;
    bool foreground;
    bool running;
 } cobalt_context;
@@ -77,6 +85,24 @@ shutdown_all(cobalt_context *ctx)
    if (ctx->net_up) {
       cobalt_net_shutdown();
       ctx->net_up = false;
+   }
+
+   /*
+    * Before the renderers: destroying a cache joins its loader threads and then
+    * frees textures, and both have to finish while the renderer that owns those
+    * textures is still alive.
+    */
+   if (ctx->drc_images) {
+      cobalt_imagecache_destroy(ctx->drc_images);
+      ctx->drc_images = NULL;
+   }
+   if (ctx->tv_images) {
+      cobalt_imagecache_destroy(ctx->tv_images);
+      ctx->tv_images = NULL;
+   }
+   if (ctx->images_up) {
+      cobalt_images_shutdown();
+      ctx->images_up = false;
    }
 
    if (ctx->drc) {
@@ -162,6 +188,25 @@ startup(cobalt_context *ctx)
     * diagnostics screen can say which. */
    cobalt_session_init();
 
+   /*
+    * Avatars. Every step is optional and every failure degrades to the lettered
+    * placeholder rather than stopping the app: no SDL2_image, no trust store, a
+    * loader thread that will not start — the timeline still reads.
+    *
+    * After cobalt_session_init(), which is what resolves the trust store.
+    */
+   ctx->images_up = cobalt_images_init(cobalt_session_ca_path());
+   if (ctx->images_up) {
+      ctx->tv_images = cobalt_imagecache_create(COBALT_AVATAR_TEXTURE_MAX,
+                                                COBALT_IMAGE_FIT_CIRCLE);
+      ctx->drc_images = cobalt_imagecache_create(COBALT_AVATAR_TEXTURE_MAX,
+                                                 COBALT_IMAGE_FIT_CIRCLE);
+      cobalt_render_set_images(ctx->tv, ctx->tv_images);
+      cobalt_render_set_images(ctx->drc, ctx->drc_images);
+   } else {
+      COBALT_LOGW("avatars unavailable — cards will show initials");
+   }
+
    cobalt_input_init(&ctx->input);
 
    ctx->app = cobalt_app_create();
@@ -201,6 +246,8 @@ pump_events(cobalt_context *ctx)
              * against the old GPU context has to go. */
             cobalt_render_flush_text_cache(ctx->tv);
             cobalt_render_flush_text_cache(ctx->drc);
+            cobalt_imagecache_flush(ctx->tv_images);
+            cobalt_imagecache_flush(ctx->drc_images);
             break;
 
          case SDL_APP_TERMINATING:
@@ -256,6 +303,14 @@ main(int argc, char **argv)
          COBALT_LOGI("app requested exit");
          break;
       }
+
+      /*
+       * Upload anything the loaders finished, before drawing rather than after:
+       * an avatar that arrived during the last frame should appear on this one,
+       * not the next.
+       */
+      cobalt_imagecache_pump(ctx.tv_images, ctx.tv);
+      cobalt_imagecache_pump(ctx.drc_images, ctx.drc);
 
       /* TV first (no swap), GamePad second (swaps both). */
       cobalt_render_begin(ctx.tv);

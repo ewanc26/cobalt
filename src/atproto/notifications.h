@@ -32,6 +32,7 @@ extern "C" {
 typedef struct {
    char actor[COBALT_POST_NAME_MAX];    /* display name, or the handle */
    char handle[COBALT_POST_NAME_MAX];   /* with a leading @ */
+   char avatar[COBALT_POST_AVATAR_MAX]; /* URL, empty when unset */
    char summary[COBALT_NOTIFICATION_SUMMARY_MAX];  /* "liked your post" */
 
    /* The reply/mention text, when the notification is one. Empty otherwise —

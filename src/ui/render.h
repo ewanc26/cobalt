@@ -73,6 +73,40 @@ void cobalt_fill_rounded_rect(cobalt_render *r, const SDL_Rect *rect, int radius
  */
 void cobalt_draw_tile(cobalt_render *r, const SDL_Rect *rect, float focus);
 
+/*
+ * Draw a texture this context owns into `dst`.
+ *
+ * For textures made outside render.c — see ui/imagecache.h. Callers pass the
+ * texture rather than the renderer so that nothing outside this file holds an
+ * SDL_Renderer: the Wii U backend has no internal locking of any kind, so a
+ * stray draw from a worker thread would corrupt the GX2 command buffer rather
+ * than merely tear.
+ */
+void cobalt_draw_texture(cobalt_render *r, SDL_Texture *texture,
+                         const SDL_Rect *dst);
+
+/*
+ * Create a texture on this context's renderer. Main thread only, for the same
+ * reason. Returns NULL if `r` has no renderer.
+ */
+SDL_Texture *cobalt_render_upload(cobalt_render *r, SDL_Surface *surface);
+
+/* --- images --- */
+
+/*
+ * The avatar cache this context draws from, or NULL if images are off.
+ *
+ * It hangs off the render context rather than being threaded through every
+ * drawing call because that is where it actually belongs: a texture is owned by
+ * one renderer and cannot be handed to the other, so a per-surface cache is the
+ * only arrangement that is correct. Ownership stays with the caller —
+ * cobalt_render_destroy() does not free it.
+ */
+typedef struct cobalt_imagecache cobalt_imagecache;
+
+void cobalt_render_set_images(cobalt_render *r, cobalt_imagecache *cache);
+cobalt_imagecache *cobalt_render_images(cobalt_render *r);
+
 /* --- text --- */
 
 /* Returns the drawn width, or 0 if there is no font. */
