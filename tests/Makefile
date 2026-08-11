@@ -51,12 +51,17 @@ HAVE_WOLFRAM := $(wildcard $(WOLFRAM_ROOT)/include/wolfram/session.h)
 #   cmake -S ../wolfram -B ../wolfram/build-host -DWOLFRAM_BUILD_EXAMPLES=OFF
 #   cmake --build ../wolfram/build-host -j8 --target wolfram
 WOLFRAM_HOST_BUILD ?= $(WOLFRAM_ROOT)/build-host
+# .dylib alongside .so/.a: CMake names the shared library after the host's
+# convention, and a macOS checkout building Wolfram for this same link check
+# gets a .dylib rather than a .so.
 HAVE_WOLFRAM_LIB := $(firstword $(wildcard $(WOLFRAM_HOST_BUILD)/libwolfram.so \
+                                           $(WOLFRAM_HOST_BUILD)/libwolfram.dylib \
                                            $(WOLFRAM_HOST_BUILD)/libwolfram.a))
 # Wolfram pulls cJSON in through FetchContent, so the host build carries its own
 # copy rather than using a system one.
 WOLFRAM_CJSON := $(firstword $(wildcard \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.so \
+   $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.dylib \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.a))
 
 CFLAGS  := -std=gnu11 -g -O1 -Wall -Wextra -I$(SRC) $(SDL_CFLAGS) $(CURL_CFLAGS) \
