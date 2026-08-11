@@ -222,7 +222,7 @@ The stated goal is to go as far as the hardware allows. Some of it never will, a
 | Push notifications | No service the console can register with |
 | GIFs / animated media | Same decode problem as video, plus per-frame budget |
 
-Reachable, in rough order of value: ~~images and avatars~~ (done — see §13), ~~profiles~~ (done), ~~post images and link cards~~ (done — see §13), search, custom feeds, lists, mutes and blocks, threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
+Reachable, in rough order of value: ~~images and avatars~~ (done — see §13), ~~profiles~~ (done), ~~post images and link cards~~ (done — see §13), ~~mutes and blocks~~ (done — see §13), search, custom feeds, lists, threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
 
 **Language policy.** Cobalt may use C++ where it earns its place — RAII around a resource with a manual free/close (mbedTLS contexts, SDL surfaces/textures, file handles), and state-management code where it meaningfully cuts boilerplate over the equivalent hand-rolled C. It is not a rewrite target: existing C modules that work and are tested stay C unless a specific change is touching them anyway, since a wholesale port is a large, separate undertaking with its own review burden, not something to fold into an unrelated feature commit. Wolfram itself stays **C only** — it is the shared SDK across Ewan's ATProto work and its portability is the point (§9 there is explicit about this) — but consuming Wolfram from C++ is exactly what its `wolfram-cpp` layer (`cpp/wolfram-cpp/`, `WOLFRAM_BUILD_CPP=ON`) is for: header-only RAII handles (`unique_handle<T, Free>`) generated from Wolfram's own `wf_*_free` ownership contracts, plus `wf_status` → `std::error_code`. Cobalt does not consume it today — every `wf_agent_*`/`wf_*_free` call site in `atproto/` is hand-paired C — but it is the natural place to reach for it in new Wolfram-facing code, rather than another hand-rolled cleanup path.
 
@@ -486,6 +486,52 @@ later pass gives posts per-image navigation. `cobalt_postcard_height()` grew a
 `cobalt_postcard_draw()` is about to spend it, rather than on every card in
 the list — the same reasoning as everything else in this section's "fixed
 budget, not width-derived" convention, just gated on focus instead of width.
+
+### Mute and block: a profile action, and two list screens sharing one view
+
+Left/Right on the profile header row mute/unmute and block/unblock the
+viewed account — same input language as a post row's Left/Right =
+like/repost, different target. `cobalt_profile` gained `viewer_blocking`
+(a record URI, same undo shape as `viewer_following`) and `viewer_muted`
+(a plain flag; `muteActor`/`unmuteActor` have no record to hand back).
+
+Browsing the *full* muted/blocked lists needed more than that single
+account's viewer state, so this pulled in two Wolfram-side extensions
+alongside the Cobalt work:
+
+- `wf_agent_profile` (used for a single fetched profile) already carried
+  `viewer.following`; it was missing `viewer.blocking`/`viewer.muted`
+  entirely, so a profile screen had no way to show current mute/block state
+  at all until that was added.
+- `wf_agent_profile_view` (the lighter per-row type behind `getBlocks`,
+  `getMutes`, `getFollowers`, `getFollows`, and others, via one shared
+  parser) had the same gap — and mattered more here, since unblocking a row
+  needs *that row's own* block record URI, and there was no way to get it
+  without a redundant per-row `getProfile` call. Both were fixed in Wolfram
+  the same way: parse `viewer.blocking`/`viewer.muted` when present, leave
+  them NULL/false when the source view carries no viewer subtree at all
+  (most `profileView` items don't). Purely additive — no existing caller's
+  behaviour changed.
+
+`atproto/actors.c` (`cobalt_actor_list`) is the flattened-row type this
+produces on the Cobalt side — same "Wolfram hands back owned heap strings,
+the render loop wants fixed buffers" reasoning as `feed.h`/`notifications.h`.
+It's deliberately not `mutes.c`/`blocks.c` split apart: a muted-account row
+and a blocked-account row are the same shape (avatar, name, handle, one
+action), and `app/graph.c`'s `cobalt_graph_view` draws both from one
+implementation parameterised by `cobalt_graph_kind`, reachable from two new
+rows on what used to be the account screen's single sign-out button (now a
+small three-row menu). Unmuting/unblocking from a list row removes it
+locally (`cobalt_actor_list_remove`) rather than waiting on a refetch, the
+same "apply locally, reconcile on the next real fetch" rule interactions
+already follow elsewhere in this file.
+
+This is the concrete home for the `wolfram-cpp` adoption the language-policy
+entry above talks about — RAII handles wrapping `wf_agent_actor_list`/
+`wf_agent_profile`'s owned members instead of the hand-paired
+`memset`/`_free` this code actually uses today. Not done as part of this
+change: the C version needed shipping first, and the two are not
+entangled enough to justify blocking one on the other.
 
 ### `atproto.c` no longer includes a `wolfram/version.h` that was never shipped
 
