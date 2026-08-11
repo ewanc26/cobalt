@@ -55,6 +55,12 @@ typedef struct {
    cobalt_imagecache *tv_images;
    cobalt_imagecache *drc_images;
 
+   /* Post images and link-card thumbnails: a second cache per surface, since
+    * a cache is CONTAIN or CIRCLE and one size, not both — see
+    * ui/render.h's cobalt_render_set_thumbs(). */
+   cobalt_imagecache *tv_thumbs;
+   cobalt_imagecache *drc_thumbs;
+
    bool sdl_up;
    bool ttf_up;
    bool net_up;
@@ -92,6 +98,14 @@ shutdown_all(cobalt_context *ctx)
     * frees textures, and both have to finish while the renderer that owns those
     * textures is still alive.
     */
+   if (ctx->drc_thumbs) {
+      cobalt_imagecache_destroy(ctx->drc_thumbs);
+      ctx->drc_thumbs = NULL;
+   }
+   if (ctx->tv_thumbs) {
+      cobalt_imagecache_destroy(ctx->tv_thumbs);
+      ctx->tv_thumbs = NULL;
+   }
    if (ctx->drc_images) {
       cobalt_imagecache_destroy(ctx->drc_images);
       ctx->drc_images = NULL;
@@ -203,6 +217,16 @@ startup(cobalt_context *ctx)
                                                  COBALT_IMAGE_FIT_CIRCLE);
       cobalt_render_set_images(ctx->tv, ctx->tv_images);
       cobalt_render_set_images(ctx->drc, ctx->drc_images);
+
+      /* Post images and link-card thumbnails: same underlying HTTP/decode
+       * pipeline, a separate cache because the fit and decode size differ
+       * from an avatar's — see COBALT_THUMB_TEXTURE_MAX. */
+      ctx->tv_thumbs = cobalt_imagecache_create(COBALT_THUMB_TEXTURE_MAX,
+                                                COBALT_IMAGE_FIT_CONTAIN);
+      ctx->drc_thumbs = cobalt_imagecache_create(COBALT_THUMB_TEXTURE_MAX,
+                                                 COBALT_IMAGE_FIT_CONTAIN);
+      cobalt_render_set_thumbs(ctx->tv, ctx->tv_thumbs);
+      cobalt_render_set_thumbs(ctx->drc, ctx->drc_thumbs);
    } else {
       COBALT_LOGW("avatars unavailable — cards will show initials");
    }
@@ -248,6 +272,8 @@ pump_events(cobalt_context *ctx)
             cobalt_render_flush_text_cache(ctx->drc);
             cobalt_imagecache_flush(ctx->tv_images);
             cobalt_imagecache_flush(ctx->drc_images);
+            cobalt_imagecache_flush(ctx->tv_thumbs);
+            cobalt_imagecache_flush(ctx->drc_thumbs);
             break;
 
          case SDL_APP_TERMINATING:
@@ -311,6 +337,8 @@ main(int argc, char **argv)
        */
       cobalt_imagecache_pump(ctx.tv_images, ctx.tv);
       cobalt_imagecache_pump(ctx.drc_images, ctx.drc);
+      cobalt_imagecache_pump(ctx.tv_thumbs, ctx.tv);
+      cobalt_imagecache_pump(ctx.drc_thumbs, ctx.drc);
 
       /* TV first (no swap), GamePad second (swaps both). */
       cobalt_render_begin(ctx.tv);

@@ -49,6 +49,8 @@ struct cobalt_render {
 
    /* Borrowed, not owned — see cobalt_render_set_images(). */
    cobalt_imagecache *images;
+   /* Borrowed, not owned — see cobalt_render_set_thumbs(). */
+   cobalt_imagecache *thumbs;
 
    bool warned_long_string;
 };
@@ -425,6 +427,20 @@ cobalt_imagecache *
 cobalt_render_images(cobalt_render *r)
 {
    return r ? r->images : NULL;
+}
+
+void
+cobalt_render_set_thumbs(cobalt_render *r, cobalt_imagecache *cache)
+{
+   if (r) {
+      r->thumbs = cache;
+   }
+}
+
+cobalt_imagecache *
+cobalt_render_thumbs(cobalt_render *r)
+{
+   return r ? r->thumbs : NULL;
 }
 
 /* --- text --- */

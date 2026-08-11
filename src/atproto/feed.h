@@ -32,8 +32,11 @@ extern "C" {
 
 /*
  * One screen shows three posts; this holds enough for a long scroll without a
- * refetch, at roughly 50 KB for the whole feed. The Wii U has room for far
- * more, but a bigger window mostly buys memory pressure during rendering.
+ * refetch, at a few hundred KB for the whole feed (including embedded image
+ * and link-card metadata below — no pixels, just URLs and short strings; the
+ * pixels live in ui/imagecache.c's bounded texture cache instead). The Wii U
+ * has room for far more, but a bigger window mostly buys memory pressure
+ * during rendering.
  */
 #define COBALT_FEED_MAX_POSTS 60
 
@@ -51,6 +54,41 @@ extern "C" {
  * the wrong image or nothing at all, and either is worse than the placeholder.
  */
 #define COBALT_POST_AVATAR_MAX 256
+
+/*
+ * Image embeds and link cards.
+ *
+ * `app.bsky.embed.images` allows up to four images per post. Both this and
+ * the link-card fields below are read straight from the view's already-
+ * resolved CDN URLs (`thumb`, `external.thumb`) — the view shape carries no
+ * blob refs to reconstruct, unlike a record fetched directly from a repo.
+ */
+#define COBALT_POST_IMAGES_MAX     4
+#define COBALT_POST_THUMB_MAX    256
+#define COBALT_POST_LINK_TITLE_MAX 96
+#define COBALT_POST_LINK_DESC_MAX 192
+#define COBALT_POST_LINK_URI_MAX  256
+
+typedef struct {
+   char thumb[COBALT_POST_THUMB_MAX];
+
+   /*
+    * From the embed's own aspectRatio, not the decoded texture — that arrives
+    * later, off the frame loop, and a card's height has to be known before
+    * then or every image would cause the scroll list to jump as it settles.
+    * Zero when the view sent none, which callers treat as "unknown".
+    */
+   int aspect_w;
+   int aspect_h;
+} cobalt_post_image;
+
+typedef struct {
+   /* Empty uri means the post carries no link card. */
+   char uri[COBALT_POST_LINK_URI_MAX];
+   char title[COBALT_POST_LINK_TITLE_MAX];
+   char description[COBALT_POST_LINK_DESC_MAX];
+   char thumb[COBALT_POST_THUMB_MAX];
+} cobalt_post_link;
 
 typedef struct {
    char author[COBALT_POST_NAME_MAX];   /* display name, or the handle */
@@ -71,12 +109,24 @@ typedef struct {
    char reposted_by[COBALT_POST_NAME_MAX];
 
    /*
-    * A short note standing in for content Cobalt cannot draw yet — "[image]",
-    * "[video]", "[link]", "[quote]". Showing a marker is a deliberate choice
+    * A short note standing in for content Cobalt cannot draw — "[video]",
+    * "[quote]", "[quote + media]". Showing a marker is a deliberate choice
     * over dropping the embed silently: a post that is only an image would
-    * otherwise render as a blank card with no explanation.
+    * otherwise render as a blank card with no explanation. Left empty for an
+    * `images` or `external` embed once `images`/`link` below actually carries
+    * it — the drawn thumbnail or link card is the explanation at that point,
+    * and repeating "[image]" beside it would only be clutter.
     */
    char embed_note[32];
+
+   /* Populated for an `app.bsky.embed.images` embed, or the image half of a
+    * `recordWithMedia` one. image_count is 0 for any other embed. */
+   cobalt_post_image images[COBALT_POST_IMAGES_MAX];
+   int image_count;
+
+   /* Populated for an `app.bsky.embed.external` embed, or the external half
+    * of a `recordWithMedia` one. link.uri[0] == '\0' otherwise. */
+   cobalt_post_link link;
 
    /*
     * Raw counts as well as the formatted line, because an interaction updates
@@ -216,6 +266,16 @@ void cobalt_feed_format_counts(char *out, size_t out_size, int replies,
  * nothing rather than as the wrong thing.
  */
 const char *cobalt_feed_embed_note(const char *type);
+
+/*
+ * A short host to show under a link card — "bsky.app" rather than the full
+ * "https://bsky.app/profile/...", which would not fit a GamePad card and
+ * tells the user nothing the full URI doesn't. Strips scheme, userinfo, port,
+ * path and a leading "www.". Empty output for an empty or schemeless-looking
+ * URI. Pure string handling, exposed for testing the same way
+ * cobalt_feed_copy_text is.
+ */
+void cobalt_feed_link_domain(const char *uri, char *out, size_t out_size);
 
 #ifdef COBALT_HAS_WOLFRAM
 /*

@@ -107,6 +107,17 @@ typedef struct cobalt_imagecache cobalt_imagecache;
 void cobalt_render_set_images(cobalt_render *r, cobalt_imagecache *cache);
 cobalt_imagecache *cobalt_render_images(cobalt_render *r);
 
+/*
+ * The post-thumbnail cache this context draws from, or NULL if images are
+ * off. Deliberately separate from the avatar cache above rather than a second
+ * user of it: cobalt_imagecache bakes both the fit (circle vs. contain) and
+ * the decode size into the cache instance itself, and a post image wants a
+ * larger, aspect-preserving decode where an avatar wants a small masked
+ * circle. Same ownership rules as cobalt_render_set_images().
+ */
+void cobalt_render_set_thumbs(cobalt_render *r, cobalt_imagecache *cache);
+cobalt_imagecache *cobalt_render_thumbs(cobalt_render *r);
+
 /* --- text --- */
 
 /* Returns the drawn width, or 0 if there is no font. */
