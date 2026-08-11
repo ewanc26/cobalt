@@ -224,7 +224,15 @@ The stated goal is to go as far as the hardware allows. Some of it never will, a
 
 Reachable, in rough order of value: ~~images and avatars~~ (done — see §13), ~~profiles~~ (done), ~~post images and link cards~~ (done — see §13), search, custom feeds, lists, mutes and blocks, threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
 
-**Language policy.** Cobalt may use C++ (and any other language the toolchain supports) where it earns its place. Wolfram stays **C only** — it is the shared SDK across Ewan's ATProto work and its portability is the point.
+**Language policy.** Cobalt may use C++ where it earns its place — RAII around a resource with a manual free/close (mbedTLS contexts, SDL surfaces/textures, file handles), and state-management code where it meaningfully cuts boilerplate over the equivalent hand-rolled C. It is not a rewrite target: existing C modules that work and are tested stay C unless a specific change is touching them anyway, since a wholesale port is a large, separate undertaking with its own review burden, not something to fold into an unrelated feature commit. Wolfram itself stays **C only** — it is the shared SDK across Ewan's ATProto work and its portability is the point (§9 there is explicit about this) — but consuming Wolfram from C++ is exactly what its `wolfram-cpp` layer (`cpp/wolfram-cpp/`, `WOLFRAM_BUILD_CPP=ON`) is for: header-only RAII handles (`unique_handle<T, Free>`) generated from Wolfram's own `wf_*_free` ownership contracts, plus `wf_status` → `std::error_code`. Cobalt does not consume it today — every `wf_agent_*`/`wf_*_free` call site in `atproto/` is hand-paired C — but it is the natural place to reach for it in new Wolfram-facing code, rather than another hand-rolled cleanup path.
+
+C# was considered and ruled out; see "C# / .NET is not possible" above.
+
+**External C++ libraries.** Checked against `devkitPro/pacman-packages`'s `ppc/` tree (devkitPPC, so Wii/Wii U/GameCube-wide) and `devkitPro/wut-packages` (Wii U-specific overlays: `SDL2*`, `curl`, `mbedtls`, `physfs`, `wut`) rather than assumed, the same standard §12 already holds "What the toolchain actually offers" to. Nothing in either list earns its place against Cobalt's current or near-term roadmap (search, custom feeds, lists, mutes/blocks, threadgates — all protocol-plus-UI work against Wolfram and SDL, needing no new library) enough to justify the binary size and packaging cost of an additional static dependency:
+
+- `glm` (header-only vector/matrix math, C++) is the one worth remembering if a future screen needs real 2D transforms (rotation, scaling animations) beyond the axis-aligned rects everything currently draws — not worth pulling in speculatively.
+- `libfribidi` (C) was already flagged in §12 for the BiDi gap SDL_ttf doesn't cover; still un-vendored, still the right answer when mixed-direction script text is tackled.
+- `json-cpp`, `jansson`, `yaml_cpp`, `libzip`, `box2d`, `ode`, `lua51` were checked and don't fit anything on the roadmap: JSON is already cJSON via Wolfram, there is no YAML config, no archive format to unpack, and no physics or scripting surface in a Bluesky client.
 
 ---
 
