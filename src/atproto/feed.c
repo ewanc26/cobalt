@@ -367,6 +367,9 @@ fill_embed_images(cobalt_post *post, const cJSON *images_view)
       cobalt_post_image *img = &post->images[post->image_count];
       snprintf(img->thumb, sizeof(img->thumb), "%s", thumb);
 
+      const char *alt = json_string(item, "alt");
+      cobalt_feed_copy_text(img->alt, sizeof(img->alt), alt ? alt : "");
+
       const cJSON *ratio = cJSON_GetObjectItemCaseSensitive(item, "aspectRatio");
       img->aspect_w = json_int(ratio, "width");
       img->aspect_h = json_int(ratio, "height");

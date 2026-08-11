@@ -192,7 +192,8 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
 
    for (int i = view->scroll; i < thread->count; i++) {
       const cobalt_post *post = &thread->posts[i];
-      const int h = cobalt_postcard_height(r, post, TEXT_LINES);
+      const int h = cobalt_postcard_height(r, post, TEXT_LINES,
+                                           i == view->selected);
 
       if (y + h > bottom && i > view->scroll) {
          break;

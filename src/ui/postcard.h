@@ -69,9 +69,14 @@ void cobalt_avatar_draw(cobalt_render *r, const char *url, const char *name,
 void cobalt_postcard_contain_fit(int box_w, int box_h, int src_w, int src_h,
                                  int *out_w, int *out_h);
 
-/* How tall the card will be for `text_lines` lines of post text. */
+/*
+ * How tall the card will be for `text_lines` lines of post text. `focused`
+ * must match what the caller will pass to cobalt_postcard_draw() for the
+ * same post: a focused card with alt text reserves extra room for the
+ * caption cobalt_postcard_draw() then actually draws there.
+ */
 int cobalt_postcard_height(cobalt_render *r, const cobalt_post *post,
-                           int text_lines);
+                           int text_lines, bool focused);
 
 /*
  * Draw into `rect`. `indent` is the reply depth — 0 for a timeline card —
