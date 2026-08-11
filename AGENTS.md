@@ -462,6 +462,23 @@ platform-independent logic. The embed-JSON parsing that feeds it
 the rest of the view-flattening code, so it gets sweep and link coverage but
 not a unit test run — same situation as `fill_from_view` already was.
 
+### `atproto.c` no longer includes a `wolfram/version.h` that was never shipped
+
+Found while validating the images/link-card work above, against a sibling
+Wolfram checkout for the first time in a while: `#include <wolfram/version.h>`
+in `atproto.c` names a header Wolfram has never produced. `WOLFRAM_VERSION_STRING`
+is a CMake `PUBLIC` compile definition on Wolfram's own target, propagated to
+consumers through `target_link_libraries` — which only works inside a CMake
+build graph. Cobalt links Wolfram from a plain Makefile (`-I`/`-l`), outside
+that graph entirely, so it was never getting the macro either way; the include
+simply doesn't resolve to anything Wolfram produces. This had never been
+caught because `COBALT_HAS_WOLFRAM` code only gets sweep/link coverage with a
+sibling Wolfram checkout present, and there is no CI here to force that
+combination. Fixed by dropping the include and returning a fixed
+`"wolfram (linked)"` string instead of fabricating a version number Cobalt has
+no build-time path to. Getting a real version onto the diagnostics screen
+again would need either a real exported header from Wolfram or a runtime
+accessor function — neither exists today — not a Cobalt-side fix.
 
 ### There is a host test harness, and it is not a substitute for hardware
 

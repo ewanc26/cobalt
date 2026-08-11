@@ -7,7 +7,6 @@
 #ifdef COBALT_HAS_WOLFRAM
 #include <wolfram/platform.h>
 #include <wolfram/tid.h>
-#include <wolfram/version.h>
 #include <wolfram/wiiu.h>
 #endif
 
@@ -181,7 +180,17 @@ cobalt_atproto_shutdown(void)
 const char *
 cobalt_atproto_sdk_version(void)
 {
-   return "wolfram " WOLFRAM_VERSION_STRING;
+   /*
+    * Not "wolfram " WOLFRAM_VERSION_STRING: that macro is a CMake `PUBLIC`
+    * compile definition on Wolfram's own `wolfram` target, propagated to
+    * consumers through CMake's target-link-libraries usage requirements —
+    * which only exist inside a CMake build graph. Cobalt links Wolfram from
+    * a plain Makefile with `-I`/`-l`, outside that graph entirely, and
+    * Wolfram ships no header that carries the string instead. Asking for it
+    * doesn't downgrade gracefully, it fails the build: `wolfram/version.h`
+    * has never existed in this SDK.
+    */
+   return "wolfram (linked)";
 }
 
 #else /* !COBALT_HAS_WOLFRAM */
