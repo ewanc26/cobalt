@@ -84,6 +84,25 @@ cobalt_profile_apply_follow(cobalt_profile *profile, const char *record_uri)
             (record_uri && record_uri[0]) ? record_uri : "");
 }
 
+void
+cobalt_profile_apply_block(cobalt_profile *profile, const char *record_uri)
+{
+   if (!profile) {
+      return;
+   }
+   snprintf(profile->viewer_blocking, sizeof(profile->viewer_blocking), "%s",
+            (record_uri && record_uri[0]) ? record_uri : "");
+}
+
+void
+cobalt_profile_apply_mute(cobalt_profile *profile, bool muted)
+{
+   if (!profile) {
+      return;
+   }
+   profile->viewer_muted = muted;
+}
+
 #ifdef COBALT_HAS_WOLFRAM
 
 void
@@ -128,6 +147,9 @@ cobalt_profile_from_wolfram(cobalt_profile *out,
 
    snprintf(out->viewer_following, sizeof(out->viewer_following), "%s",
             typed->following ? typed->following : "");
+   snprintf(out->viewer_blocking, sizeof(out->viewer_blocking), "%s",
+            typed->blocking ? typed->blocking : "");
+   out->viewer_muted = typed->muted;
 
    /* Comparing DIDs rather than handles: a handle can be changed, and the
     * follow button appearing on your own profile would be a visible bug. */

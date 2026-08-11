@@ -42,6 +42,11 @@ typedef struct {
    char cid[COBALT_POST_CID_MAX];
    char record_uri[COBALT_POST_URI_MAX];
 
+   /* Mute only: the target state (true = mute, false = unmute). Unlike
+    * follow/block, mute has no record URI for record_uri's emptiness to
+    * signal an undo with, so the direction is carried explicitly. */
+   bool flag;
+
    /* Composing. `text` is the post body; the refs are empty for a new post. */
    char text[COBALT_COMPOSE_TEXT_MAX];
    char root_uri[COBALT_POST_URI_MAX];
@@ -991,6 +996,83 @@ run_follow(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
 }
 
 static void
+run_mute(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in first.");
+      return;
+   }
+
+   const bool mute = in->flag;
+   COBALT_LOGI("session: %s %s", mute ? "muting" : "unmuting", in->uri);
+   const wf_status status = mute ? wf_agent_mute_actor(s.wf, in->uri)
+                                 : wf_agent_unmute_actor(s.wf, in->uri);
+
+   if (status != WF_OK) {
+      COBALT_LOGW("session: %s failed (%d)", mute ? "mute" : "unmute",
+                  (int) status);
+      set_message(r, "Could not %s (wolfram status %d).",
+                  mute ? "mute" : "unmute", (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(s.lock);
+   cobalt_profile_apply_mute(&s.profile, mute);
+   SDL_UnlockMutex(s.lock);
+
+   publish_session();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+static void
+run_block(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in first.");
+      return;
+   }
+
+   const bool undo = in->record_uri[0] != '\0';
+   wf_status status;
+   char created[COBALT_POST_URI_MAX] = "";
+
+   if (undo) {
+      COBALT_LOGI("session: unblocking %s", in->record_uri);
+      status = wf_agent_unblock(s.wf, in->record_uri);
+   } else {
+      wf_agent_post_result result;
+      memset(&result, 0, sizeof(result));
+
+      COBALT_LOGI("session: blocking %s", in->uri);
+      status = wf_agent_block(s.wf, in->uri, &result);
+      if (status == WF_OK) {
+         snprintf(created, sizeof(created), "%s", result.uri ? result.uri : "");
+      }
+      wf_agent_post_result_free(&result);
+   }
+
+   if (status != WF_OK) {
+      COBALT_LOGW("session: block failed (%d)", (int) status);
+      set_message(r, "Could not %s (wolfram status %d).",
+                  undo ? "unblock" : "block", (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(s.lock);
+   cobalt_profile_apply_block(&s.profile, undo ? NULL : created);
+   SDL_UnlockMutex(s.lock);
+
+   publish_session();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+static void
 run_logout(cobalt_job_result *r, cobalt_auth_state *state)
 {
    if (s.wf) {
@@ -1054,6 +1136,8 @@ run_job(cobalt_job_kind kind, const job_input *in, cobalt_auth_state *state)
          break;
       case COBALT_JOB_PROFILE:  run_profile(in, &r, state);   break;
       case COBALT_JOB_FOLLOW:   run_follow(in, &r, state);    break;
+      case COBALT_JOB_MUTE:     run_mute(in, &r, state);      break;
+      case COBALT_JOB_BLOCK:    run_block(in, &r, state);     break;
       case COBALT_JOB_NONE:
       default:                                           break;
    }
@@ -1404,6 +1488,47 @@ cobalt_session_begin_follow(void)
       return false;
    }
    return submit(COBALT_JOB_FOLLOW, &in);
+}
+
+bool
+cobalt_session_begin_mute(void)
+{
+   job_input in;
+   memset(&in, 0, sizeof(in));
+
+   SDL_LockMutex(s.lock);
+   const bool have = s.profile.loaded && !s.profile.is_self && s.profile.did[0];
+   if (have) {
+      snprintf(in.uri, sizeof(in.uri), "%s", s.profile.did);
+      in.flag = !s.profile.viewer_muted;   /* toggle: mute if not muted */
+   }
+   SDL_UnlockMutex(s.lock);
+
+   if (!have) {
+      return false;
+   }
+   return submit(COBALT_JOB_MUTE, &in);
+}
+
+bool
+cobalt_session_begin_block(void)
+{
+   job_input in;
+   memset(&in, 0, sizeof(in));
+
+   SDL_LockMutex(s.lock);
+   const bool have = s.profile.loaded && !s.profile.is_self && s.profile.did[0];
+   if (have) {
+      snprintf(in.uri, sizeof(in.uri), "%s", s.profile.did);
+      snprintf(in.record_uri, sizeof(in.record_uri), "%s",
+               s.profile.viewer_blocking);
+   }
+   SDL_UnlockMutex(s.lock);
+
+   if (!have) {
+      return false;
+   }
+   return submit(COBALT_JOB_BLOCK, &in);
 }
 
 bool

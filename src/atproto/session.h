@@ -67,6 +67,8 @@ typedef enum {
    COBALT_JOB_NOTIFICATIONS,
    COBALT_JOB_PROFILE,
    COBALT_JOB_FOLLOW,
+   COBALT_JOB_MUTE,
+   COBALT_JOB_BLOCK,
 } cobalt_job_kind;
 
 typedef struct {
@@ -209,6 +211,12 @@ const cobalt_feed *cobalt_session_author_feed(void);
  * direction comes from the profile's own viewer state rather than the caller's.
  */
 bool cobalt_session_begin_follow(void);
+
+/* Same shape, for mute and block. Neither is available on the viewer's own
+ * profile, matching cobalt_session_begin_follow — the caller (app/profile.c)
+ * already gates all three the same way. */
+bool cobalt_session_begin_mute(void);
+bool cobalt_session_begin_block(void);
 
 /*
  * Guard for the shared snapshots above.

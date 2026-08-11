@@ -46,6 +46,18 @@ typedef struct {
     */
    char viewer_following[COBALT_POST_URI_MAX];
 
+   /* Same shape as viewer_following: the viewer's own block record URI,
+    * empty when not blocking. What an unblock deletes. */
+   char viewer_blocking[COBALT_POST_URI_MAX];
+
+   /*
+    * Whether the viewer has muted this account. Unlike following/blocking
+    * there is no record URI here to hand back — muteActor/unmuteActor are a
+    * plain account-level flag with no output, so this is the only state an
+    * "undo" needs.
+    */
+   bool viewer_muted;
+
    /* False until a fetch has landed, so the screen can tell "empty" from
     * "not asked yet". */
    bool loaded;
@@ -75,6 +87,12 @@ void cobalt_profile_format_number(char *out, size_t out_size, int value,
 /* Apply a follow or unfollow locally. `record_uri` is the created record, or
  * NULL when undoing. */
 void cobalt_profile_apply_follow(cobalt_profile *profile, const char *record_uri);
+
+/* Same, for a block. */
+void cobalt_profile_apply_block(cobalt_profile *profile, const char *record_uri);
+
+/* Apply a mute or unmute locally. No record URI: mute state is a plain flag. */
+void cobalt_profile_apply_mute(cobalt_profile *profile, bool muted);
 
 #ifdef COBALT_HAS_WOLFRAM
 struct wf_agent_profile;

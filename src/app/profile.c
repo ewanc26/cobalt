@@ -98,11 +98,18 @@ cobalt_profile_view_update(cobalt_profile_view *view, const cobalt_input *in)
    }
 
    if (view->selected == HEADER_ROW) {
-      /* A on the header follows or unfollows. Your own profile has no such
-       * button, and the session layer refuses it there too. */
-      if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM) && profile->loaded &&
-          !profile->is_self) {
-         cobalt_session_begin_follow();
+      /* Same three-button language a post row already uses (A / Left /
+       * Right), just mapped to follow/mute/block instead of open/like/repost.
+       * None apply to your own profile, and the session layer refuses them
+       * there too. */
+      if (profile->loaded && !profile->is_self) {
+         if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
+            cobalt_session_begin_follow();
+         } else if (cobalt_input_pressed(in, COBALT_BTN_LEFT)) {
+            cobalt_session_begin_mute();
+         } else if (cobalt_input_pressed(in, COBALT_BTN_RIGHT)) {
+            cobalt_session_begin_block();
+         }
       }
       return COBALT_PROFILE_VIEW_STAY;
    }
@@ -159,6 +166,7 @@ header_height(cobalt_render *r, const cobalt_profile *profile,
    h += caption_h;                                /* counts */
    if (!profile->is_self) {
       h += m->font_body * 2 + m->gap;             /* follow button */
+      h += caption_h + m->gap / 2;                /* mute/block status line */
    }
    h += m->pad_tile;
    return h;
@@ -213,6 +221,24 @@ draw_header(cobalt_render *r, const cobalt_profile *profile,
                                button.y + (button.h - label_h) / 2, button.w,
                                following ? COBALT_COLOUR_TEXT_DIM
                                          : COBALT_COLOUR_ACCENT);
+      y += button.h + m->gap;
+
+      /* Mute/block have no dedicated buttons — Left/Right on this row,
+       * exactly like a post row's like/repost — so the only thing drawn here
+       * is the current state, and only when it says something (an unmuted,
+       * unblocked account, the common case, gets nothing to read). */
+      const bool blocking = profile->viewer_blocking[0] != '\0';
+      if (profile->viewer_muted || blocking) {
+         char status[48];
+         if (profile->viewer_muted && blocking) {
+            snprintf(status, sizeof(status), "Muted \xC2\xB7 Blocked");
+         } else {
+            snprintf(status, sizeof(status), "%s",
+                     profile->viewer_muted ? "Muted" : "Blocked");
+         }
+         cobalt_draw_text(r, COBALT_FONT_CAPTION, status, left, y,
+                          COBALT_COLOUR_ACCENT);
+      }
    }
 }
 
@@ -312,6 +338,6 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     cobalt_session_busy()
                        ? "Working..."
-                       : "A: follow / open   Left: like   Right: repost   B: back",
+                       : "A: follow/open   Left: like/mute   Right: repost/block   B: back",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }
