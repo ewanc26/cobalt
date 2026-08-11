@@ -21,6 +21,42 @@
 #define AVATAR_SIDE(m) ((m)->font_body * 2)
 #define AVATAR_GAP(m)  ((m)->pad_tile / 2)
 
+/*
+ * Fixed heights for the embed block, in body-line multiples like AVATAR_SIDE
+ * above. Width-independent by design: cobalt_postcard_height has no rect to
+ * measure against (callers always draw at the same width regardless of
+ * indent — see thread.c, which passes indent to draw but not to height), so
+ * every size in this file that has to agree between the two is a fixed
+ * budget rather than something computed from a draw-time width.
+ */
+#define EMBED_SINGLE_IMAGE_H(bh) ((bh) * 6)
+#define EMBED_IMAGE_GRID_H(bh)   ((bh) * 4)
+#define EMBED_GAP(m)             ((m)->pad_tile / 2)
+#define EMBED_CELL_GAP(m)        ((m)->pad_tile / 4 > 0 ? (m)->pad_tile / 4 : 2)
+
+/*
+ * Height of the image/link-card block below the post text, or 0 for a post
+ * with neither. Shared between cobalt_postcard_height and cobalt_postcard_draw
+ * so the two cannot disagree about how much room it takes.
+ */
+static int
+embed_block_height(const cobalt_metrics *m, int caption_h, int body_h,
+                   const cobalt_post *post)
+{
+   if (post->image_count == 1) {
+      return EMBED_SINGLE_IMAGE_H(body_h);
+   }
+   if (post->image_count > 1) {
+      return EMBED_IMAGE_GRID_H(body_h);
+   }
+   if (post->link.uri[0]) {
+      /* Padding top and bottom, one title line, two description lines, one
+       * domain line. */
+      return m->pad_tile + body_h + 3 * caption_h;
+   }
+   return 0;
+}
+
 int
 cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines)
 {
@@ -34,6 +70,12 @@ cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines
    }
    h += body_h;                                     /* author row */
    h += text_lines * (body_h + m->line_gap);
+
+   const int embed_h = embed_block_height(m, caption_h, body_h, post);
+   if (embed_h > 0) {
+      h += embed_h + EMBED_GAP(m);
+   }
+
    if (post->meta[0] || post->embed_note[0] || post->viewer_like[0] ||
        post->viewer_repost[0]) {
       h += caption_h;
@@ -182,6 +224,158 @@ cobalt_avatar_draw(cobalt_render *r, const char *url, const char *name,
 }
 
 void
+cobalt_postcard_contain_fit(int box_w, int box_h, int src_w, int src_h,
+                            int *out_w, int *out_h)
+{
+   if (!out_w || !out_h) {
+      return;
+   }
+   if (box_w <= 0 || box_h <= 0) {
+      *out_w = 0;
+      *out_h = 0;
+      return;
+   }
+   if (src_w <= 0 || src_h <= 0) {
+      *out_w = box_w;
+      *out_h = box_h;
+      return;
+   }
+
+   /* Scale to the box height first; if that overflows the width, scale to
+    * the width instead. Exactly one of the two candidate scales fits — the
+    * other, by definition, is the one that overflowed. */
+   const int64_t by_height_w = (int64_t) box_h * src_w / src_h;
+   if (by_height_w <= box_w) {
+      *out_w = (int) by_height_w;
+      *out_h = box_h;
+   } else {
+      *out_w = box_w;
+      *out_h = (int) ((int64_t) box_w * src_h / src_w);
+   }
+}
+
+/*
+ * One image or link-card thumbnail, aspect-fit within `cell` and centred.
+ * Draws a flat frame first regardless of whether a texture is ready, so a
+ * post with only an image reads as "something is here, still loading" rather
+ * than as a gap — the same reasoning as the avatar placeholder disc, without
+ * a letter since a thumbnail has no name to draw one from.
+ */
+static void
+draw_thumb_cell(cobalt_render *r, const char *url, int aspect_w, int aspect_h,
+                const SDL_Rect *cell)
+{
+   cobalt_fill_rounded_rect(r, cell, 6, COBALT_COLOUR_TILE_EDGE);
+
+   cobalt_imagecache *thumbs = cobalt_render_thumbs(r);
+   SDL_Texture *texture = NULL;
+   int tex_w = 0, tex_h = 0;
+   if (thumbs && url && url[0]) {
+      texture = cobalt_imagecache_get(thumbs, r, url, &tex_w, &tex_h);
+   }
+   if (!texture) {
+      return;
+   }
+
+   const int src_w = tex_w > 0 ? tex_w : aspect_w;
+   const int src_h = tex_h > 0 ? tex_h : aspect_h;
+
+   int dst_w = cell->w, dst_h = cell->h;
+   cobalt_postcard_contain_fit(cell->w, cell->h, src_w, src_h, &dst_w, &dst_h);
+
+   const SDL_Rect dst = { cell->x + (cell->w - dst_w) / 2,
+                          cell->y + (cell->h - dst_h) / 2, dst_w, dst_h };
+   cobalt_draw_texture(r, texture, &dst);
+}
+
+/* Up to COBALT_POST_IMAGES_MAX images, side by side in one row. */
+static void
+draw_image_row(cobalt_render *r, const cobalt_post *post, int x, int y,
+               int width, int height)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const int n = post->image_count;
+   const int gap = EMBED_CELL_GAP(m);
+   const int cell_w = (width - gap * (n - 1)) / (n > 0 ? n : 1);
+   if (cell_w <= 0) {
+      return;
+   }
+
+   int cx = x;
+   for (int i = 0; i < n; i++) {
+      const SDL_Rect cell = { cx, y, cell_w, height };
+      draw_thumb_cell(r, post->images[i].thumb, post->images[i].aspect_w,
+                      post->images[i].aspect_h, &cell);
+      cx += cell_w + gap;
+   }
+}
+
+/*
+ * A link card: an optional square thumbnail, then title, description and the
+ * link's host stacked beside it — the same information Bluesky's own link
+ * card shows, laid out for a fixed-height row rather than a variable one for
+ * the same reason the rest of this file is width- but not content-driven.
+ */
+static void
+draw_link_card(cobalt_render *r, const cobalt_post *post, int x, int y,
+              int width, int height)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const SDL_Rect box = { x, y, width, height };
+   cobalt_draw_tile(r, &box, 0.0f);
+
+   const int pad = EMBED_GAP(m);
+   const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+
+   int text_x = x + pad;
+   if (post->link.thumb[0]) {
+      const int side = height - 2 * pad;
+      const SDL_Rect cell = { x + pad, y + pad, side, side };
+      draw_thumb_cell(r, post->link.thumb, 1, 1, &cell);
+      text_x = cell.x + cell.w + pad;
+   }
+
+   const int text_right = x + width - pad;
+   const int text_width = text_right - text_x;
+   if (text_width <= 0) {
+      return;
+   }
+
+   int ty = y + pad;
+   if (post->link.title[0]) {
+      ty += cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, post->link.title,
+                                     text_x, ty, text_width, 1,
+                                     COBALT_COLOUR_TEXT);
+   }
+   if (post->link.description[0]) {
+      ty += cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION,
+                                     post->link.description, text_x, ty,
+                                     text_width, 2, COBALT_COLOUR_TEXT_DIM);
+   }
+
+   char domain[64];
+   cobalt_feed_link_domain(post->link.uri, domain, sizeof(domain));
+   if (domain[0]) {
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, domain, text_x,
+                       y + height - pad - caption_h, COBALT_COLOUR_ACCENT);
+   }
+}
+
+/* Dispatches to whichever of the above the post actually carries. `height`
+ * is the caller's embed_block_height() result, not recomputed here, so draw
+ * and height can never disagree about how tall this block is. */
+static void
+draw_embed_media(cobalt_render *r, const cobalt_post *post, int x, int y,
+                 int width, int height)
+{
+   if (post->image_count > 0) {
+      draw_image_row(r, post, x, y, width, height);
+   } else if (post->link.uri[0]) {
+      draw_link_card(r, post, x, y, width, height);
+   }
+}
+
+void
 cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
                      const SDL_Rect *rect, bool focused, int text_lines,
                      int indent)
@@ -261,6 +455,12 @@ cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
                                text_width, text_lines, COBALT_COLOUR_TEXT);
    }
    y += text_lines * (body_h + m->line_gap);
+
+   const int embed_h = embed_block_height(m, caption_h, body_h, post);
+   if (embed_h > 0) {
+      draw_embed_media(r, post, text_left, y, text_width, embed_h);
+      y += embed_h + EMBED_GAP(m);
+   }
 
    char marker[48];
    viewer_marker(post, marker, sizeof(marker));

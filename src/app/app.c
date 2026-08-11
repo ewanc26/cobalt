@@ -892,6 +892,23 @@ draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
                failed);
    }
 
+   /* Same reasoning, same cache implementation, different instance — see
+    * ui/render.h's cobalt_render_set_thumbs(). Reported separately because
+    * the two caches can legitimately disagree: post images are far more
+    * likely to be large or slow than an avatar. */
+   cobalt_imagecache *thumbs = cobalt_render_thumbs(r);
+   if (!thumbs) {
+      snprintf(lines[count++], sizeof(lines[0]), "Thumbnails: off (%s)",
+               cobalt_imagecache_supported() ? "cache unavailable"
+                                             : "no SDL2_image");
+   } else {
+      int ready = 0, loading = 0, failed = 0;
+      cobalt_imagecache_stats(thumbs, &ready, &loading, &failed);
+      snprintf(lines[count++], sizeof(lines[0]),
+               "Thumbnails: %d ready, %d loading, %d failed", ready, loading,
+               failed);
+   }
+
    switch (cobalt_session_state()) {
       case COBALT_AUTH_SIGNED_IN:
          snprintf(lines[count++], sizeof(lines[0]), "Session: %s at %s",

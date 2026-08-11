@@ -222,7 +222,7 @@ The stated goal is to go as far as the hardware allows. Some of it never will, a
 | Push notifications | No service the console can register with |
 | GIFs / animated media | Same decode problem as video, plus per-frame budget |
 
-Reachable, in rough order of value: ~~images and avatars~~ (done — see §13), ~~profiles~~ (done), search, custom feeds, lists, mutes and blocks, threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
+Reachable, in rough order of value: ~~images and avatars~~ (done — see §13), ~~profiles~~ (done), ~~post images and link cards~~ (done — see §13), search, custom feeds, lists, mutes and blocks, threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
 
 **Language policy.** Cobalt may use C++ (and any other language the toolchain supports) where it earns its place. Wolfram stays **C only** — it is the shared SDK across Ewan's ATProto work and its portability is the point.
 
@@ -424,6 +424,44 @@ Consequences worth keeping:
 `net/http.c` is a plain HTTPS GET into memory, deliberately outside the ATProto layer: fetching an avatar is not protocol-shaped work, and routing it through Wolfram would serialise images behind the one request the session worker may have in flight. It repeats two platform details Wolfram also handles, because they are properties of *this console* rather than of the SDK — the bundled CA bundle, and the application DRBG for the handshake (§13's RNG note). It is https-only and caps the transfer in the write callback, aborting the download rather than discarding an oversized result afterwards: the URL comes from a PDS response and a hostile one could point at an endless stream.
 
 Avatar counts are on the diagnostics screen. Without them there is no way to tell "nobody has set one" from "every fetch is failing", which are very different problems and look identical.
+
+### Post images and link cards reuse the avatar pipeline, through a second cache
+
+Images embedded in a post (`app.bsky.embed.images`) and link-card previews
+(`app.bsky.embed.external`, plus the media half of `recordWithMedia`) draw
+through the same off-frame-loop fetch/decode/upload split as avatars — see the
+section above — rather than a parallel implementation. What's different is the
+fit: an avatar is decoded CIRCLE at a small fixed size, a thumbnail is decoded
+CONTAIN (aspect-preserving, no crop) at a larger one, and `cobalt_imagecache`
+bakes both the fit and the decode size into the cache instance itself. One
+cache cannot serve both, so there are now two per surface — `cobalt_render`
+carries a second borrowed pointer (`cobalt_render_set_thumbs()` /
+`cobalt_render_thumbs()`) alongside the avatar one, created, pumped, flushed
+and destroyed in lockstep with it in `main.c`. `COBALT_THUMB_TEXTURE_MAX`
+(320px) is deliberately smaller than a CDN thumbnail can arrive at, for the
+same texture-budget reasoning §13's avatar section gives for 64px avatars.
+
+Card height is a fixed budget per embed shape (one image, a 2-4 image row, a
+link card), not something computed from the source image's aspect ratio.
+This wasn't a shortcut: `cobalt_postcard_height()` has no rect to measure
+against in the first place — every caller draws at the same fixed width
+regardless of list indent (thread.c passes indent to *draw*, never to
+height), so there was already no way for it to do pixel-exact layout even for
+the post text above the embed, and `text_lines` is a fixed line count for the
+same reason. Matching that convention rather than being the one part of the
+card that's an exception keeps `cobalt_postcard_height()` and
+`cobalt_postcard_draw()` unable to disagree about a card's size — both call
+the same `embed_block_height()` — which is worth more than a height that
+happens to track a particular photo's aspect ratio.
+
+The pure geometry — contain-fit sizing, and the link card's host-only display
+string (`cobalt_feed_link_domain`, "bsky.app" rather than the full URI) — is
+exposed and unit tested (`tests/test_main.c`), per §10's carve-out for
+platform-independent logic. The embed-JSON parsing that feeds it
+(`fill_embed_media` in `atproto/feed.c`) is behind `COBALT_HAS_WOLFRAM` like
+the rest of the view-flattening code, so it gets sweep and link coverage but
+not a unit test run — same situation as `fill_from_view` already was.
+
 
 ### There is a host test harness, and it is not a substitute for hardware
 

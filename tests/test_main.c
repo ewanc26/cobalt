@@ -15,6 +15,7 @@
 #include "cache/session_store.h"
 #include "ui/imagecache.h"
 #include "ui/keyboard.h"
+#include "ui/postcard.h"
 #include "util/entropy.h"
 #include "util/rng.h"
 #include "util/timefmt.h"
@@ -753,6 +754,45 @@ test_feed_embeds(void)
    CHECK_STR(cobalt_feed_embed_note(NULL), "");
 }
 
+static void
+test_feed_link_domain(void)
+{
+   begin("link card domain extraction");
+
+   char out[64];
+
+   cobalt_feed_link_domain("https://bsky.app/profile/ewan.bsky.social", out,
+                           sizeof(out));
+   CHECK_STR(out, "bsky.app");
+
+   /* A leading www. is stripped; it adds noise without information. */
+   cobalt_feed_link_domain("https://www.example.com/path?q=1#frag", out,
+                           sizeof(out));
+   CHECK_STR(out, "example.com");
+
+   /* No scheme is a legitimate shape for a link-card URI to carry. */
+   cobalt_feed_link_domain("example.com/path", out, sizeof(out));
+   CHECK_STR(out, "example.com");
+
+   /* A userinfo component is stripped, not folded into the host. */
+   cobalt_feed_link_domain("https://user@example.com/", out, sizeof(out));
+   CHECK_STR(out, "example.com");
+
+   /* A port is not part of the displayed host. */
+   cobalt_feed_link_domain("https://example.com:8080/", out, sizeof(out));
+   CHECK_STR(out, "example.com");
+
+   cobalt_feed_link_domain(NULL, out, sizeof(out));
+   CHECK_STR(out, "");
+   cobalt_feed_link_domain("", out, sizeof(out));
+   CHECK_STR(out, "");
+
+   /* A tiny buffer truncates rather than overflowing. */
+   char tiny[5];
+   cobalt_feed_link_domain("https://example.com/", tiny, sizeof(tiny));
+   CHECK(strlen(tiny) < sizeof(tiny));
+}
+
 
 /* --- optimistic interactions --- */
 
@@ -1431,6 +1471,41 @@ test_image_circle_mask(void)
    SDL_FreeSurface(out);
 }
 
+static void
+test_postcard_contain_fit(void)
+{
+   begin("embed contain-fit sizes without cropping");
+
+   int w = 0, h = 0;
+
+   /* A wide box, a taller-than-wide source: the height axis is tighter, so
+    * the image comes back pillarboxed rather than spilling past the box's
+    * height into the next line. */
+   cobalt_postcard_contain_fit(400, 100, 200, 400, &w, &h);
+   CHECK(h == 100);
+   CHECK(w == 50); /* 400 * (200/400) */
+
+   /* A tall box, a wider-than-tall source: the width axis is tighter. */
+   cobalt_postcard_contain_fit(100, 400, 400, 200, &w, &h);
+   CHECK(w == 100);
+   CHECK(h == 50);
+
+   /* A source that already matches the box's aspect ratio fills it exactly
+    * on both axes, not just the tighter one. */
+   cobalt_postcard_contain_fit(200, 100, 400, 200, &w, &h);
+   CHECK(w == 200);
+   CHECK(h == 100);
+
+   /* An unknown source size (still loading, no aspect data) fills the box —
+    * the caller draws the flat placeholder frame at full size until then. */
+   cobalt_postcard_contain_fit(200, 100, 0, 0, &w, &h);
+   CHECK(w == 200 && h == 100);
+
+   /* A degenerate box produces no rectangle to draw, not a division fault. */
+   cobalt_postcard_contain_fit(0, 100, 200, 200, &w, &h);
+   CHECK(w == 0 && h == 0);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -1466,6 +1541,7 @@ main(int argc, char **argv)
    test_feed_text();
    test_feed_counts();
    test_feed_embeds();
+   test_feed_link_domain();
    test_interactions();
    test_compose();
    test_post_refuses_partial_refs();
@@ -1477,6 +1553,7 @@ main(int argc, char **argv)
    test_image_fit_geometry();
    test_image_resample();
    test_image_circle_mask();
+   test_postcard_contain_fit();
 
    printf("\n%d checks, %d failures\n", s_checks, s_failures);
    return s_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

@@ -284,6 +284,48 @@ cobalt_feed_embed_note(const char *type)
    return "";
 }
 
+void
+cobalt_feed_link_domain(const char *uri, char *out, size_t out_size)
+{
+   if (!out || out_size == 0) {
+      return;
+   }
+   out[0] = '\0';
+   if (!uri || !uri[0]) {
+      return;
+   }
+
+   const char *scheme_end = strstr(uri, "://");
+   const char *host = scheme_end ? scheme_end + 3 : uri;
+
+   /* Strip "user@" if present before the host, so a URI that carries one
+    * (legal, if unusual for a link-card target) doesn't leak into the
+    * display string. */
+   const char *at = strchr(host, '@');
+   const char *slash = strchr(host, '/');
+   if (at && (!slash || at < slash)) {
+      host = at + 1;
+   }
+
+   if (strncmp(host, "www.", 4) == 0) {
+      host += 4;
+   }
+
+   size_t len = 0;
+   while (host[len] && host[len] != '/' && host[len] != ':' &&
+          host[len] != '?' && host[len] != '#') {
+      len++;
+   }
+   if (len == 0) {
+      return;
+   }
+   if (len >= out_size) {
+      len = out_size - 1;
+   }
+   memcpy(out, host, len);
+   out[len] = '\0';
+}
+
 #ifdef COBALT_HAS_WOLFRAM
 
 /* Read a string member, returning NULL rather than an empty string when it is
@@ -294,6 +336,111 @@ json_string(const cJSON *object, const char *key)
    const cJSON *item = cJSON_GetObjectItemCaseSensitive(object, key);
    return (item && cJSON_IsString(item) && item->valuestring) ? item->valuestring
                                                               : NULL;
+}
+
+static int
+json_int(const cJSON *object, const char *key)
+{
+   const cJSON *item = cJSON_GetObjectItemCaseSensitive(object, key);
+   return (item && cJSON_IsNumber(item)) ? item->valueint : 0;
+}
+
+/* Fill post->images[]/image_count from an app.bsky.embed.images#view. */
+static void
+fill_embed_images(cobalt_post *post, const cJSON *images_view)
+{
+   const cJSON *images = cJSON_GetObjectItemCaseSensitive(images_view, "images");
+   if (!cJSON_IsArray(images)) {
+      return;
+   }
+
+   const cJSON *item;
+   cJSON_ArrayForEach(item, images) {
+      if (post->image_count >= COBALT_POST_IMAGES_MAX) {
+         break;
+      }
+      const char *thumb = json_string(item, "thumb");
+      if (!thumb || !thumb[0]) {
+         continue;
+      }
+
+      cobalt_post_image *img = &post->images[post->image_count];
+      snprintf(img->thumb, sizeof(img->thumb), "%s", thumb);
+
+      const cJSON *ratio = cJSON_GetObjectItemCaseSensitive(item, "aspectRatio");
+      img->aspect_w = json_int(ratio, "width");
+      img->aspect_h = json_int(ratio, "height");
+
+      post->image_count++;
+   }
+}
+
+/* Fill post->link from an app.bsky.embed.external#view. */
+static void
+fill_embed_external(cobalt_post *post, const cJSON *external_view)
+{
+   const cJSON *external =
+      cJSON_GetObjectItemCaseSensitive(external_view, "external");
+   const char *uri = json_string(external, "uri");
+   if (!uri || !uri[0]) {
+      return;
+   }
+
+   snprintf(post->link.uri, sizeof(post->link.uri), "%s", uri);
+
+   const char *title = json_string(external, "title");
+   cobalt_feed_copy_text(post->link.title, sizeof(post->link.title),
+                         title ? title : "");
+   const char *desc = json_string(external, "description");
+   cobalt_feed_copy_text(post->link.description, sizeof(post->link.description),
+                         desc ? desc : "");
+   const char *thumb = json_string(external, "thumb");
+   snprintf(post->link.thumb, sizeof(post->link.thumb), "%s", thumb ? thumb : "");
+}
+
+/*
+ * Populate the drawable media (images, link card) from a post's embed.
+ *
+ * `recordWithMedia` carries its media under a nested "media" object rather
+ * than at the embed's own top level, so the $type driving the switch below is
+ * read from there instead when that's the shape in hand. A pure quote or a
+ * video embed leaves both post->image_count and post->link.uri empty — the
+ * bracket note cobalt_feed_embed_note produced is the only thing shown for
+ * those, same as before this function existed.
+ */
+static void
+fill_embed_media(cobalt_post *post, const cJSON *embed)
+{
+   if (!embed) {
+      return;
+   }
+
+   const char *type = json_string(embed, "$type");
+   const cJSON *media = embed;
+
+   if (type && strncmp(type, "app.bsky.embed.recordWithMedia",
+                       strlen("app.bsky.embed.recordWithMedia")) == 0) {
+      media = cJSON_GetObjectItemCaseSensitive(embed, "media");
+      type = json_string(media, "$type");
+   }
+   if (!type) {
+      return;
+   }
+
+   if (strncmp(type, "app.bsky.embed.images", strlen("app.bsky.embed.images")) ==
+       0) {
+      fill_embed_images(post, media);
+   } else if (strncmp(type, "app.bsky.embed.external",
+                      strlen("app.bsky.embed.external")) == 0) {
+      fill_embed_external(post, media);
+   }
+
+   /* Real media is now drawn, so the bracket note that used to stand in for
+    * it would only be clutter alongside it. Left alone for anything still
+    * undrawable — video, and the quote half of recordWithMedia. */
+   if (post->image_count > 0 || post->link.uri[0]) {
+      post->embed_note[0] = '\0';
+   }
 }
 
 /* Who reposted this, if the item is in the feed for that reason. */
@@ -387,6 +534,7 @@ fill_from_view(cobalt_post *post, const wf_agent_post_view *view, int64_t now)
    if (view->embed) {
       snprintf(post->embed_note, sizeof(post->embed_note), "%s",
                cobalt_feed_embed_note(json_string(view->embed, "$type")));
+      fill_embed_media(post, view->embed);
    }
 
    /* Assume the post is its own root; a reply overwrites this below.
@@ -535,6 +683,7 @@ fill_from_thread_post(cobalt_post *post, const wf_agent_thread_post *view,
    if (view->embed) {
       snprintf(post->embed_note, sizeof(post->embed_note), "%s",
                cobalt_feed_embed_note(json_string(view->embed, "$type")));
+      fill_embed_media(post, view->embed);
    }
 
    memcpy(post->root_uri, post->uri, sizeof(post->root_uri));
