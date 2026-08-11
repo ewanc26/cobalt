@@ -230,7 +230,8 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
 
    for (int i = view->scroll; i < feed->count; i++) {
       const cobalt_post *post = &feed->posts[i];
-      const int h = cobalt_postcard_height(r, post, TEXT_LINES);
+      const int h = cobalt_postcard_height(r, post, TEXT_LINES,
+                                           i == view->selected);
 
       /* Stop before drawing a card that would run off the bottom. Always draw
        * at least one, so a card taller than the viewport is still readable

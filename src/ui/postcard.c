@@ -34,13 +34,39 @@
 #define EMBED_GAP(m)             ((m)->pad_tile / 2)
 #define EMBED_CELL_GAP(m)        ((m)->pad_tile / 4 > 0 ? (m)->pad_tile / 4 : 2)
 
+/* Budget for the alt-text caption shown under a focused image post — see
+ * first_alt() and embed_block_height() below. */
+#define EMBED_ALT_LINES 2
+#define EMBED_ALT_GAP(m) EMBED_CELL_GAP(m)
+
 /*
- * Height of the image/link-card block below the post text, or 0 for a post
- * with neither. Shared between cobalt_postcard_height and cobalt_postcard_draw
- * so the two cannot disagree about how much room it takes.
+ * The first non-empty alt text among a post's images, or NULL.
+ *
+ * A post can carry up to four images, each with its own alt text, but there
+ * is no per-image selection in this list-based UI to show them individually —
+ * so the first one stands in as a representative summary rather than showing
+ * none at all. Real per-image alt browsing is future work, not a regression:
+ * nothing before this showed alt text anywhere.
+ */
+static const char *
+first_alt(const cobalt_post *post)
+{
+   for (int i = 0; i < post->image_count; i++) {
+      if (post->images[i].alt[0]) {
+         return post->images[i].alt;
+      }
+   }
+   return NULL;
+}
+
+/*
+ * Height of just the image row / link card, with no alt-text caption. Split
+ * from embed_block_height() below so draw_embed_media() can size the media
+ * itself and the caption separately while still summing to the same total
+ * cobalt_postcard_height() reserved.
  */
 static int
-embed_block_height(const cobalt_metrics *m, int caption_h, int body_h,
+embed_media_height(const cobalt_metrics *m, int caption_h, int body_h,
                    const cobalt_post *post)
 {
    if (post->image_count == 1) {
@@ -57,8 +83,34 @@ embed_block_height(const cobalt_metrics *m, int caption_h, int body_h,
    return 0;
 }
 
+/*
+ * Height of the whole embed block below the post text — media plus, when
+ * focused, an alt-text caption — or 0 for a post with no embed at all.
+ * Shared between cobalt_postcard_height and cobalt_postcard_draw so the two
+ * cannot disagree about how much room it takes.
+ *
+ * `focused` adds room for the caption (see first_alt()) — shown only on the
+ * selected card, the same way the viewer-liked/reposted marker is already
+ * footer-only rather than drawn on every card in the list. Showing it on
+ * every card would need every card to reserve worst-case height for text
+ * that mostly is not visible; reserving it only where it is about to be
+ * drawn keeps the common case (an unfocused card scrolling past) as short as
+ * it already was.
+ */
+static int
+embed_block_height(const cobalt_metrics *m, int caption_h, int body_h,
+                   const cobalt_post *post, bool focused)
+{
+   const int h = embed_media_height(m, caption_h, body_h, post);
+   if (h > 0 && focused && first_alt(post)) {
+      return h + EMBED_ALT_GAP(m) + EMBED_ALT_LINES * caption_h;
+   }
+   return h;
+}
+
 int
-cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines)
+cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines,
+                       bool focused)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
@@ -71,7 +123,7 @@ cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines
    h += body_h;                                     /* author row */
    h += text_lines * (body_h + m->line_gap);
 
-   const int embed_h = embed_block_height(m, caption_h, body_h, post);
+   const int embed_h = embed_block_height(m, caption_h, body_h, post, focused);
    if (embed_h > 0) {
       h += embed_h + EMBED_GAP(m);
    }
@@ -255,15 +307,45 @@ cobalt_postcard_contain_fit(int box_w, int box_h, int src_w, int src_h,
 }
 
 /*
+ * A small "ALT" chip in a cell's bottom-left corner, over whatever is drawn
+ * there. A dark, partly transparent backing rather than the theme's flat
+ * colours: the badge sits over arbitrary photo content, not the tile
+ * background, so it needs to stay legible against any of it rather than
+ * only the colours the rest of the UI is tuned for.
+ */
+static void
+draw_alt_badge(cobalt_render *r, const SDL_Rect *cell)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const int pad = m->pad_tile / 4 > 0 ? m->pad_tile / 4 : 2;
+
+   int w = 0, h = 0;
+   cobalt_text_size(r, COBALT_FONT_CAPTION, "ALT", &w, &h);
+
+   const SDL_Color backing = { 0x00, 0x00, 0x00, 0xA0 };
+   const SDL_Rect chip = { cell->x + pad, cell->y + cell->h - h - 2 * pad,
+                           w + 2 * pad, h + 2 * pad };
+   cobalt_fill_rounded_rect(r, &chip, pad, backing);
+
+   const SDL_Color white = { 0xFF, 0xFF, 0xFF, 0xFF };
+   cobalt_draw_text(r, COBALT_FONT_CAPTION, "ALT", chip.x + pad, chip.y + pad,
+                    white);
+}
+
+/*
  * One image or link-card thumbnail, aspect-fit within `cell` and centred.
  * Draws a flat frame first regardless of whether a texture is ready, so a
  * post with only an image reads as "something is here, still loading" rather
  * than as a gap — the same reasoning as the avatar placeholder disc, without
  * a letter since a thumbnail has no name to draw one from.
+ *
+ * `alt` is NULL for a link-card thumbnail, which has no alt text of its own;
+ * a post image passes its (possibly empty) alt string and gets the corner
+ * badge when it is non-empty.
  */
 static void
-draw_thumb_cell(cobalt_render *r, const char *url, int aspect_w, int aspect_h,
-                const SDL_Rect *cell)
+draw_thumb_cell(cobalt_render *r, const char *url, const char *alt,
+                int aspect_w, int aspect_h, const SDL_Rect *cell)
 {
    cobalt_fill_rounded_rect(r, cell, 6, COBALT_COLOUR_TILE_EDGE);
 
@@ -273,19 +355,22 @@ draw_thumb_cell(cobalt_render *r, const char *url, int aspect_w, int aspect_h,
    if (thumbs && url && url[0]) {
       texture = cobalt_imagecache_get(thumbs, r, url, &tex_w, &tex_h);
    }
-   if (!texture) {
-      return;
+   if (texture) {
+      const int src_w = tex_w > 0 ? tex_w : aspect_w;
+      const int src_h = tex_h > 0 ? tex_h : aspect_h;
+
+      int dst_w = cell->w, dst_h = cell->h;
+      cobalt_postcard_contain_fit(cell->w, cell->h, src_w, src_h, &dst_w,
+                                  &dst_h);
+
+      const SDL_Rect dst = { cell->x + (cell->w - dst_w) / 2,
+                             cell->y + (cell->h - dst_h) / 2, dst_w, dst_h };
+      cobalt_draw_texture(r, texture, &dst);
    }
 
-   const int src_w = tex_w > 0 ? tex_w : aspect_w;
-   const int src_h = tex_h > 0 ? tex_h : aspect_h;
-
-   int dst_w = cell->w, dst_h = cell->h;
-   cobalt_postcard_contain_fit(cell->w, cell->h, src_w, src_h, &dst_w, &dst_h);
-
-   const SDL_Rect dst = { cell->x + (cell->w - dst_w) / 2,
-                          cell->y + (cell->h - dst_h) / 2, dst_w, dst_h };
-   cobalt_draw_texture(r, texture, &dst);
+   if (alt && alt[0]) {
+      draw_alt_badge(r, cell);
+   }
 }
 
 /* Up to COBALT_POST_IMAGES_MAX images, side by side in one row. */
@@ -304,8 +389,9 @@ draw_image_row(cobalt_render *r, const cobalt_post *post, int x, int y,
    int cx = x;
    for (int i = 0; i < n; i++) {
       const SDL_Rect cell = { cx, y, cell_w, height };
-      draw_thumb_cell(r, post->images[i].thumb, post->images[i].aspect_w,
-                      post->images[i].aspect_h, &cell);
+      draw_thumb_cell(r, post->images[i].thumb, post->images[i].alt,
+                      post->images[i].aspect_w, post->images[i].aspect_h,
+                      &cell);
       cx += cell_w + gap;
    }
 }
@@ -331,7 +417,7 @@ draw_link_card(cobalt_render *r, const cobalt_post *post, int x, int y,
    if (post->link.thumb[0]) {
       const int side = height - 2 * pad;
       const SDL_Rect cell = { x + pad, y + pad, side, side };
-      draw_thumb_cell(r, post->link.thumb, 1, 1, &cell);
+      draw_thumb_cell(r, post->link.thumb, NULL, 1, 1, &cell);
       text_x = cell.x + cell.w + pad;
    }
 
@@ -361,18 +447,37 @@ draw_link_card(cobalt_render *r, const cobalt_post *post, int x, int y,
    }
 }
 
-/* Dispatches to whichever of the above the post actually carries. `height`
- * is the caller's embed_block_height() result, not recomputed here, so draw
- * and height can never disagree about how tall this block is. */
+/*
+ * Dispatches to whichever of the above the post actually carries, then —
+ * only when `focused` and there is alt text to show (see first_alt()) —
+ * draws it as a wrapped caption directly below. `media_height` is
+ * embed_media_height()'s result, not recomputed here, so draw and height can
+ * never disagree about how tall the media itself is; the caption's own
+ * height is likewise EMBED_ALT_GAP(m) + EMBED_ALT_LINES * caption_h, matching
+ * what embed_block_height() reserved for it.
+ */
 static void
 draw_embed_media(cobalt_render *r, const cobalt_post *post, int x, int y,
-                 int width, int height)
+                 int width, int media_height, bool focused)
 {
    if (post->image_count > 0) {
-      draw_image_row(r, post, x, y, width, height);
+      draw_image_row(r, post, x, y, width, media_height);
    } else if (post->link.uri[0]) {
-      draw_link_card(r, post, x, y, width, height);
+      draw_link_card(r, post, x, y, width, media_height);
    }
+
+   if (!focused) {
+      return;
+   }
+   const char *alt = first_alt(post);
+   if (!alt) {
+      return;
+   }
+
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const int cap_y = y + media_height + EMBED_ALT_GAP(m);
+   cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, alt, x, cap_y, width,
+                            EMBED_ALT_LINES, COBALT_COLOUR_TEXT_DIM);
 }
 
 void
@@ -456,9 +561,10 @@ cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
    }
    y += text_lines * (body_h + m->line_gap);
 
-   const int embed_h = embed_block_height(m, caption_h, body_h, post);
+   const int media_h = embed_media_height(m, caption_h, body_h, post);
+   const int embed_h = embed_block_height(m, caption_h, body_h, post, focused);
    if (embed_h > 0) {
-      draw_embed_media(r, post, text_left, y, text_width, embed_h);
+      draw_embed_media(r, post, text_left, y, text_width, media_h, focused);
       y += embed_h + EMBED_GAP(m);
    }
 

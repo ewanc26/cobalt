@@ -65,12 +65,22 @@ extern "C" {
  */
 #define COBALT_POST_IMAGES_MAX     4
 #define COBALT_POST_THUMB_MAX    256
+#define COBALT_POST_ALT_MAX      160
 #define COBALT_POST_LINK_TITLE_MAX 96
 #define COBALT_POST_LINK_DESC_MAX 192
 #define COBALT_POST_LINK_URI_MAX  256
 
 typedef struct {
    char thumb[COBALT_POST_THUMB_MAX];
+
+   /*
+    * The author's own description of the image. This is the accessibility
+    * affordance available on this platform for image content — the Wii U has
+    * no screen reader for homebrew to hand it to instead, so the card draws
+    * it directly (see cobalt_postcard_draw). Empty when the author set none,
+    * which is legitimate and common; not every image embed carries alt text.
+    */
+   char alt[COBALT_POST_ALT_MAX];
 
    /*
     * From the embed's own aspectRatio, not the decoded texture — that arrives

@@ -272,7 +272,8 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
       const bool is_header = (i == HEADER_ROW);
       const int h = is_header ? header_height(r, profile, m)
                               : cobalt_postcard_height(r, &feed->posts[i - 1],
-                                                       TEXT_LINES);
+                                                       TEXT_LINES,
+                                                       i == view->selected);
 
       if (y + h > bottom && i > view->scroll) {
          break;

@@ -47,9 +47,12 @@ one — the card shows the author's initial on a disc tinted from their handle,
 so the column stays scannable rather than becoming a row of identical grey.
 Post images and link-card previews are decoded and drawn the same way as
 avatars — off the frame loop, aspect-fit, with a flat placeholder frame while
-loading. Video and quote posts still show as a marker (`[video]`, `[quote]`):
-those embeds are not decoded, and silently dropping them would make a
-video-only post look like an empty card.
+loading. An image with alt text gets a small "ALT" badge, and the selected
+post's own alt text is shown in full below it — the Wii U has no screen
+reader for homebrew to hand it to instead, so the card shows it directly.
+Video and quote posts still show as a marker (`[video]`, `[quote]`): those
+embeds are not decoded, and silently dropping them would make a video-only
+post look like an empty card.
 
 Some things in the official client are not coming, because the console cannot
 do them rather than because nobody has got to them yet: **video** and **GIFs**

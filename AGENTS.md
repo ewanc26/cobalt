@@ -470,6 +470,23 @@ platform-independent logic. The embed-JSON parsing that feeds it
 the rest of the view-flattening code, so it gets sweep and link coverage but
 not a unit test run — same situation as `fill_from_view` already was.
 
+Alt text landed alongside this rather than in the same pass, initially dropped
+for scope. `cobalt_post_image.alt` is captured the same way `thumb` is; every
+image with one gets a small "ALT" corner badge (`draw_alt_badge()`, a
+translucent dark chip so it reads over arbitrary photo content rather than
+just the theme's own colours), and the *focused* card additionally draws the
+first image's alt text as a wrapped caption below the media
+(`draw_embed_media()`'s `focused` branch). Only the focused card, and only the
+first image of however many the post carries: this is the accessibility
+affordance actually available on a platform with no screen reader for
+homebrew, but there is no per-image selection in a list-based UI to show more
+than one at a time yet — a real gap, not a silent one, and worth closing if a
+later pass gives posts per-image navigation. `cobalt_postcard_height()` grew a
+`focused` parameter so it can reserve the caption's extra height only where
+`cobalt_postcard_draw()` is about to spend it, rather than on every card in
+the list — the same reasoning as everything else in this section's "fixed
+budget, not width-derived" convention, just gated on focus instead of width.
+
 ### `atproto.c` no longer includes a `wolfram/version.h` that was never shipped
 
 Found while validating the images/link-card work above, against a sibling
