@@ -28,6 +28,7 @@
  *     }
  */
 
+#include "atproto/actors.h"
 #include "atproto/feed.h"
 #include "atproto/notifications.h"
 #include "atproto/profile.h"
@@ -69,6 +70,8 @@ typedef enum {
    COBALT_JOB_FOLLOW,
    COBALT_JOB_MUTE,
    COBALT_JOB_BLOCK,
+   COBALT_JOB_MUTED_LIST,
+   COBALT_JOB_BLOCKED_LIST,
 } cobalt_job_kind;
 
 typedef struct {
@@ -217,6 +220,23 @@ bool cobalt_session_begin_follow(void);
  * already gates all three the same way. */
 bool cobalt_session_begin_mute(void);
 bool cobalt_session_begin_block(void);
+
+/*
+ * Muted and blocked accounts: fetch the list, and remove a row from it.
+ *
+ * Unlike begin_mute/begin_block above, these always undo — every row on
+ * either list is, by definition, already muted or blocked, so there is no
+ * toggle direction to read off a loaded profile. `did` is enough to unmute;
+ * unblocking additionally needs the row's own block record URI, since
+ * wf_agent_unblock takes a record rather than a subject.
+ */
+bool cobalt_session_begin_muted_list(bool paging);
+bool cobalt_session_begin_blocked_list(bool paging);
+bool cobalt_session_begin_unmute_actor(const char *did);
+bool cobalt_session_begin_unblock_actor(const char *record_uri, const char *did);
+
+const cobalt_actor_list *cobalt_session_muted_list(void);
+const cobalt_actor_list *cobalt_session_blocked_list(void);
 
 /*
  * Guard for the shared snapshots above.

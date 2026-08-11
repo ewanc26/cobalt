@@ -93,6 +93,8 @@ UNIT_SOURCES := \
 	$(SRC)/atproto/notifications.c \
 	$(SRC)/atproto/profile.c \
 	$(SRC)/app/profile.c \
+	$(SRC)/atproto/actors.c \
+	$(SRC)/app/graph.c \
 	$(SRC)/ui/postcard.c \
 	$(SRC)/ui/render.c \
 	$(SRC)/ui/theme.c \

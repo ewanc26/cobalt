@@ -34,7 +34,8 @@ nothing has been run on a Wii U yet.
 | Profiles, follow and unfollow | done |
 | Avatars, on posts, replies, notifications and profiles | done |
 | Post images and link cards | done |
-| Search, custom feeds, lists, mutes and blocks | not started |
+| Mute and block, from a profile or the account screen's lists | done |
+| Search, custom feeds, lists | not started |
 | Video, GIFs, DMs, push notifications | not planned — see below |
 
 **Nothing here has run on a Wii U yet.** It builds, and an extensive host test

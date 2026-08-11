@@ -9,6 +9,7 @@
 
 #include "app/compose.h"
 #include "app/signin.h"
+#include "atproto/actors.h"
 #include "atproto/session.h"
 #include "atproto/feed.h"
 #include "atproto/notifications.h"
@@ -794,6 +795,36 @@ test_feed_link_domain(void)
 }
 
 
+/* --- actor lists (muted/blocked accounts) --- */
+
+static void
+test_actor_list_remove(void)
+{
+   begin("removing a row from an actor list");
+
+   cobalt_actor_list list;
+   memset(&list, 0, sizeof(list));
+   list.count = 3;
+   snprintf(list.actors[0].did, sizeof(list.actors[0].did), "did:plc:alice");
+   snprintf(list.actors[1].did, sizeof(list.actors[1].did), "did:plc:bob");
+   snprintf(list.actors[2].did, sizeof(list.actors[2].did), "did:plc:carol");
+
+   /* Removing the middle row shifts the tail down rather than leaving a
+    * hole — the list draws by index 0..count. */
+   CHECK(cobalt_actor_list_remove(&list, "did:plc:bob"));
+   CHECK(list.count == 2);
+   CHECK_STR(list.actors[0].did, "did:plc:alice");
+   CHECK_STR(list.actors[1].did, "did:plc:carol");
+
+   /* A refresh can replace the list while a request is in flight, so the
+    * row legitimately may not be there any more — that is not a bug. */
+   CHECK(!cobalt_actor_list_remove(&list, "did:plc:bob"));
+   CHECK(list.count == 2);
+
+   CHECK(!cobalt_actor_list_remove(NULL, "did:plc:alice"));
+   CHECK(!cobalt_actor_list_remove(&list, NULL));
+}
+
 /* --- optimistic interactions --- */
 
 static void
@@ -1542,6 +1573,7 @@ main(int argc, char **argv)
    test_feed_counts();
    test_feed_embeds();
    test_feed_link_domain();
+   test_actor_list_remove();
    test_interactions();
    test_compose();
    test_post_refuses_partial_refs();

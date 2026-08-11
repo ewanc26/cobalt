@@ -1,4 +1,5 @@
 #include "atproto/session.h"
+#include "atproto/actors.h"
 #include "atproto/feed.h"
 #include "atproto/notifications.h"
 #include "atproto/profile.h"
@@ -8,10 +9,13 @@
 #include "util/rng.h"
 
 #ifdef COBALT_HAS_WOLFRAM
+#include <wolfram/actor_typed.h>
 #include <wolfram/agent.h>
 #include <wolfram/feed_typed.h>
-#include <wolfram/thread_typed.h>
+#include <wolfram/graph_typed.h>
+#include <wolfram/moderation_typed.h>
 #include <wolfram/session.h>
+#include <wolfram/thread_typed.h>
 #include <wolfram/xrpc.h>
 #endif
 
@@ -91,6 +95,8 @@ static struct {
    cobalt_notifications notifications;
    cobalt_profile profile;
    cobalt_feed author_feed;
+   cobalt_actor_list muted;
+   cobalt_actor_list blocked;
 
 #ifdef COBALT_HAS_WOLFRAM
    /* Owned by the worker while a job runs; only touched off-thread when idle. */
@@ -1018,7 +1024,16 @@ run_mute(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
    }
 
    SDL_LockMutex(s.lock);
-   cobalt_profile_apply_mute(&s.profile, mute);
+   /* Only the loaded profile's own state, if this is the account it's
+    * about — the same call also fires from the muted-accounts list, where
+    * `in->uri` names whichever row was unmuted, not necessarily whoever's
+    * profile (if any) happens to be loaded. */
+   if (s.profile.loaded && strcmp(s.profile.did, in->uri) == 0) {
+      cobalt_profile_apply_mute(&s.profile, mute);
+   }
+   if (!mute) {
+      cobalt_actor_list_remove(&s.muted, in->uri);
+   }
    SDL_UnlockMutex(s.lock);
 
    publish_session();
@@ -1063,13 +1078,97 @@ run_block(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
    }
 
    SDL_LockMutex(s.lock);
-   cobalt_profile_apply_block(&s.profile, undo ? NULL : created);
+   if (s.profile.loaded && strcmp(s.profile.did, in->uri) == 0) {
+      cobalt_profile_apply_block(&s.profile, undo ? NULL : created);
+   }
+   if (undo) {
+      cobalt_actor_list_remove(&s.blocked, in->uri);
+   }
    SDL_UnlockMutex(s.lock);
 
    publish_session();
 
    *state = COBALT_AUTH_SIGNED_IN;
    r->ok = true;
+}
+
+/* Shared by run_muted_list/run_blocked_list — the two calls are identical
+ * apart from which Wolfram wrapper to call and which list to fill. */
+static void
+run_actor_list(const job_input *in, cobalt_job_result *r,
+               cobalt_auth_state *state, cobalt_actor_list *list,
+               wf_status (*fetch)(wf_agent *, int, const char *,
+                                  wf_agent_actor_list *),
+               const char *empty_message)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in first.");
+      return;
+   }
+
+   const char *cursor = NULL;
+   if (in->paging) {
+      SDL_LockMutex(s.lock);
+      cursor = list->cursor[0] ? list->cursor : NULL;
+      SDL_UnlockMutex(s.lock);
+      if (!cursor) {
+         *state = COBALT_AUTH_SIGNED_IN;
+         r->ok = true;
+         return;
+      }
+   }
+
+   wf_agent_actor_list wf_list;
+   memset(&wf_list, 0, sizeof(wf_list));
+
+   const wf_status status = fetch(s.wf, TIMELINE_PAGE, cursor, &wf_list);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: actor list fetch failed (%d)", (int) status);
+      set_message(r, "Could not load the list (wolfram status %d).",
+                  (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(s.lock);
+   if (!in->paging) {
+      cobalt_actor_list_reset(list);
+   }
+   const int added = cobalt_actor_list_append_from_wolfram(list, &wf_list);
+   if (in->paging && added == 0) {
+      list->has_more = false;
+      list->cursor[0] = '\0';
+   }
+   const int total = list->count;
+   SDL_UnlockMutex(s.lock);
+
+   wf_agent_actor_list_free(&wf_list);
+   COBALT_LOGI("session: actor list +%d (%d held)", added, total);
+
+   if (total == 0) {
+      set_message(r, "%s", empty_message);
+   }
+
+   publish_session();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+static void
+run_muted_list(const job_input *in, cobalt_job_result *r,
+               cobalt_auth_state *state)
+{
+   run_actor_list(in, r, state, &s.muted, wf_agent_get_mutes_typed,
+                  "No muted accounts.");
+}
+
+static void
+run_blocked_list(const job_input *in, cobalt_job_result *r,
+                 cobalt_auth_state *state)
+{
+   run_actor_list(in, r, state, &s.blocked, wf_agent_get_blocks_typed,
+                  "No blocked accounts.");
 }
 
 static void
@@ -1100,6 +1199,8 @@ run_logout(cobalt_job_result *r, cobalt_auth_state *state)
    cobalt_notifications_reset(&s.notifications);
    cobalt_profile_reset(&s.profile);
    cobalt_feed_reset(&s.author_feed);
+   cobalt_actor_list_reset(&s.muted);
+   cobalt_actor_list_reset(&s.blocked);
    SDL_UnlockMutex(s.lock);
 
    *state = COBALT_AUTH_SIGNED_OUT;
@@ -1138,6 +1239,8 @@ run_job(cobalt_job_kind kind, const job_input *in, cobalt_auth_state *state)
       case COBALT_JOB_FOLLOW:   run_follow(in, &r, state);    break;
       case COBALT_JOB_MUTE:     run_mute(in, &r, state);      break;
       case COBALT_JOB_BLOCK:    run_block(in, &r, state);     break;
+      case COBALT_JOB_MUTED_LIST:   run_muted_list(in, &r, state);   break;
+      case COBALT_JOB_BLOCKED_LIST: run_blocked_list(in, &r, state); break;
       case COBALT_JOB_NONE:
       default:                                           break;
    }
@@ -1528,6 +1631,66 @@ cobalt_session_begin_block(void)
    if (!have) {
       return false;
    }
+   return submit(COBALT_JOB_BLOCK, &in);
+}
+
+const cobalt_actor_list *
+cobalt_session_muted_list(void)
+{
+   return &s.muted;
+}
+
+const cobalt_actor_list *
+cobalt_session_blocked_list(void)
+{
+   return &s.blocked;
+}
+
+bool
+cobalt_session_begin_muted_list(bool paging)
+{
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   in.paging = paging;
+   return submit(COBALT_JOB_MUTED_LIST, &in);
+}
+
+bool
+cobalt_session_begin_blocked_list(bool paging)
+{
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   in.paging = paging;
+   return submit(COBALT_JOB_BLOCKED_LIST, &in);
+}
+
+bool
+cobalt_session_begin_unmute_actor(const char *did)
+{
+   if (!did || !did[0]) {
+      return false;
+   }
+
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", did);
+   in.flag = false;   /* always undo — every row on this list is muted */
+   return submit(COBALT_JOB_MUTE, &in);
+}
+
+bool
+cobalt_session_begin_unblock_actor(const char *record_uri, const char *did)
+{
+   if (!record_uri || !record_uri[0]) {
+      return false;
+   }
+
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.record_uri, sizeof(in.record_uri), "%s", record_uri);
+   /* Not used to decide undo (record_uri already does that) — carried so
+    * run_block can drop the right row from s.blocked locally. */
+   snprintf(in.uri, sizeof(in.uri), "%s", did ? did : "");
    return submit(COBALT_JOB_BLOCK, &in);
 }
 

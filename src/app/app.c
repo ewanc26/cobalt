@@ -1,5 +1,6 @@
 #include "app/app.h"
 #include "app/compose.h"
+#include "app/graph.h"
 #include "app/notify.h"
 #include "app/profile.h"
 #include "app/signin.h"
@@ -61,6 +62,9 @@ struct cobalt_app {
    cobalt_compose compose;
    cobalt_notify_view notify;
    cobalt_profile_view profile;
+   cobalt_graph_view graph;
+   /* Which row is highlighted on the account screen's small menu. */
+   int account_selected;
    /* Where B from the profile screen returns to. */
    cobalt_screen profile_return;
    /* Where to return after composing — the timeline or the thread. */
@@ -92,8 +96,15 @@ struct cobalt_app {
 static SDL_Rect s_drc_hit[MENU_COUNT];
 static bool s_drc_hit_valid = false;
 
-/* Hit rectangle for the account screen's only action. */
-static SDL_Rect s_account_hit;
+/* Hit rectangles for the account screen's small menu. */
+typedef enum {
+   ACCOUNT_ROW_MUTED = 0,
+   ACCOUNT_ROW_BLOCKED,
+   ACCOUNT_ROW_SIGN_OUT,
+   ACCOUNT_ROW_COUNT,
+} account_row;
+
+static SDL_Rect s_account_hit[ACCOUNT_ROW_COUNT];
 static bool s_account_hit_valid = false;
 
 /* --- menu description --- */
@@ -181,6 +192,7 @@ cobalt_app_create(void)
    cobalt_thread_view_init(&app->thread);
    cobalt_notify_view_init(&app->notify);
    cobalt_profile_view_init(&app->profile);
+   cobalt_graph_view_init(&app->graph);
 
    curl_version_info_data *curl_info = curl_version_info(CURLVERSION_NOW);
    snprintf(app->curl_version, sizeof(app->curl_version), "curl %s / %s",
@@ -348,6 +360,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
    cobalt_thread_view_init(&app->thread);
    cobalt_notify_view_init(&app->notify);
    cobalt_profile_view_init(&app->profile);
+   cobalt_graph_view_init(&app->graph);
          app->screen = COBALT_SCREEN_HOME;
          app->selected = 1;
          break;
@@ -452,14 +465,44 @@ update_account(cobalt_app *app, const cobalt_input *in)
       return;
    }
 
-   bool sign_out = cobalt_input_pressed(in, COBALT_BTN_CONFIRM);
-   if (!sign_out && s_account_hit_valid && in->touch_ended) {
-      sign_out = cobalt_input_tapped(in, &s_account_hit);
+   if (cobalt_input_pressed(in, COBALT_BTN_DOWN)) {
+      app->account_selected = (app->account_selected + 1) % ACCOUNT_ROW_COUNT;
+   }
+   if (cobalt_input_pressed(in, COBALT_BTN_UP)) {
+      app->account_selected =
+         (app->account_selected + ACCOUNT_ROW_COUNT - 1) % ACCOUNT_ROW_COUNT;
    }
 
-   if (sign_out) {
-      COBALT_LOGI("account: sign out requested");
-      cobalt_session_begin_logout();
+   int activated = -1;
+   if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
+      activated = app->account_selected;
+   } else if (s_account_hit_valid && in->touch_ended) {
+      for (int i = 0; i < ACCOUNT_ROW_COUNT; i++) {
+         if (cobalt_input_tapped(in, &s_account_hit[i])) {
+            app->account_selected = i;
+            activated = i;
+            break;
+         }
+      }
+   }
+
+   switch (activated) {
+      case ACCOUNT_ROW_MUTED:
+         cobalt_graph_view_open(&app->graph, COBALT_GRAPH_MUTED);
+         app->screen = COBALT_SCREEN_MUTED_LIST;
+         COBALT_LOGI("account: opened muted accounts");
+         break;
+      case ACCOUNT_ROW_BLOCKED:
+         cobalt_graph_view_open(&app->graph, COBALT_GRAPH_BLOCKED);
+         app->screen = COBALT_SCREEN_BLOCKED_LIST;
+         COBALT_LOGI("account: opened blocked accounts");
+         break;
+      case ACCOUNT_ROW_SIGN_OUT:
+         COBALT_LOGI("account: sign out requested");
+         cobalt_session_begin_logout();
+         break;
+      default:
+         break;
    }
 }
 
@@ -641,6 +684,18 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
          update_account(app, in);
          break;
 
+      case COBALT_SCREEN_MUTED_LIST:
+      case COBALT_SCREEN_BLOCKED_LIST:
+         switch (cobalt_graph_view_update(&app->graph, in)) {
+            case COBALT_GRAPH_VIEW_BACK:
+               app->screen = COBALT_SCREEN_ACCOUNT;
+               break;
+            case COBALT_GRAPH_VIEW_STAY:
+            default:
+               break;
+         }
+         break;
+
       case COBALT_SCREEN_HOME:
       default:
          update_home(app, in);
@@ -813,22 +868,34 @@ draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
                                     panel.w - 2 * m->pad_tile, 1, colours[i]);
    }
 
-   SDL_Rect sign_out = { m->pad_edge, panel.y + panel.h + m->gap, width, row_h };
-   cobalt_draw_tile(r, &sign_out, 1.0f);
+   static const char *ROW_LABEL[ACCOUNT_ROW_COUNT] = {
+      "Muted accounts", "Blocked accounts", "Sign out",
+   };
    const int label_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
-   cobalt_draw_text_centred(r, COBALT_FONT_HEADING, "Sign out", sign_out.x,
-                            sign_out.y + (row_h - label_h) / 2, sign_out.w,
-                            COBALT_COLOUR_ERROR);
 
+   int row_y = panel.y + panel.h + m->gap;
+   for (int i = 0; i < ACCOUNT_ROW_COUNT; i++) {
+      SDL_Rect row = { m->pad_edge, row_y, width, row_h };
+      const bool focused = (app->account_selected == i);
+      cobalt_draw_tile(r, &row, focused ? 1.0f : 0.0f);
+      cobalt_draw_text_centred(r, COBALT_FONT_HEADING, ROW_LABEL[i], row.x,
+                               row.y + (row_h - label_h) / 2, row.w,
+                               i == ACCOUNT_ROW_SIGN_OUT ? COBALT_COLOUR_ERROR
+                                                        : COBALT_COLOUR_TEXT);
+
+      if (surface == COBALT_SURFACE_DRC) {
+         s_account_hit[i] = row;
+      }
+      row_y += row_h + m->gap / 2;
+   }
    if (surface == COBALT_SURFACE_DRC) {
-      s_account_hit = sign_out;
       s_account_hit_valid = true;
    }
 
-   draw_notice(app, r, sign_out.y + row_h + m->gap, width);
+   draw_notice(app, r, row_y + m->gap / 2, width);
 
    SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, "A / touch: sign out     B: back",
+   cobalt_draw_text(r, COBALT_FONT_CAPTION, "A / touch: open     B: back",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }
 
@@ -1023,6 +1090,11 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_ACCOUNT:
          draw_account(app, r, surface);
+         break;
+
+      case COBALT_SCREEN_MUTED_LIST:
+      case COBALT_SCREEN_BLOCKED_LIST:
+         cobalt_graph_view_draw(&app->graph, r, surface);
          break;
 
       case COBALT_SCREEN_HOME:
