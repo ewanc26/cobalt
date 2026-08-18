@@ -1,0 +1,15 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+
+# Agent / tooling configuration
+**/.agents/** linguist-vendored
+.claude/** linguist-vendored
+.opencode/** linguist-vendored
+.letta/** linguist-vendored
+
+# Fonts
+*.woff linguist-generated
+*.woff2 linguist-generated
+*.ttf linguist-generated
+*.otf linguist-generated
