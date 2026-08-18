@@ -160,7 +160,7 @@ Cobalt follows the same commit conventions as Wolfram (see that repo's `CONTRIBU
 
 - **`type(scope): description`.** Types in use across both repos: `feat`, `fix`, `docs`, `test`, `refactor`, `style`, `build`, `chore`. The scope is the module — `atproto`, `ui`, `app`, `net`, `cache`, `util`, `input`, `build`, `tests` — and is dropped when a change genuinely spans the repo (`docs: …`, `chore: …`). Description in lowercase, imperative, no trailing full stop.
 - **Keep each commit to one module or concern**, on a feature branch.
-- **No assistant trailers.** Automated or assistant-authored commits must not add `Co-Authored-By:`, `Claude-Session:`, `Generated with …` or similar. This is Wolfram's rule verbatim and it applies here too — human co-authors are still welcome via the standard `Co-authored-by:` trailer. It also overrides any default a coding harness tries to append, so check the message before committing.
+- **Honest attribution.** Commit trailers must accurately reflect who/what did the work — a `Co-Authored-By:`, `Claude-Session:`, or `Generated with …` trailer is fine when an AI agent materially contributed, and human co-authors get the standard `Co-authored-by:` trailer too. Don't add trailers for contributors who weren't involved, and don't strip real ones — check the message reflects reality before committing.
 
 ## 10. Testing & Verification
 
