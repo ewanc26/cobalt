@@ -88,10 +88,12 @@ cobalt_search_view_update(cobalt_search_view *view, const cobalt_input *in)
       view->selected--;
    }
 
+   int tapped_index = -1;
    if (view->hit_valid && in->touch_ended) {
       for (int i = 0; i < view->hit_count; i++) {
          if (cobalt_input_tapped(in, &view->hit[i])) {
             view->selected = view->hit_index[i];
+            tapped_index = view->hit_index[i];
             break;
          }
       }
@@ -114,9 +116,20 @@ cobalt_search_view_update(cobalt_search_view *view, const cobalt_input *in)
       cobalt_session_begin_search_actors(view->query, true);
    }
 
-   /* Opening a result's profile is left to a later pass — app.c has no
-    * "open by DID" entry point into profile.c yet that a list screen can
-    * reach without also duplicating profile.c's own navigation history. */
+   /* A tap opens its row directly; CONFIRM opens whichever row is currently
+    * selected — the same split timeline.c uses between tap-to-act and
+    * D-pad-plus-button. DID (not handle) is what profile.c's fetch wants,
+    * and search results already carry it, unlike timeline rows. */
+   bool open_profile = tapped_index >= 0 ||
+                        cobalt_input_pressed(in, COBALT_BTN_CONFIRM);
+   if (open_profile && view->selected < results->count) {
+      const cobalt_actor *actor = &results->actors[view->selected];
+      if (actor->did[0]) {
+         COBALT_LOGI("search: opening profile %s", actor->did);
+         cobalt_session_begin_profile(actor->did);
+         return COBALT_SEARCH_VIEW_OPEN_PROFILE;
+      }
+   }
 
    return COBALT_SEARCH_VIEW_STAY;
 }

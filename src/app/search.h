@@ -30,6 +30,7 @@ extern "C" {
 typedef enum {
    COBALT_SEARCH_VIEW_STAY = 0,
    COBALT_SEARCH_VIEW_BACK,
+   COBALT_SEARCH_VIEW_OPEN_PROFILE,
 } cobalt_search_view_action;
 
 typedef struct {
