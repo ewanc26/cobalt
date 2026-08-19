@@ -17,6 +17,7 @@
 #include <wolfram/moderation_typed.h>
 #include <wolfram/session.h>
 #include <wolfram/thread_typed.h>
+#include <wolfram/threadgate_postgate.h>
 #include <wolfram/xrpc.h>
 #endif
 
@@ -56,6 +57,10 @@ typedef struct {
    char text[COBALT_COMPOSE_TEXT_MAX];
    char root_uri[COBALT_POST_URI_MAX];
    char root_cid[COBALT_POST_CID_MAX];
+
+   /* Reply-control for a new top-level post; ignored on a reply. Matches
+    * `cobalt_reply_gate`: 0 everyone, 1 followed/mentioned, 2 nobody. */
+   int reply_gate;
 } job_input;
 
 static struct {
@@ -885,6 +890,28 @@ run_post(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
    }
 
    COBALT_LOGI("session: posted %s", result.uri ? result.uri : "(no uri)");
+
+   /* Reply-gate, top-level posts only (run_post's caller already zeroes this
+    * for a reply). A failure here does not roll back the post — it exists,
+    * just ungated, which is the safer failure than silently dropping it. */
+   if (in->reply_gate != 0 && result.uri && result.uri[0]) {
+      const char *allow_json =
+         (in->reply_gate == 2) ? "[]" /* nobody */
+                               : "[{\"$type\":\"app.bsky.feed."
+                                 "threadgate#followingRule\"},"
+                                 "{\"$type\":\"app.bsky.feed."
+                                 "threadgate#mentionRule\"}]";
+      wf_agent_post_result gate_result;
+      memset(&gate_result, 0, sizeof(gate_result));
+      wf_status gate_status = wf_agent_create_threadgate(
+         s.wf, result.uri, allow_json, NULL, 0, &gate_result);
+      if (gate_status != WF_OK) {
+         COBALT_LOGW("session: threadgate failed (%d) for %s",
+                     (int) gate_status, result.uri);
+      }
+      wf_agent_post_result_free(&gate_result);
+   }
+
    wf_agent_post_result_free(&result);
 
    publish_session();
@@ -2114,7 +2141,7 @@ begin_interaction(cobalt_job_kind kind, const char *uri, const char *cid,
 bool
 cobalt_session_begin_post(const char *text, const char *parent_uri,
                           const char *parent_cid, const char *root_uri,
-                          const char *root_cid)
+                          const char *root_cid, int reply_gate)
 {
    if (!text || !text[0]) {
       return false;
@@ -2125,6 +2152,7 @@ cobalt_session_begin_post(const char *text, const char *parent_uri,
    snprintf(in.text, sizeof(in.text), "%s", text);
 
    const bool is_reply = parent_uri && parent_uri[0];
+   in.reply_gate = is_reply ? 0 : reply_gate;
    if (is_reply) {
       /* All four refs or none. A reply missing its root is worse than a
        * refused request: it publishes into the wrong conversation. */
