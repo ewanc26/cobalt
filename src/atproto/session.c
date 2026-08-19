@@ -97,6 +97,7 @@ static struct {
    cobalt_feed author_feed;
    cobalt_actor_list muted;
    cobalt_actor_list blocked;
+   cobalt_actor_list search;
 
 #ifdef COBALT_HAS_WOLFRAM
    /* Owned by the worker while a job runs; only touched off-thread when idle. */
@@ -1171,6 +1172,82 @@ run_blocked_list(const job_input *in, cobalt_job_result *r,
                   "No blocked accounts.");
 }
 
+/* Not routed through run_actor_list — searchActors takes a query string on
+ * top of limit/cursor, so its Wolfram wrapper has a different shape than the
+ * mutes/blocks fetchers run_actor_list is built around. A fresh (non-paging)
+ * search always resets the held list, even to empty on a bad query, since a
+ * stale result from the previous query left on screen would look like a
+ * match for the new one. */
+static void
+run_search_actors(const job_input *in, cobalt_job_result *r,
+                  cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in first.");
+      return;
+   }
+
+   if (!in->paging && in->text[0] == '\0') {
+      SDL_LockMutex(s.lock);
+      cobalt_actor_list_reset(&s.search);
+      s.search.has_more = false;
+      s.search.cursor[0] = '\0';
+      SDL_UnlockMutex(s.lock);
+      *state = COBALT_AUTH_SIGNED_IN;
+      r->ok = true;
+      return;
+   }
+
+   const char *cursor = NULL;
+   if (in->paging) {
+      SDL_LockMutex(s.lock);
+      cursor = s.search.cursor[0] ? s.search.cursor : NULL;
+      SDL_UnlockMutex(s.lock);
+      if (!cursor) {
+         *state = COBALT_AUTH_SIGNED_IN;
+         r->ok = true;
+         return;
+      }
+   }
+
+   wf_agent_actor_list wf_list;
+   memset(&wf_list, 0, sizeof(wf_list));
+
+   const wf_status status =
+      wf_agent_search_actors_typed(s.wf, in->text, TIMELINE_PAGE, cursor,
+                                   &wf_list);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: actor search failed (%d)", (int) status);
+      set_message(r, "Search failed (wolfram status %d).", (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(s.lock);
+   if (!in->paging) {
+      cobalt_actor_list_reset(&s.search);
+   }
+   const int added = cobalt_actor_list_append_from_wolfram(&s.search, &wf_list);
+   if (in->paging && added == 0) {
+      s.search.has_more = false;
+      s.search.cursor[0] = '\0';
+   }
+   const int total = s.search.count;
+   SDL_UnlockMutex(s.lock);
+
+   wf_agent_actor_list_free(&wf_list);
+   COBALT_LOGI("session: search '%s' +%d (%d held)", in->text, added, total);
+
+   if (total == 0) {
+      set_message(r, "No accounts found for \"%s\".", in->text);
+   }
+
+   publish_session();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
 static void
 run_logout(cobalt_job_result *r, cobalt_auth_state *state)
 {
@@ -1201,6 +1278,7 @@ run_logout(cobalt_job_result *r, cobalt_auth_state *state)
    cobalt_feed_reset(&s.author_feed);
    cobalt_actor_list_reset(&s.muted);
    cobalt_actor_list_reset(&s.blocked);
+   cobalt_actor_list_reset(&s.search);
    SDL_UnlockMutex(s.lock);
 
    *state = COBALT_AUTH_SIGNED_OUT;
@@ -1241,6 +1319,7 @@ run_job(cobalt_job_kind kind, const job_input *in, cobalt_auth_state *state)
       case COBALT_JOB_BLOCK:    run_block(in, &r, state);     break;
       case COBALT_JOB_MUTED_LIST:   run_muted_list(in, &r, state);   break;
       case COBALT_JOB_BLOCKED_LIST: run_blocked_list(in, &r, state); break;
+      case COBALT_JOB_SEARCH_ACTORS: run_search_actors(in, &r, state); break;
       case COBALT_JOB_NONE:
       default:                                           break;
    }
@@ -1662,6 +1741,24 @@ cobalt_session_begin_blocked_list(bool paging)
    memset(&in, 0, sizeof(in));
    in.paging = paging;
    return submit(COBALT_JOB_BLOCKED_LIST, &in);
+}
+
+const cobalt_actor_list *
+cobalt_session_search_results(void)
+{
+   return &s.search;
+}
+
+bool
+cobalt_session_begin_search_actors(const char *query, bool paging)
+{
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   in.paging = paging;
+   if (query) {
+      snprintf(in.text, sizeof(in.text), "%s", query);
+   }
+   return submit(COBALT_JOB_SEARCH_ACTORS, &in);
 }
 
 bool

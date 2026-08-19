@@ -223,7 +223,7 @@ The stated goal is to go as far as the hardware allows. Some of it never will, a
 | Push notifications | No service the console can register with |
 | GIFs / animated media | Same decode problem as video, plus per-frame budget |
 
-Reachable, in rough order of value: ~~images and avatars~~ (done — see §13), ~~profiles~~ (done), ~~post images and link cards~~ (done — see §13), ~~mutes and blocks~~ (done — see §13), search, custom feeds, lists, threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
+Reachable, in rough order of value: ~~images and avatars~~ (done — see §13), ~~profiles~~ (done), ~~post images and link cards~~ (done — see §13), ~~mutes and blocks~~ (done — see §13), ~~search~~ (done, actor search only — see §13), custom feeds, lists, threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
 
 **Language policy.** Cobalt may use C++ where it earns its place — RAII around a resource with a manual free/close (mbedTLS contexts, SDL surfaces/textures, file handles), and state-management code where it meaningfully cuts boilerplate over the equivalent hand-rolled C. It is not a rewrite target: existing C modules that work and are tested stay C unless a specific change is touching them anyway, since a wholesale port is a large, separate undertaking with its own review burden, not something to fold into an unrelated feature commit. Wolfram itself stays **C only** — it is the shared SDK across Ewan's ATProto work and its portability is the point (§9 there is explicit about this) — but consuming Wolfram from C++ is exactly what its `wolfram-cpp` layer (`cpp/wolfram-cpp/`, `WOLFRAM_BUILD_CPP=ON`) is for: header-only RAII handles (`unique_handle<T, Free>`) generated from Wolfram's own `wf_*_free` ownership contracts, plus `wf_status` → `std::error_code`. Cobalt does not consume it today — every `wf_agent_*`/`wf_*_free` call site in `atproto/` is hand-paired C — but it is the natural place to reach for it in new Wolfram-facing code, rather than another hand-rolled cleanup path.
 
@@ -552,7 +552,66 @@ no build-time path to. Getting a real version onto the diagnostics screen
 again would need either a real exported header from Wolfram or a runtime
 accessor function — neither exists today — not a Cobalt-side fix.
 
-### There is a host test harness, and it is not a substitute for hardware
+### Search is actor search only, and reuses the mute/block row shape wholesale
+
+`app.bsky.actor.searchActors` is what's implemented — Cobalt has no post
+search, since there's no `app.bsky.feed.searchPosts` call anywhere in this
+pass and no UI for it. `wf_agent_search_actors_typed` already existed in
+Wolfram (`actor_typed.h`), unlike mutes/blocks which needed Wolfram-side
+additions first — no SDK work was needed here.
+
+The result rows are literally `cobalt_actor_list` (`atproto/actors.c`), the
+same flattened avatar/name/handle type the mute/block lists use — a search
+result and a muted-account row are the same shape for the same reason those
+two are the same shape as each other. `app/search.c` draws its own row (not
+`app/graph.c`'s, which is a static function local to that file) rather than
+exporting one, since the two files' rows differ enough at the edges — no
+Left/Right undo action on a search result, a query keyboard instead of a
+fixed title — that a shared draw function would need its own
+what-mode-am-I-in branching, which is what `cobalt_graph_kind` already exists
+to avoid *within* one screen, not something worth extending *across* two.
+
+New job kind `COBALT_JOB_SEARCH_ACTORS` reuses `job_input.text` (already sized
+for compose, comfortably larger than a search query needs) rather than adding
+a dedicated query field. It is not routed through the `run_actor_list` helper
+`run_muted_list`/`run_blocked_list` share, because `wf_agent_search_actors_typed`
+takes a query string ahead of limit/cursor and that helper's function-pointer
+parameter has no slot for one — `run_search_actors` duplicates the fetch/flatten/
+paginate shape by hand instead of reshaping a helper two other call sites
+depend on for one new caller.
+
+`app/search.c` is a new screen (`COBALT_SCREEN_SEARCH`), reachable from a new
+"Search" row on the home menu between "New post" and "Notifications", gated on
+`signed_in()` the same as those two. It has two sub-modes on one screen, the
+same shape `compose.c` already uses for "edit, then something else": typing
+owns the screen via the existing on-screen keyboard (`ui/keyboard.c`) until OK
+is pressed, then browsing takes over with the muted/blocked lists' up/down +
+touch + paging behaviour. B from browsing returns to typing rather than
+leaving the screen, so revising a query doesn't mean re-opening search from
+the menu.
+
+**Not done, and worth closing in a later pass:** selecting a result doesn't
+open that account's profile yet. `app/profile.c` has no "open by DID from an
+arbitrary list screen" entry point today — `app.c`'s `profile_return` field
+tracks one fixed origin screen, and adding a second caller without checking
+how that interacts with the existing timeline/thread-originated profile
+navigation felt like the wrong thing to do inside a feature commit whose
+actual subject is search. A search result is currently a dead end past
+reading the name and handle, which is a real gap, not a silent one.
+
+**Verification note:** this was written and built without hardware or a
+console-adjacent devkitPro image available in the dev environment — only
+`wiiu-sdl2`, `wiiu-sdl2_ttf`, `wiiu-curl`, `wiiu-mbedtls` and similar were
+already installed, not `wiiu-sdl2_image`, so a full `make` link fails on
+`imagecache.c`'s `#include <SDL_image.h>` — a pre-existing environment gap
+unrelated to this change (confirmed: `make` fails identically on a clean
+checkout with no changes). The devkitPPC compiler was used directly to compile
+`search.o` and `app.o` in isolation and both succeeded with no errors or
+warnings; the touched Wolfram-side header (`actor_typed.h`) was not modified.
+The host test harness (`make -C tests`) also could not run — no host SDL2
+dev package in this environment either. Per §10 and §12's own "None of it has
+been through a hardware pass" note, **none of this has been run on the
+actual console**, same standing caveat as the rest of the roadmap since step 5.
 
 `tests/` does two things with the build machine's own compiler. It runs a `-fsyntax-only -Werror` sweep over every translation unit that does not need devkitPro headers — including `main.c`, which owns the startup and shutdown ordering and is exactly the code a hardware pass is slowest to tell you about — in both the with-Wolfram and without-Wolfram configurations, so a changed SDK signature is caught in a second rather than after a card swap. And it unit tests the genuinely platform-independent logic §10 carves out: the credential store's round trip and its refusal of damaged or foreign files, the service-URL normaliser, the keyboard's text model, and the async request handshake.
 
