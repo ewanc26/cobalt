@@ -198,10 +198,18 @@ bool cobalt_session_begin_repost(const char *uri, const char *cid);
  * a reply; pass NULL for all four for a top-level post. Both refs are required
  * for a reply — a reply naming the wrong root lands in the wrong conversation
  * for every other client, so a partial set is refused rather than guessed at.
+ *
+ * `reply_gate` is ignored for a reply (see `cobalt_reply_gate`'s doc comment
+ * in app/compose.h — kept as a plain int here rather than pulling the app
+ * layer's enum into atproto/, which sits below app/). For a top-level post,
+ * anything other than 0 (everyone) writes a threadgate record right after the
+ * post succeeds; a failure there is logged but does not undo the post — the
+ * post exists ungated rather than silently vanishing. 0 = everyone,
+ * 1 = followed/mentioned only, 2 = nobody.
  */
 bool cobalt_session_begin_post(const char *text, const char *parent_uri,
                                const char *parent_cid, const char *root_uri,
-                               const char *root_cid);
+                               const char *root_cid, int reply_gate);
 
 /*
  * Fetch notifications. `paging` appends the next page; false replaces the list.
