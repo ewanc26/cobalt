@@ -1,4 +1,4 @@
-#include "atproto/profile.h"
+#include "atproto/actor_profile.h"
 
 #ifdef COBALT_HAS_WOLFRAM
 #include <wolfram/agent.h>
