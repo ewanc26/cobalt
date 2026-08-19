@@ -646,6 +646,76 @@ run_timeline(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state
 }
 
 
+/*
+ * A custom feed (app.bsky.feed.getFeed), identified by `in->uri` — the
+ * generator's AT-URI. `wf_agent_get_feed_typed` returns `wf_agent_feed_view_list`,
+ * a typedef alias for the same `wf_agent_feed_list` getTimeline returns (see
+ * feedgen_typed.h), so this is run_timeline with a different Wolfram call and
+ * no home-timeline-specific "nothing further" framing for an empty result.
+ */
+static void
+run_feed(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in to view feeds.");
+      return;
+   }
+
+   const char *cursor = NULL;
+   if (in->paging) {
+      SDL_LockMutex(s.lock);
+      cursor = s.feed.cursor[0] ? s.feed.cursor : NULL;
+      SDL_UnlockMutex(s.lock);
+
+      if (!cursor) {
+         *state = COBALT_AUTH_SIGNED_IN;
+         r->ok = true;
+         return;
+      }
+   }
+
+   wf_agent_feed_list list;
+   memset(&list, 0, sizeof(list));
+
+   COBALT_LOGI("session: getFeed %s limit=%d cursor=%s", in->uri, TIMELINE_PAGE,
+               cursor ? cursor : "(top)");
+   wf_status status = wf_agent_get_feed_typed(s.wf, in->uri, TIMELINE_PAGE, cursor, &list);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: getFeed failed (%d)", (int) status);
+      describe_failure(r, status, COBALT_JOB_FEED);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   const int64_t now = cobalt_time_now();
+
+   SDL_LockMutex(s.lock);
+   if (!in->paging) {
+      cobalt_feed_reset(&s.feed);
+   }
+   const int added = cobalt_feed_append_from_wolfram(&s.feed, &list, now);
+   if (in->paging && added == 0) {
+      s.feed.has_more = false;
+      s.feed.cursor[0] = '\0';
+   }
+   const int total = s.feed.count;
+   SDL_UnlockMutex(s.lock);
+
+   wf_agent_feed_list_free(&list);
+
+   COBALT_LOGI("session: feed +%d posts (%d held)", added, total);
+
+   if (total == 0) {
+      set_message(r, "This feed has no posts right now.");
+   }
+
+   publish_session();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+
 static void
 run_thread(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
 {
@@ -1320,6 +1390,7 @@ run_job(cobalt_job_kind kind, const job_input *in, cobalt_auth_state *state)
       case COBALT_JOB_MUTED_LIST:   run_muted_list(in, &r, state);   break;
       case COBALT_JOB_BLOCKED_LIST: run_blocked_list(in, &r, state); break;
       case COBALT_JOB_SEARCH_ACTORS: run_search_actors(in, &r, state); break;
+      case COBALT_JOB_FEED:     run_feed(in, &r, state);      break;
       case COBALT_JOB_NONE:
       default:                                           break;
    }
@@ -1604,6 +1675,16 @@ cobalt_session_begin_timeline(bool paging)
    memset(&in, 0, sizeof(in));
    in.paging = paging;
    return submit(COBALT_JOB_TIMELINE, &in);
+}
+
+bool
+cobalt_session_begin_feed(const char *feed_uri, bool paging)
+{
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", feed_uri ? feed_uri : "");
+   in.paging = paging;
+   return submit(COBALT_JOB_FEED, &in);
 }
 
 const cobalt_feed *
