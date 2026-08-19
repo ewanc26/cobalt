@@ -30,6 +30,7 @@
 
 #include "atproto/actors.h"
 #include "atproto/feed.h"
+#include "atproto/curated_lists.h"
 #include "atproto/notifications.h"
 #include "atproto/actor_profile.h"
 #include "cache/session_store.h"
@@ -74,6 +75,8 @@ typedef enum {
    COBALT_JOB_BLOCKED_LIST,
    COBALT_JOB_SEARCH_ACTORS,
    COBALT_JOB_FEED,
+   COBALT_JOB_LISTS,
+   COBALT_JOB_LIST_MEMBERS,
 } cobalt_job_kind;
 
 typedef struct {
@@ -258,6 +261,17 @@ const cobalt_actor_list *cobalt_session_blocked_list(void);
  */
 bool cobalt_session_begin_search_actors(const char *query, bool paging);
 const cobalt_actor_list *cobalt_session_search_results(void);
+
+/*
+ * Curated lists (app.bsky.graph.list). Read-only — see atproto/curated_lists.h.
+ * `cobalt_session_begin_lists` fetches the signed-in account's own lists;
+ * `cobalt_session_begin_list_members` fetches one list's members by its AT
+ * URI. A fresh (non-paging) call replaces the held results; paging appends.
+ */
+bool cobalt_session_begin_lists(bool paging);
+const cobalt_list_summary_list *cobalt_session_lists(void);
+bool cobalt_session_begin_list_members(const char *list_uri, bool paging);
+const cobalt_actor_list *cobalt_session_list_members(void);
 
 /*
  * Guard for the shared snapshots above.

@@ -13,6 +13,7 @@
 #include <wolfram/agent.h>
 #include <wolfram/feed_typed.h>
 #include <wolfram/graph_typed.h>
+#include <wolfram/list_typed.h>
 #include <wolfram/moderation_typed.h>
 #include <wolfram/session.h>
 #include <wolfram/thread_typed.h>
@@ -98,6 +99,8 @@ static struct {
    cobalt_actor_list muted;
    cobalt_actor_list blocked;
    cobalt_actor_list search;
+   cobalt_list_summary_list lists;
+   cobalt_actor_list list_members;
 
 #ifdef COBALT_HAS_WOLFRAM
    /* Owned by the worker while a job runs; only touched off-thread when idle. */
@@ -1318,6 +1321,128 @@ run_search_actors(const job_input *in, cobalt_job_result *r,
    r->ok = true;
 }
 
+/* The signed-in account's own lists (app.bsky.graph.getLists). */
+static void
+run_lists(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in first.");
+      return;
+   }
+
+   const char *cursor = NULL;
+   if (in->paging) {
+      SDL_LockMutex(s.lock);
+      cursor = s.lists.cursor[0] ? s.lists.cursor : NULL;
+      SDL_UnlockMutex(s.lock);
+      if (!cursor) {
+         *state = COBALT_AUTH_SIGNED_IN;
+         r->ok = true;
+         return;
+      }
+   }
+
+   wf_agent_list_view_list wf_list;
+   memset(&wf_list, 0, sizeof(wf_list));
+
+   const wf_status status =
+      wf_agent_get_lists_typed(s.wf, s.did, TIMELINE_PAGE, cursor, &wf_list);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: lists fetch failed (%d)", (int) status);
+      set_message(r, "Could not load your lists (wolfram status %d).",
+                  (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(s.lock);
+   if (!in->paging) {
+      cobalt_list_summary_list_reset(&s.lists);
+   }
+   const int added =
+      cobalt_list_summary_list_append_from_wolfram(&s.lists, &wf_list);
+   if (in->paging && added == 0) {
+      s.lists.has_more = false;
+      s.lists.cursor[0] = '\0';
+   }
+   const int total = s.lists.count;
+   SDL_UnlockMutex(s.lock);
+
+   wf_agent_list_view_list_free(&wf_list);
+   COBALT_LOGI("session: lists +%d (%d held)", added, total);
+
+   if (total == 0) {
+      set_message(r, "You haven't made any lists yet.");
+   }
+
+   publish_session();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+/* One list's members (app.bsky.graph.getList). `in->uri` is the list's AT
+ * URI, set by cobalt_session_begin_list_members. */
+static void
+run_list_members(const job_input *in, cobalt_job_result *r,
+                 cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in first.");
+      return;
+   }
+
+   const char *cursor = NULL;
+   if (in->paging) {
+      SDL_LockMutex(s.lock);
+      cursor = s.list_members.cursor[0] ? s.list_members.cursor : NULL;
+      SDL_UnlockMutex(s.lock);
+      if (!cursor) {
+         *state = COBALT_AUTH_SIGNED_IN;
+         r->ok = true;
+         return;
+      }
+   }
+
+   wf_agent_list_item_list wf_list;
+   memset(&wf_list, 0, sizeof(wf_list));
+
+   const wf_status status =
+      wf_agent_get_list_typed(s.wf, in->uri, TIMELINE_PAGE, cursor, &wf_list);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: list members fetch failed (%d)", (int) status);
+      set_message(r, "Could not load that list (wolfram status %d).",
+                  (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(s.lock);
+   if (!in->paging) {
+      cobalt_actor_list_reset(&s.list_members);
+   }
+   const int added = cobalt_actor_list_append_from_wolfram_list_items(
+      &s.list_members, &wf_list);
+   if (in->paging && added == 0) {
+      s.list_members.has_more = false;
+      s.list_members.cursor[0] = '\0';
+   }
+   const int total = s.list_members.count;
+   SDL_UnlockMutex(s.lock);
+
+   wf_agent_list_item_list_free(&wf_list);
+   COBALT_LOGI("session: list members +%d (%d held)", added, total);
+
+   if (total == 0) {
+      set_message(r, "This list has no members.");
+   }
+
+   publish_session();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
 static void
 run_logout(cobalt_job_result *r, cobalt_auth_state *state)
 {
@@ -1391,6 +1516,8 @@ run_job(cobalt_job_kind kind, const job_input *in, cobalt_auth_state *state)
       case COBALT_JOB_BLOCKED_LIST: run_blocked_list(in, &r, state); break;
       case COBALT_JOB_SEARCH_ACTORS: run_search_actors(in, &r, state); break;
       case COBALT_JOB_FEED:     run_feed(in, &r, state);      break;
+      case COBALT_JOB_LISTS:        run_lists(in, &r, state);        break;
+      case COBALT_JOB_LIST_MEMBERS: run_list_members(in, &r, state); break;
       case COBALT_JOB_NONE:
       default:                                           break;
    }
@@ -1840,6 +1967,37 @@ cobalt_session_begin_search_actors(const char *query, bool paging)
       snprintf(in.text, sizeof(in.text), "%s", query);
    }
    return submit(COBALT_JOB_SEARCH_ACTORS, &in);
+}
+
+const cobalt_list_summary_list *
+cobalt_session_lists(void)
+{
+   return &s.lists;
+}
+
+bool
+cobalt_session_begin_lists(bool paging)
+{
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   in.paging = paging;
+   return submit(COBALT_JOB_LISTS, &in);
+}
+
+const cobalt_actor_list *
+cobalt_session_list_members(void)
+{
+   return &s.list_members;
+}
+
+bool
+cobalt_session_begin_list_members(const char *list_uri, bool paging)
+{
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", list_uri ? list_uri : "");
+   in.paging = paging;
+   return submit(COBALT_JOB_LIST_MEMBERS, &in);
 }
 
 bool
