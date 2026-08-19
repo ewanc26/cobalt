@@ -11,7 +11,7 @@ This file exists to orient an AI coding agent working on this repository. Read i
 - Give Wii U owners with homebrew installed a native, responsive way to read and post to Bluesky/ATProto, without relying on the Wii U's aging WebKit-based Internet Browser.
 - Take advantage of Wii U-specific hardware the Wii didn't have: a second screen (GamePad), a faster CPU/GPU, and more RAM — and a generally friendlier homebrew dev flow than the Wii's, which is a real factor given Channel Blue stalled at pre-alpha.
 - Preserve the naming convention used across Ewan's other projects (Wolfram, Malachite, Tourmaline, Inkwell, Bismuth) — this one is **Cobalt**, a blue mineral, deliberately echoing "Channel *Blue*" while fitting the gemstone/mineral pattern.
-- Ship something that actually works on real hardware. **Ewan does not have Cemu set up and is developing/testing directly against a real Wii U with Aroma installed** — there is no emulator safety net here. Every milestone's acceptance test is "it works on the actual console."
+- Ship something that actually works on real hardware. **Ewan develops/tests against a real Wii U with Aroma installed, and now also has Cemu available** as a fast pre-check — Cemu catches obvious crashes/layout/logic mistakes cheaply, but it is not a substitute for the real thing: every milestone's *acceptance* test is still "it works on the actual console." Treat a clean Cemu run as "safe to attempt a hardware pass," not as "done."
 
 ## 2. Relationship to Channel Blue
 
@@ -35,7 +35,7 @@ The practical consequence: Channel Blue's Wii networking is worth reading, not d
 - **Homebrew environment:** [Aroma](https://aroma.foryour.cafe/) — the current, actively maintained Wii U CFW/homebrew environment (successor to Tiramisu). Do not target the old Homebrew Launcher/ELF flow; Aroma + RPX/WUHB is the supported path.
 - **Toolchain:** devkitPro + **WUT** (Wii U Toolchain), installed via devkitPro's `pacman`. Executables are built as `.rpx` (native Wii U executable format, a modified ELF) and packaged as `.wuhb` for distribution via the Homebrew App Store / Aroma's Wii U Menu integration.
 - **Build system:** devkitPro Makefiles (the de facto standard for WUT projects) with `wut_create_rpx`/`wuhbtool` for packaging. CMake is an acceptable alternative if it simplifies dependency management, but don't mix build systems within the repo.
-- **Iteration target:** real hardware only — no Cemu in this workflow. Expect the deploy loop (build → copy to SD or push via Aroma's FTP server → run on console) to be slower than an emulator-based one; budget for that rather than assuming Cemu-speed iteration. Lean on liberal logging (see §9) to make each real-hardware run count, since there's no emulator step to catch obvious mistakes cheaply first.
+- **Iteration target:** Cemu for fast local iteration and screenshot/UI validation, real hardware for acceptance. Cemu's networking, timing, and GX2 behavior diverge from a real console's — don't treat "works in Cemu" as "works on console" for anything networking-, threading-, or GamePad-timing-sensitive; those still need a real-hardware pass before a milestone is considered done. Expect the hardware deploy loop (build → copy to SD or push via Aroma's FTP server → run on console) to be slower than Cemu's; budget for that. Lean on liberal logging (see §9) so each hardware run still counts even with Cemu catching the obvious mistakes first.
 - **Key WUT headers/subsystems you'll touch:**
   - `coreinit` — core OS functions, threading, memory.
   - `proc_ui`/`ProcUI` — process lifecycle; **must** be handled correctly or the app won't back out to the Wii U Menu cleanly.
@@ -164,9 +164,9 @@ Cobalt follows the same commit conventions as Wolfram (see that repo's `CONTRIBU
 
 ## 10. Testing & Verification
 
-- **Real hardware only:** there is no Cemu step in this project's workflow. Every build gets deployed straight to Ewan's Wii U via SD card or Aroma's FTP server and verified there — confirm no crashes/hangs on launch, feed load, thread view, and compose directly on console.
-- Because there's no emulator to catch mistakes cheaply first, favour smaller, more frequent real-hardware test passes over large batches of untested changes — a build that hangs or crashes on console is more costly to debug here than it would be with an emulator in the loop.
-- Networking behaviour must be verified on real hardware as a matter of course, not as an extra precaution — it's the only environment being tested against.
+- **Cemu first, real hardware for acceptance.** Cemu is available and should be used to catch crashes/hangs/layout mistakes and to take UI screenshots cheaply before a hardware pass — but a milestone isn't done until it's confirmed on Ewan's real Wii U via SD card or Aroma's FTP server: no crashes/hangs on launch, feed load, thread view, and compose directly on console.
+- Cemu is a real net-positive over "no emulator," but its GX2/timing/networking emulation is not 1:1 with hardware — treat a Cemu pass as raising confidence, not as proof, for anything console-timing- or networking-sensitive. Favour smaller, more frequent real-hardware passes over large batches of Cemu-only-verified changes.
+- Networking behaviour must still be verified on real hardware as a matter of course — Cemu's `nsysnet`/curl/mbedTLS emulation is not guaranteed to match the console's.
 - There is no unit-testing framework standard to this ecosystem; prioritise integration-level manual test passes over trying to force a desktop-style test suite onto platform-specific code. Pure-logic code (ATProto record parsing, cache logic) *can* reasonably be unit tested if extracted into platform-independent files — do this where practical, since it's the one part of the codebase that can be tested off-console.
 
 ## 11. Known Constraints & Risks
