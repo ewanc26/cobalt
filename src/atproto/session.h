@@ -73,6 +73,7 @@ typedef enum {
    COBALT_JOB_MUTED_LIST,
    COBALT_JOB_BLOCKED_LIST,
    COBALT_JOB_SEARCH_ACTORS,
+   COBALT_JOB_FEED,
 } cobalt_job_kind;
 
 typedef struct {
@@ -148,6 +149,16 @@ bool cobalt_session_begin_logout(void);
  * not an error — it completes with nothing added.
  */
 bool cobalt_session_begin_timeline(bool paging);
+
+/*
+ * Fetch a custom feed (app.bsky.feed.getFeed) by its generator AT-URI,
+ * replacing or paging the same feed storage `cobalt_session_feed()` exposes —
+ * a custom feed is "the timeline, sourced elsewhere," so it reuses the
+ * timeline's rendering and storage rather than getting its own. Switching
+ * back to the home timeline via `cobalt_session_begin_timeline` overwrites
+ * this feed's posts the same way opening it overwrote the home timeline's.
+ */
+bool cobalt_session_begin_feed(const char *feed_uri, bool paging);
 
 /*
  * The feed, thread, notifications and profile as last fetched. Never NULL.

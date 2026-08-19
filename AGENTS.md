@@ -223,7 +223,7 @@ The stated goal is to go as far as the hardware allows. Some of it never will, a
 | Push notifications | No service the console can register with |
 | GIFs / animated media | Same decode problem as video, plus per-frame budget |
 
-Reachable, in rough order of value: ~~images and avatars~~ (done — see §13), ~~profiles~~ (done), ~~post images and link cards~~ (done — see §13), ~~mutes and blocks~~ (done — see §13), ~~search~~ (done, actor search only — see §13), custom feeds, lists, threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
+Reachable, in rough order of value: ~~images and avatars~~ (done — see §13), ~~profiles~~ (done), ~~post images and link cards~~ (done — see §13), ~~mutes and blocks~~ (done — see §13), ~~search~~ (done, actor search only — see §13), ~~custom feeds~~ (done, one hardcoded feed only — see §13), lists, threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
 
 **Language policy.** Cobalt may use C++ where it earns its place — RAII around a resource with a manual free/close (mbedTLS contexts, SDL surfaces/textures, file handles), and state-management code where it meaningfully cuts boilerplate over the equivalent hand-rolled C. It is not a rewrite target: existing C modules that work and are tested stay C unless a specific change is touching them anyway, since a wholesale port is a large, separate undertaking with its own review burden, not something to fold into an unrelated feature commit. Wolfram itself stays **C only** — it is the shared SDK across Ewan's ATProto work and its portability is the point (§9 there is explicit about this) — but consuming Wolfram from C++ is exactly what its `wolfram-cpp` layer (`cpp/wolfram-cpp/`, `WOLFRAM_BUILD_CPP=ON`) is for: header-only RAII handles (`unique_handle<T, Free>`) generated from Wolfram's own `wf_*_free` ownership contracts, plus `wf_status` → `std::error_code`. Cobalt does not consume it today — every `wf_agent_*`/`wf_*_free` call site in `atproto/` is hand-paired C — but it is the natural place to reach for it in new Wolfram-facing code, rather than another hand-rolled cleanup path.
 
@@ -612,6 +612,54 @@ The host test harness (`make -C tests`) also could not run — no host SDL2
 dev package in this environment either. Per §10 and §12's own "None of it has
 been through a hardware pass" note, **none of this has been run on the
 actual console**, same standing caveat as the rest of the roadmap since step 5.
+
+*(Update, later pass: `wiiu-sdl2_image` was installed into this dev
+environment and a `src/app/profile.c` / `src/atproto/profile.c` object-name
+collision under the Makefile's flat VPATH — unrelated to search, present since
+before it — was fixed, so `make` now links end-to-end here. Still not a
+hardware pass; see the custom-feeds entry below for what that build actually
+covered.)*
+
+### Custom feeds: one hardcoded generator, reusing the timeline wholesale
+
+`app.bsky.feed.getFeed` is what's implemented — not the user's actual saved
+feeds. Reading those needs `app.bsky.actor.getPreferences`'s `savedFeeds` (or
+the newer `savedFeedsPrefV2`) parsed out of the preferences blob, plus a
+`getFeedGenerators` call to get each one's display name/avatar — real scope,
+deferred rather than half-done here. Instead `app/app.c` carries a small
+`FEEDS[]` table (currently one entry, Bluesky's official "What's Hot") behind
+a new "Feeds" row on the home menu, between Search and Notifications.
+
+The feed-viewing half adds nothing new: `wf_agent_get_feed_typed` returns
+`wf_agent_feed_view_list`, which is a **typedef alias** for the exact same
+`wf_agent_feed_list` `getTimeline`/`getAuthorFeed` return (see
+`feedgen_typed.h`) — so a custom feed is "the timeline, sourced elsewhere."
+`atproto/session.c` gained `COBALT_JOB_FEED` and `run_feed`, a near-duplicate
+of `run_timeline` that calls `wf_agent_get_feed_typed(agent, in->uri, ...)`
+instead and writes into the *same* `s.feed` storage — no new UI code, no new
+row/card rendering, `app/timeline.c` and `ui/postcard.c` are untouched.
+Opening a feed just calls `cobalt_session_begin_feed(uri, false)` and switches
+to `COBALT_SCREEN_TIMELINE`; leaving it and reopening Timeline from the home
+menu re-fetches the home timeline into the same storage, overwriting the
+custom feed's posts the same way opening the custom feed overwrote whatever
+was there before. The feed picker itself (`update_feeds`/`draw_feeds`, both in
+`app.c`) is a small static-row list, modelled directly on the account screen's
+own inline menu (`update_account`/`draw_account`) rather than getting its own
+file — at one row today it doesn't earn a `feeds.c`.
+
+**Not done, and worth closing in a later pass:** B from the timeline while
+viewing a custom feed goes to Home, not back to the feed picker — `timeline.c`
+hardcodes its BACK target to `COBALT_SCREEN_HOME` and giving it a second
+return target is the same shape of change §"Search is actor search only"
+above declined to make for `profile_return`, for the same reason (not this
+commit's actual subject). The saved-feeds-from-preferences work described
+above is the other open item.
+
+**Verification note:** built with `wiiu-sdl2_image` installed and the
+`profile.c` collision fix in place (see the update above) — `make -j4` from a
+clean worktree succeeds end-to-end, producing `cobalt.elf`/`.rpx`/`.wuhb` with
+no errors or warnings. Still no hardware pass — same standing caveat as
+everything since step 5.
 
 `tests/` does two things with the build machine's own compiler. It runs a `-fsyntax-only -Werror` sweep over every translation unit that does not need devkitPro headers — including `main.c`, which owns the startup and shutdown ordering and is exactly the code a hardware pass is slowest to tell you about — in both the with-Wolfram and without-Wolfram configurations, so a changed SDK signature is caught in a second rather than after a card swap. And it unit tests the genuinely platform-independent logic §10 carves out: the credential store's round trip and its refusal of damaged or foreign files, the service-URL normaliser, the keyboard's text model, and the async request handshake.
 
