@@ -24,6 +24,7 @@ typedef enum {
    ACTION_TIMELINE = 0,
    ACTION_COMPOSE,
    ACTION_SEARCH,
+   ACTION_FEEDS,
    ACTION_NOTIFICATIONS,
    ACTION_ACCOUNT,
    ACTION_DIAGNOSTICS,
@@ -41,6 +42,7 @@ static const menu_action MENU[] = {
    ACTION_TIMELINE,
    ACTION_COMPOSE,
    ACTION_SEARCH,
+   ACTION_FEEDS,
    ACTION_NOTIFICATIONS,
    ACTION_ACCOUNT,
    ACTION_DIAGNOSTICS,
@@ -69,6 +71,8 @@ struct cobalt_app {
    cobalt_search_view search;
    /* Which row is highlighted on the account screen's small menu. */
    int account_selected;
+   /* Which row is highlighted on the feed-picker screen's small menu. */
+   int feeds_selected;
    /* Where B from the profile screen returns to. */
    cobalt_screen profile_return;
    /* Where to return after composing — the timeline or the thread. */
@@ -111,6 +115,28 @@ typedef enum {
 static SDL_Rect s_account_hit[ACCOUNT_ROW_COUNT];
 static bool s_account_hit_valid = false;
 
+/*
+ * Well-known custom feeds, hardcoded rather than read from the signed-in
+ * account's saved-feeds preference (app.bsky.actor.getPreferences). Parsing
+ * that preference (and fetching each generator's name/avatar via
+ * getFeedGenerators) is real scope beyond this first cut — this list gets a
+ * feed-viewing screen shipped now, with "the user's own saved feeds" as a
+ * follow-up once this shape is proven out.
+ */
+typedef struct {
+   const char *label;
+   const char *uri;
+} well_known_feed;
+
+static const well_known_feed FEEDS[] = {
+   {
+      "What's Hot",
+      "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot",
+   },
+};
+
+#define FEED_COUNT ((int) (sizeof(FEEDS) / sizeof(FEEDS[0])))
+
 /* --- menu description --- */
 
 static bool
@@ -126,6 +152,7 @@ menu_label(int index)
       case ACTION_TIMELINE:       return "Timeline";
       case ACTION_COMPOSE:        return "New post";
       case ACTION_SEARCH:         return "Search";
+      case ACTION_FEEDS:          return "Feeds";
       case ACTION_NOTIFICATIONS:  return "Notifications";
       case ACTION_ACCOUNT:        return signed_in() ? "Account" : "Sign in";
       case ACTION_DIAGNOSTICS:    return "Diagnostics";
@@ -146,6 +173,8 @@ menu_hint(int index)
          return signed_in() ? "Write something" : "Sign in to post";
       case ACTION_SEARCH:
          return signed_in() ? "Find accounts" : "Sign in to search";
+      case ACTION_FEEDS:
+         return signed_in() ? "Browse custom feeds" : "Sign in to browse feeds";
       case ACTION_NOTIFICATIONS:
          return signed_in() ? "Replies, likes and follows"
                             : "Sign in to see notifications";
@@ -173,6 +202,7 @@ menu_enabled(int index)
       case ACTION_TIMELINE:
       case ACTION_COMPOSE:
       case ACTION_SEARCH:
+      case ACTION_FEEDS:
       case ACTION_NOTIFICATIONS:
          return signed_in();
       case ACTION_ACCOUNT:
@@ -272,6 +302,12 @@ activate(cobalt_app *app, int index)
          cobalt_search_view_open(&app->search);
          app->screen = COBALT_SCREEN_SEARCH;
          COBALT_LOGI("menu: opened search");
+         break;
+
+      case ACTION_FEEDS:
+         app->feeds_selected = 0;
+         app->screen = COBALT_SCREEN_FEEDS;
+         COBALT_LOGI("menu: opened feeds");
          break;
 
       case ACTION_NOTIFICATIONS:
@@ -522,6 +558,49 @@ update_account(cobalt_app *app, const cobalt_input *in)
    }
 }
 
+static SDL_Rect s_feeds_hit[FEED_COUNT];
+static bool s_feeds_hit_valid = false;
+
+static void
+update_feeds(cobalt_app *app, const cobalt_input *in)
+{
+   if (cobalt_session_busy()) {
+      return;
+   }
+
+   if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
+      app->screen = COBALT_SCREEN_HOME;
+      return;
+   }
+
+   if (cobalt_input_pressed(in, COBALT_BTN_DOWN)) {
+      app->feeds_selected = (app->feeds_selected + 1) % FEED_COUNT;
+   }
+   if (cobalt_input_pressed(in, COBALT_BTN_UP)) {
+      app->feeds_selected = (app->feeds_selected + FEED_COUNT - 1) % FEED_COUNT;
+   }
+
+   int activated = -1;
+   if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
+      activated = app->feeds_selected;
+   } else if (s_feeds_hit_valid && in->touch_ended) {
+      for (int i = 0; i < FEED_COUNT; i++) {
+         if (cobalt_input_tapped(in, &s_feeds_hit[i])) {
+            app->feeds_selected = i;
+            activated = i;
+            break;
+         }
+      }
+   }
+
+   if (activated >= 0 && activated < FEED_COUNT) {
+      COBALT_LOGI("feeds: opening %s", FEEDS[activated].label);
+      cobalt_timeline_rewind(&app->timeline);
+      cobalt_session_begin_feed(FEEDS[activated].uri, false);
+      app->screen = COBALT_SCREEN_TIMELINE;
+   }
+}
+
 static void
 update_signin(cobalt_app *app, const cobalt_input *in)
 {
@@ -698,6 +777,10 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
 
       case COBALT_SCREEN_ACCOUNT:
          update_account(app, in);
+         break;
+
+      case COBALT_SCREEN_FEEDS:
+         update_feeds(app, in);
          break;
 
       case COBALT_SCREEN_MUTED_LIST:
@@ -932,6 +1015,42 @@ draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 }
 
 static void
+draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   draw_header(r, "Feeds");
+
+   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int row_h = m->font_body * 2;
+   const int width = m->width - 2 * m->pad_edge;
+   const int label_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
+
+   int row_y = top;
+   for (int i = 0; i < FEED_COUNT; i++) {
+      SDL_Rect row = { m->pad_edge, row_y, width, row_h };
+      const bool focused = (app->feeds_selected == i);
+      cobalt_draw_tile(r, &row, focused ? 1.0f : 0.0f);
+      cobalt_draw_text_centred(r, COBALT_FONT_HEADING, FEEDS[i].label, row.x,
+                               row.y + (row_h - label_h) / 2, row.w,
+                               COBALT_COLOUR_TEXT);
+
+      if (surface == COBALT_SURFACE_DRC) {
+         s_feeds_hit[i] = row;
+      }
+      row_y += row_h + m->gap / 2;
+   }
+   if (surface == COBALT_SURFACE_DRC) {
+      s_feeds_hit_valid = true;
+   }
+
+   draw_notice(app, r, row_y + m->gap / 2, width);
+
+   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   cobalt_draw_text(r, COBALT_FONT_CAPTION, "A / touch: open     B: back",
+                    m->pad_edge, m->height - m->pad_edge - 20, hint);
+}
+
+static void
 draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
@@ -1122,6 +1241,10 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_ACCOUNT:
          draw_account(app, r, surface);
+         break;
+
+      case COBALT_SCREEN_FEEDS:
+         draw_feeds(app, r, surface);
          break;
 
       case COBALT_SCREEN_MUTED_LIST:
