@@ -223,7 +223,7 @@ The stated goal is to go as far as the hardware allows. Some of it never will, a
 | Push notifications | No service the console can register with |
 | GIFs / animated media | Same decode problem as video, plus per-frame budget |
 
-Reachable, in rough order of value: ~~images and avatars~~ (done — see §13), ~~profiles~~ (done), ~~post images and link cards~~ (done — see §13), ~~mutes and blocks~~ (done — see §13), ~~search~~ (done, actor search only — see §13), ~~custom feeds~~ (done, one hardcoded feed only — see §13), lists, threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
+Reachable, in rough order of value: ~~images and avatars~~ (done — see §13), ~~profiles~~ (done), ~~post images and link cards~~ (done — see §13), ~~mutes and blocks~~ (done — see §13), ~~search~~ (done, actor search only — see §13), ~~custom feeds~~ (done, one hardcoded feed only — see §13), ~~lists~~ (done, browse-only — see §13), threadgates. Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side.
 
 **Language policy.** Cobalt may use C++ where it earns its place — RAII around a resource with a manual free/close (mbedTLS contexts, SDL surfaces/textures, file handles), and state-management code where it meaningfully cuts boilerplate over the equivalent hand-rolled C. It is not a rewrite target: existing C modules that work and are tested stay C unless a specific change is touching them anyway, since a wholesale port is a large, separate undertaking with its own review burden, not something to fold into an unrelated feature commit. Wolfram itself stays **C only** — it is the shared SDK across Ewan's ATProto work and its portability is the point (§9 there is explicit about this) — but consuming Wolfram from C++ is exactly what its `wolfram-cpp` layer (`cpp/wolfram-cpp/`, `WOLFRAM_BUILD_CPP=ON`) is for: header-only RAII handles (`unique_handle<T, Free>`) generated from Wolfram's own `wf_*_free` ownership contracts, plus `wf_status` → `std::error_code`. Cobalt does not consume it today — every `wf_agent_*`/`wf_*_free` call site in `atproto/` is hand-paired C — but it is the natural place to reach for it in new Wolfram-facing code, rather than another hand-rolled cleanup path.
 
@@ -660,6 +660,43 @@ above is the other open item.
 clean worktree succeeds end-to-end, producing `cobalt.elf`/`.rpx`/`.wuhb` with
 no errors or warnings. Still no hardware pass — same standing caveat as
 everything since step 5.
+
+### Lists: read-only, own lists and their members only
+
+Wolfram's `list_typed.h` exposes `wf_agent_get_lists_typed`
+(`app.bsky.graph.getLists`) and `wf_agent_get_list_typed`
+(`app.bsky.graph.getList`) — no create/edit/delete wrapper — so this is
+browsing only: the signed-in account's own lists, and one list's members at a
+time. Creating or editing a list from Cobalt is out of scope until Wolfram
+grows that surface.
+
+New `atproto/curated_lists.{c,h}` (named to avoid `app/lists.c`'s basename —
+see the `profile.c`/`actor_profile.c` collision entry above; the same
+devkitPro flat-VPATH issue would have reproduced here) holds
+`cobalt_list_summary_list` (name/description/avatar/uri per list) and reuses
+`cobalt_actor_list` wholesale for a list's members, via a small adapter
+(`cobalt_actor_list_append_from_wolfram_list_items`) that flattens
+`wf_agent_list_item_list`'s items — each one's `subject` is a
+`wf_agent_profile_view`, the exact type `cobalt_actor_list_append_from_wolfram`
+already consumes for mutes/blocks/search, so a list member is, again, the same
+row shape as everything else in `actors.h`.
+
+`app/lists.c` is one screen with two sub-modes (`browsing_members`), the same
+"pick one thing, then look at what it opens onto" shape `search.c` uses:
+false shows the list-of-lists menu, true shows the selected list's members
+with `search.c`/`graph.c`'s row drawing duplicated rather than shared (this
+codebase's standing convention — see §"Language policy" on not forcing shared
+abstractions prematurely). A "Lists" entry sits on the home menu between Feeds
+and Notifications.
+
+**Not done, and worth closing in a later pass:** tapping a member doesn't open
+their profile — the same DID-forwarding `search.c` does for its results would
+need the same `COBALT_LISTS_VIEW_OPEN_PROFILE`-style action `search.c` already
+has, just not wired here yet. List creation/editing, described above, is the
+other open item.
+
+**Verification note:** `make -j4` succeeds end-to-end from a clean worktree —
+`cobalt.elf`/`.rpx`/`.wuhb`, no errors or warnings. Still no hardware pass.
 
 `tests/` does two things with the build machine's own compiler. It runs a `-fsyntax-only -Werror` sweep over every translation unit that does not need devkitPro headers — including `main.c`, which owns the startup and shutdown ordering and is exactly the code a hardware pass is slowest to tell you about — in both the with-Wolfram and without-Wolfram configurations, so a changed SDK signature is caught in a second rather than after a card swap. And it unit tests the genuinely platform-independent logic §10 carves out: the credential store's round trip and its refusal of damaged or foreign files, the service-URL normaliser, the keyboard's text model, and the async request handshake.
 
