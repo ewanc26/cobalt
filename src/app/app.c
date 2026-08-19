@@ -3,6 +3,7 @@
 #include "app/graph.h"
 #include "app/notify.h"
 #include "app/profile.h"
+#include "app/search.h"
 #include "app/signin.h"
 #include "app/thread.h"
 #include "app/timeline.h"
@@ -22,6 +23,7 @@
 typedef enum {
    ACTION_TIMELINE = 0,
    ACTION_COMPOSE,
+   ACTION_SEARCH,
    ACTION_NOTIFICATIONS,
    ACTION_ACCOUNT,
    ACTION_DIAGNOSTICS,
@@ -38,6 +40,7 @@ typedef enum {
 static const menu_action MENU[] = {
    ACTION_TIMELINE,
    ACTION_COMPOSE,
+   ACTION_SEARCH,
    ACTION_NOTIFICATIONS,
    ACTION_ACCOUNT,
    ACTION_DIAGNOSTICS,
@@ -63,6 +66,7 @@ struct cobalt_app {
    cobalt_notify_view notify;
    cobalt_profile_view profile;
    cobalt_graph_view graph;
+   cobalt_search_view search;
    /* Which row is highlighted on the account screen's small menu. */
    int account_selected;
    /* Where B from the profile screen returns to. */
@@ -121,6 +125,7 @@ menu_label(int index)
    switch (MENU[index]) {
       case ACTION_TIMELINE:       return "Timeline";
       case ACTION_COMPOSE:        return "New post";
+      case ACTION_SEARCH:         return "Search";
       case ACTION_NOTIFICATIONS:  return "Notifications";
       case ACTION_ACCOUNT:        return signed_in() ? "Account" : "Sign in";
       case ACTION_DIAGNOSTICS:    return "Diagnostics";
@@ -139,6 +144,8 @@ menu_hint(int index)
                             : "Sign in to read your feed";
       case ACTION_COMPOSE:
          return signed_in() ? "Write something" : "Sign in to post";
+      case ACTION_SEARCH:
+         return signed_in() ? "Find accounts" : "Sign in to search";
       case ACTION_NOTIFICATIONS:
          return signed_in() ? "Replies, likes and follows"
                             : "Sign in to see notifications";
@@ -165,6 +172,7 @@ menu_enabled(int index)
    switch (MENU[index]) {
       case ACTION_TIMELINE:
       case ACTION_COMPOSE:
+      case ACTION_SEARCH:
       case ACTION_NOTIFICATIONS:
          return signed_in();
       case ACTION_ACCOUNT:
@@ -193,6 +201,7 @@ cobalt_app_create(void)
    cobalt_notify_view_init(&app->notify);
    cobalt_profile_view_init(&app->profile);
    cobalt_graph_view_init(&app->graph);
+   cobalt_search_view_init(&app->search);
 
    curl_version_info_data *curl_info = curl_version_info(CURLVERSION_NOW);
    snprintf(app->curl_version, sizeof(app->curl_version), "curl %s / %s",
@@ -257,6 +266,12 @@ activate(cobalt_app *app, int index)
          app->compose_return = COBALT_SCREEN_HOME;
          app->screen = COBALT_SCREEN_COMPOSE;
          COBALT_LOGI("menu: composing a new post");
+         break;
+
+      case ACTION_SEARCH:
+         cobalt_search_view_open(&app->search);
+         app->screen = COBALT_SCREEN_SEARCH;
+         COBALT_LOGI("menu: opened search");
          break;
 
       case ACTION_NOTIFICATIONS:
@@ -361,6 +376,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
    cobalt_notify_view_init(&app->notify);
    cobalt_profile_view_init(&app->profile);
    cobalt_graph_view_init(&app->graph);
+   cobalt_search_view_init(&app->search);
          app->screen = COBALT_SCREEN_HOME;
          app->selected = 1;
          break;
@@ -691,6 +707,17 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                app->screen = COBALT_SCREEN_ACCOUNT;
                break;
             case COBALT_GRAPH_VIEW_STAY:
+            default:
+               break;
+         }
+         break;
+
+      case COBALT_SCREEN_SEARCH:
+         switch (cobalt_search_view_update(&app->search, in)) {
+            case COBALT_SEARCH_VIEW_BACK:
+               app->screen = COBALT_SCREEN_HOME;
+               break;
+            case COBALT_SEARCH_VIEW_STAY:
             default:
                break;
          }
@@ -1095,6 +1122,10 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
       case COBALT_SCREEN_MUTED_LIST:
       case COBALT_SCREEN_BLOCKED_LIST:
          cobalt_graph_view_draw(&app->graph, r, surface);
+         break;
+
+      case COBALT_SCREEN_SEARCH:
+         cobalt_search_view_draw(&app->search, r, surface);
          break;
 
       case COBALT_SCREEN_HOME:

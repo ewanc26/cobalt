@@ -72,6 +72,7 @@ typedef enum {
    COBALT_JOB_BLOCK,
    COBALT_JOB_MUTED_LIST,
    COBALT_JOB_BLOCKED_LIST,
+   COBALT_JOB_SEARCH_ACTORS,
 } cobalt_job_kind;
 
 typedef struct {
@@ -237,6 +238,15 @@ bool cobalt_session_begin_unblock_actor(const char *record_uri, const char *did)
 
 const cobalt_actor_list *cobalt_session_muted_list(void);
 const cobalt_actor_list *cobalt_session_blocked_list(void);
+
+/*
+ * Actor search (app.bsky.actor.searchActors). `query` is a handle/display-name
+ * fragment, not a post query — Cobalt does not implement post search. A fresh
+ * (non-paging) call replaces the held results; paging appends, same as the
+ * muted/blocked lists above.
+ */
+bool cobalt_session_begin_search_actors(const char *query, bool paging);
+const cobalt_actor_list *cobalt_session_search_results(void);
 
 /*
  * Guard for the shared snapshots above.
