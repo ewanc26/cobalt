@@ -2,7 +2,7 @@
 #include "atproto/actors.h"
 #include "atproto/feed.h"
 #include "atproto/notifications.h"
-#include "atproto/profile.h"
+#include "atproto/actor_profile.h"
 #include "cache/session_store.h"
 #include "util/log.h"
 #include "util/paths.h"
