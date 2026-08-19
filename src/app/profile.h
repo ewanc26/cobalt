@@ -14,7 +14,7 @@
  */
 
 #include "atproto/feed.h"
-#include "atproto/profile.h"
+#include "atproto/actor_profile.h"
 #include "input/input.h"
 #include "ui/render.h"
 
