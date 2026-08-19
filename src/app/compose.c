@@ -14,6 +14,10 @@ static const char *const CONFIRM_LABELS[CONFIRM_COUNT] = {
    "Post", "Keep editing", "Discard"
 };
 
+static const char *const REPLY_GATE_LABELS[COBALT_REPLY_GATE_COUNT] = {
+   "Everyone can reply", "Followed/mentioned can reply", "Replies off"
+};
+
 /* Hit targets for the confirmation row, rebuilt on every GamePad draw. */
 static SDL_Rect s_confirm_hit[CONFIRM_COUNT];
 static bool s_confirm_hit_valid = false;
@@ -133,6 +137,14 @@ cobalt_compose_update(cobalt_compose *compose, const cobalt_input *in)
    if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
       compose->confirming = false;
       return COBALT_COMPOSE_STAY;
+   }
+
+   /* Reply-control cycling. Top-level posts only — see the enum's doc
+    * comment in compose.h for why replies don't get this choice. */
+   if (!cobalt_compose_is_reply(compose) &&
+       cobalt_input_pressed(in, COBALT_BTN_ALT_Y)) {
+      compose->reply_gate =
+         (compose->reply_gate + 1) % COBALT_REPLY_GATE_COUNT;
    }
 
    int chosen = -1;
@@ -277,6 +289,15 @@ draw_confirming(cobalt_compose *compose, cobalt_render *r,
    }
 
    SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+
+   if (!cobalt_compose_is_reply(compose)) {
+      char gate_line[64];
+      snprintf(gate_line, sizeof(gate_line), "Y: %s",
+               REPLY_GATE_LABELS[compose->reply_gate]);
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, gate_line, m->pad_edge,
+                       row_y + row_h + gap, hint);
+   }
+
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     cobalt_session_busy() ? "Posting..."
                                           : "A: choose    B: back to editing",

@@ -40,6 +40,20 @@ typedef enum {
    COBALT_COMPOSE_SUBMIT,     /* the user confirmed */
 } cobalt_compose_action;
 
+/*
+ * Who can reply to a new top-level post. Not offered on replies — Bluesky
+ * scopes a threadgate to the post it is attached to, and gating a reply's own
+ * replies separately from the rest of the thread is confusing enough that the
+ * official client does not offer it either; only the root post gets this
+ * choice here.
+ */
+typedef enum {
+   COBALT_REPLY_GATE_EVERYONE = 0,
+   COBALT_REPLY_GATE_FOLLOWED_MENTIONED,
+   COBALT_REPLY_GATE_NOBODY,
+   COBALT_REPLY_GATE_COUNT,
+} cobalt_reply_gate;
+
 typedef struct {
    char text[COBALT_COMPOSE_BYTES];
    cobalt_keyboard kb;
@@ -56,6 +70,9 @@ typedef struct {
    char root_uri[COBALT_POST_URI_MAX];
    char root_cid[COBALT_POST_CID_MAX];
    char reply_to[COBALT_POST_NAME_MAX];   /* handle, for the header */
+
+   /* Only meaningful when this is a new top-level post; ignored on replies. */
+   cobalt_reply_gate reply_gate;
 } cobalt_compose;
 
 /* Start a new top-level post. */

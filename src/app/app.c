@@ -777,7 +777,8 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                                               app->compose.parent_uri,
                                               app->compose.parent_cid,
                                               app->compose.root_uri,
-                                              app->compose.root_cid)) {
+                                              app->compose.root_cid,
+                                              (int) app->compose.reply_gate)) {
                   set_notice(app, "Could not start that post.", true);
                }
                break;
