@@ -1,721 +1,196 @@
-# AGENTS.md — Cobalt
+#AGENTS.md
 
-**Cobalt** is a native Wii U homebrew client for the AT Protocol / Bluesky. It's related to [Channel Blue](https://github.com/ewanc26) (the Wii homebrew Bluesky client) in spirit and naming, but Channel Blue is pre-alpha — it isn't really working yet. Cobalt isn't picking up where a finished Channel Blue left off; it's a parallel attempt on hardware with a noticeably easier development flow than the original Wii. It targets the Aroma homebrew environment and is built with devkitPro/WUT.
+Guidance for AI coding agents working in this repository. Human contributors
+may find it useful too, but the audience is agents.
 
-This file exists to orient an AI coding agent working on this repository. Read it in full before making changes. If something here conflicts with what you observe in the code, the code wins — update this file to match reality rather than silently diverging from it.
+## Project overview
 
----
+A native C/C++23 Minecraft: Java Edition server focused on predictable, low RAM
+usage. Zincfox is an experimental clean-room server implementation: the goal is
+not to clone the vanilla server architecture in C++, but to build the protocol,
+simulation, world and persistence layers around explicit ownership, bounded
+queues and measurable memory budgets from the start.
 
-## 1. Project Intent
+- **Language:** C17 is available for small leaf components where it reduces
+  runtime/dependency surface; C++23 is the default for protocol, server,
+  storage, and world state. `snake_case` for functions and variables,
+  `PascalCase` for types.
+- **Build:** CMake, C17/C++23 strict by target, `-Wall -Wextra -Wpedantic
+  -Wconversion -Wsign-conversion`. Tests are per-file executables run through `ctest`,
+  following the account's other native repos (`clay/`, `wolfram/`, `keepsake/`).
+- **Target:** macOS and Linux desktop. Windows is untested (as elsewhere in this
+  account).
 
-- Give Wii U owners with homebrew installed a native, responsive way to read and post to Bluesky/ATProto, without relying on the Wii U's aging WebKit-based Internet Browser.
-- Take advantage of Wii U-specific hardware the Wii didn't have: a second screen (GamePad), a faster CPU/GPU, and more RAM — and a generally friendlier homebrew dev flow than the Wii's, which is a real factor given Channel Blue stalled at pre-alpha.
-- Preserve the naming convention used across Ewan's other projects (Wolfram, Malachite, Tourmaline, Inkwell, Bismuth) — this one is **Cobalt**, a blue mineral, deliberately echoing "Channel *Blue*" while fitting the gemstone/mineral pattern.
-- Ship something that actually works on real hardware. **Ewan develops/tests against a real Wii U with Aroma installed, and now also has Cemu available** as a fast pre-check — Cemu catches obvious crashes/layout/logic mistakes cheaply, but it is not a substitute for the real thing: every milestone's *acceptance* test is still "it works on the actual console." Treat a clean Cemu run as "safe to attempt a hardware pass," not as "done."
-
-## 2. Relationship to Channel Blue
-
-Channel Blue is **pre-alpha** — it doesn't really work yet. So this isn't a "port a working app to new hardware" situation; it's closer to taking a second run at the same idea on hardware and tooling that's much less painful to develop for. Treat Channel Blue as a source of *concepts and lessons*, not working code to build on.
-
-Some platform-level reasoning still applies regardless of Channel Blue's state: the Wii (PowerPC "Broadway" CPU, 88 MB RAM, GX for graphics, no second screen) and Wii U (Espresso CPU, larger RAM pool, GX2, GamePad) are different enough that:
-
-- UI layout logic should be rewritten around a **two-mode model**: TV+GamePad together (TV for the primary feed/thread view, GamePad for compose/notifications/navigation) *and* GamePad-only, self-sufficient Off-TV Play — see §5 for details — rather than ported as-is.
-- Networking code should be built fresh against WUT's `nsysnet`/socket layer and a modern TLS library (see §6), since the Wii U's transport is curl-over-mbedTLS while the Wii's is a hand-rolled socket/TLS stack on libogc.
-- Shared *concepts* (feed rendering approach, ATProto record caching strategy, offline queue for posts made without connectivity) are worth porting; shared *code* mostly isn't, given how different the two platforms' SDKs are.
-
-If you find yourself tempted to reuse or adapt something from Channel Blue, verify carefully rather than assuming it is a solid foundation, and ask Ewan before sinking significant effort into adapting Wii-specific code.
-
-**Correction (see also §13):** the "pre-alpha, doesn't really work" framing above is out of date in one respect that matters. Channel Blue is not a desktop mock — it is a linked MVP candidate that cross-builds to a booting DOL, has a host test suite, and **already uses Wolfram** for XRPC, auth and Wii HTTPS over mbedTLS. What its own AGENTS.md and README leave unverified is the *real-hardware* path (login, TLS, session refresh, live social flows), not whether the code exists.
-
-The practical consequence: Channel Blue's Wii networking is worth reading, not dismissing. Cobalt's entropy provisioning was taken directly from it rather than invented — same load/rotate/save/commit discipline, same file format — precisely so the two projects do not diverge on a security-sensitive detail. Check what Channel Blue already solved before solving it again here.
-
-## 3. Target Platform & Toolchain
-
-- **Hardware:** Nintendo Wii U (Espresso tri-core PowerPC CPU, Latte GPU).
-- **Homebrew environment:** [Aroma](https://aroma.foryour.cafe/) — the current, actively maintained Wii U CFW/homebrew environment (successor to Tiramisu). Do not target the old Homebrew Launcher/ELF flow; Aroma + RPX/WUHB is the supported path.
-- **Toolchain:** devkitPro + **WUT** (Wii U Toolchain), installed via devkitPro's `pacman`. Executables are built as `.rpx` (native Wii U executable format, a modified ELF) and packaged as `.wuhb` for distribution via the Homebrew App Store / Aroma's Wii U Menu integration.
-- **Build system:** devkitPro Makefiles (the de facto standard for WUT projects) with `wut_create_rpx`/`wuhbtool` for packaging. CMake is an acceptable alternative if it simplifies dependency management, but don't mix build systems within the repo.
-- **Iteration target:** Cemu for fast local iteration and screenshot/UI validation, real hardware for acceptance. Cemu's networking, timing, and GX2 behavior diverge from a real console's — don't treat "works in Cemu" as "works on console" for anything networking-, threading-, or GamePad-timing-sensitive; those still need a real-hardware pass before a milestone is considered done. Expect the hardware deploy loop (build → copy to SD or push via Aroma's FTP server → run on console) to be slower than Cemu's; budget for that. Lean on liberal logging (see §9) so each hardware run still counts even with Cemu catching the obvious mistakes first.
-- **Key WUT headers/subsystems you'll touch:**
-  - `coreinit` — core OS functions, threading, memory.
-  - `proc_ui`/`ProcUI` — process lifecycle; **must** be handled correctly or the app won't back out to the Wii U Menu cleanly.
-  - `vpad` — GamePad input (buttons, touch screen, stylus).
-  - `padscore` — Wii Remote/Pro Controller input, if supported as a secondary input method.
-  - `nsysnet` / BSD-style sockets — networking.
-  - `nn::ac` — network/account configuration status (confirm the console actually has a network connection before making requests).
-  - `sysapp` — for launching system applications/returning to the menu if needed.
-  - `gx2` — graphics; likely used indirectly via SDL2 rather than directly (see §6).
-
-**Important platform quirk:** Aroma intercepts the HOME button before it reaches homebrew applications — `VPAD_BUTTON_HOME` will not arrive in Cobalt's input handling. Do not build exit/pause flows that assume you can catch HOME; use `ProcUI`'s foreground/background/exit callbacks instead, and provide an in-app way to quit (e.g. a menu option or dedicated button combo).
-
-## 4. Repository Structure
+## Repository layout
 
 ```
-cobalt/
-├── AGENTS.md                 # this file
-├── README.md                 # human-facing project overview
-├── Makefile                  # devkitPro build entry point
-├── src/
-│   ├── main.c / main.cpp     # entry point, ProcUI lifecycle
-│   ├── app/                  # application state machine, screen management
-│   ├── ui/                   # rendering, layout, TV + GamePad screen composition
-│   ├── input/                # VPAD/padscore input handling
-│   ├── net/                  # HTTP/TLS client, XRPC request plumbing
-│   ├── atproto/              # ATProto lexicon types, session/auth, record (de)serialisation
-│   ├── cache/                # local feed/thread/session cache (SD card storage)
-│   └── util/                 # logging, error handling, shared helpers
-├── assets/                   # fonts, icons, WUHB metadata (icon.png, meta.xml equivalent)
-├── romfs/                    # bundled assets shipped inside the RPX/WUHB
-├── tools/                    # helper scripts (packaging, deployment to SD/FTP)
-├── tests/                    # host compile sweep + unit tests (see §10 and §13)
-└── third_party/              # vendored or portlib-pinned dependencies
+include/zincfox/       public/internal C/C++ interfaces
+src/protocol/          VarInt, framing, packet/state codecs
+src/server/            connection lifecycle and dispatch
+src/world/             world/chunk state (future)
+src/entity/            entity/player storage (future)
+src/storage/           region/persistence backends (future)
+test/                  unit and protocol regression tests
+docs/                  design notes and compatibility records
 ```
 
-Keep `atproto/` platform-agnostic where realistically possible — it's the part most likely to be useful if a future project needs ATProto logic outside of Cobalt's UI/rendering layer.
+Dependency direction is inward from higher-level game/server code to small
+protocol/net abstractions. Do not let world/entity code call raw socket APIs.
 
-## 5. UI & Interaction Model
+## Module boundaries — read before editing
 
-- **Native look, not a web app in a window.** This is the point of building Cobalt as SDL2/WUT homebrew rather than the browser-applet approach `juxtaposition` takes (see §8): Cobalt should look and feel like it belongs on the Wii U, not like a website rendered on a TV. Concretely, that means matching the Wii U Menu's visual language rather than reaching for flat, web-influenced UI conventions:
-  - **Rounded, glassy, slightly skeuomorphic tiles** rather than flat rectangles — the Wii U Menu's whole visual identity is soft-edged tile icons with subtle gradients/highlights and gentle drop shadows, not flat-color cards.
-  - **Depth and motion over flatness:** tiles that scale/bounce slightly on focus, smooth slide transitions between screens, and a general sense of tactile responsiveness — closer to the Wii U Menu or Miiverse's native applet feel than to a typical flat mobile-app aesthetic.
-  - **Typography:** the system uses Fontworks' Pop Happiness/Pop Joy typeface family for most in-OS UI text. Bundling a close-enough rounded, friendly sans font (rather than a generic system/web sans) will do more for "this feels native" than almost anything else — check licensing before bundling any Fontworks font itself, and have a fallback plan (see the Unicode note below) either way.
-  - **Colour:** lean on the Wii U's characteristic blues/whites/light-grey palette as a baseline rather than importing Bluesky's own butterfly-blue web branding wholesale — Cobalt should read as "a Wii U app that happens to show Bluesky content," not "the Bluesky website with a Wii U wrapper."
-  - This is a design *direction*, not a mandate to pixel-match the system UI exactly — deliberate departures for readability or the two-screen layout are fine, but they should read as intentional choices within a native aesthetic, not as leftover web-UI defaults.
-- **TV screen (primary, when in use):** feed/timeline, thread view, profile view. This is what most users will be looking at during a TV-based session — optimise for readability at typical TV viewing distance, not phone-screen information density.
-- **GamePad screen (secondary, or standalone):** best suited to compose (typing via GamePad's own on-screen or the Wii U's software keyboard swkbd), notifications, and quick navigation when paired with the TV, since it's held close and touch-capable. But the GamePad must also work as **the only screen** — Cobalt should support Off-TV Play the way many retail Wii U titles do (Nintendo's own term for this exact "whole game/app playable on the GamePad alone" feature), with a complete, self-sufficient UI on the GamePad for users who want to play with the TV off entirely. Technical specifics worth designing around from the start:
-  - The GamePad's screen is a fixed 854×480 (FWVGA, 16:9), notably lower-resolution and a different aspect ratio's worth of usable pixel density than a typical 720p/1080p TV output — GamePad-only layouts need their own type scale and spacing, not the TV layout scaled down, or text will be uncomfortably small or UI elements uncomfortably cramped.
-  - This is standard GX2 functionality, not a hack: GX2 supports separate render targets for the TV output and the DRC (GamePad) output in the same frame, so Cobalt can legitimately render two different layouts — full TV view and full GamePad view — from the same app state simultaneously, rather than mirroring one buffer to both screens. Community tools like SwapDRC exploit this same TV/DRC buffer separation from the outside (for games that didn't build in Off-TV Play); Cobalt should support both outputs properly at the source instead of relying on a buffer swap.
-  - Practically: don't design any critical function as TV-screen-exclusive; every screen/view needs a real GamePad-native layout built for FWVGA, not just a cropped or scaled-down copy of the TV layout.
-  - Treat the TV+GamePad dual-screen layout described above as one *mode*, and GamePad-only as a second, equally-supported mode — not a fallback or an afterthought bolted on later. Worth deciding early whether this is autodetected (e.g. no meaningful TV output present) or user-toggled, since it affects how the render/layout code is structured from the start — a toggle is simpler to build first and still lets a user choose GamePad-only even with a TV connected, which autodetection alone wouldn't cover.
-- Support both GamePad touch input and a D-pad/button-based navigation path in every mode — some users play with a Pro Controller and no GamePad screen in view, others play GamePad-only with no separate controller at all.
-- Font rendering and text layout need to handle Unicode reasonably (display names, bios, and post content will include emoji and non-Latin scripts) — plan for this early rather than retrofitting; neither the Wii U's system font nor a bundled Pop-style font is guaranteed to cover every codepoint an ATProto post might contain, so plan a fallback/tofu strategy rather than assuming full coverage.
+- **Protocol code owns all wire-format parsing.** `src/protocol/` must stay
+  free of server lifecycle concerns;
+`src / server /` must stay free of game -
+        state concerns
+            .The boundary is the `protocol::handle_packet` dispatch interface.-
+        **Version -
+        specific packet definitions stay in `src /
+            protocol /`.**Transport and game systems must not accumulate packet
+                              IDs or
+    version checks.Put version tables /
+            codecs behind the protocol layer so supporting another Minecraft
+                release does not fork the whole server.-
+        **Connection state is owned by `src /
+            server /`.**The protocol layer sees only
+                            borrowed `std::span` payloads; it must not retain decoded packet objects
+  after dispatch.
+- **No global mutable server state.** A subsystem that owns a thread must
+  expose shutdown/join semantics and memory/queue bounds.
 
-## 6. Networking & Rendering Stack
+## Build and run
 
-- **Rendering:** use the **SDL2 port for Wii U** (built on top of WUT, designed to be close to the Switch/PC SDL2 API) rather than hand-rolling GX2 calls, unless there's a specific, justified performance reason not to. This keeps the codebase more approachable and closer to patterns used in Channel Blue's contemporaries.
-- **Networking:** the Wii U's native TLS support is dated and should not be trusted for talking to modern ATProto PDS/AppView endpoints over HTTPS. `devkitPro/wut-packages` confirms both **curl** and **mbedtls** are packaged for Wii U (`wiiu-curl`, `wiiu-mbedtls` via pacman) — use those rather than sourcing/porting TLS from scratch. curl-over-mbedtls is a reasonable default HTTP+TLS stack; confirm current package versions when setting up, since pinned versions in devkitPro's repo can lag upstream CVE fixes.
-- **HTTP:** `curl` (confirmed packaged for Wii U, see above) is the sane default rather than hand-rolling HTTP framing on top of raw sockets.
-- **JSON:** two real options, both plain ANSI C with no exotic dependencies, so both should build fine under devkitPPC:
-  - **cJSON** — a full DOM-style parser/serialiser (parse into a tree, walk it, build responses the same way). Easier to work with for XRPC's fairly deep/nested response shapes, at the cost of allocating a full tree per response.
-  - **jsmn** — a single-header, allocation-free tokenizer designed specifically for resource-limited/embedded targets. It doesn't build a tree; it hands back token boundaries into the original buffer, which suits the Wii U's more limited memory budget better, at the cost of writing more manual token-walking code yourself.
-  - Given the Wii U isn't as memory-constrained as jsmn's typical microcontroller use case, cJSON's ergonomics are probably worth the extra allocation for a first pass — but if profiling later shows JSON parsing is a real memory/perf cost during feed scrolling, jsmn is the natural fallback. Don't commit to one without at least trying a representative XRPC response (e.g. `getTimeline`) through both.
-  - Keep payload parsing defensive either way — a PDS or AppView response should never be able to crash the client.
-- **XRPC basics to implement early:**
-  - `com.atproto.server.createSession` / session refresh via app password (see §7 on auth — full OAuth is likely impractical on this hardware).
-  - `app.bsky.feed.getTimeline`, `app.bsky.feed.getPostThread` for reading.
-  - `com.atproto.repo.createRecord` for posting (`app.bsky.feed.post`).
-  - `app.bsky.notification.listNotifications`.
-- Always check `nn::ac` network connection status before firing off requests, and fail gracefully (clear on-screen message, not a hang or crash) if the console has no network access.
-
-## 7. Authentication
-
-Full ATProto OAuth (the browser-redirect-based flow used by Inkwell and modern Bluesky clients) is very likely **not practical** on Wii U homebrew — there's no good way to host a redirect target or reliably drive a full OAuth authorization-code flow through the console's limited browser/keyboard UX. Default assumption for Cobalt:
-
-- Use **app passwords** (`com.atproto.server.createSession` with identifier + app password) as the primary auth method, entered via the Wii U's software keyboard (`swkbd`).
-- Store the resulting session/refresh token on the SD card, encrypted or at minimum not in plaintext next to other save data, and provide a clear "sign out" that wipes it.
-- If Ewan wants to explore a proper OAuth flow later (e.g. a device-code-style flow if any PDS supports one, or delegating auth to a paired phone/PC), treat that as a distinct, larger effort — don't block v1 on it.
-
-## 8. Templates & Reference Repos to Build On
-
-**First and most obviously: evaluate Wolfram before building `atproto/` from scratch.** Wolfram is Ewan's own C SDK for AT Protocol — if its lexicon/session/record handling is portable C without hard dependencies on a desktop OS (POSIX threads, glibc-only APIs, dynamic linking assumptions that don't hold under devkitPPC's static-linking PowerPC toolchain), it may be a faster and more consistent path than reimplementing session handling, record types, and XRPC request shaping again from zero. Concretely, check early:
-- What networking/TLS layer Wolfram assumes — if it's written against a desktop libcurl or a specific TLS library, confirm the same (or an equivalent) is available under WUT (see the curl/mbedtls note in §6) before assuming a clean drop-in.
-- Whether it does any dynamic allocation patterns or threading assumptions that don't map cleanly onto the Wii U's more constrained environment.
-- Whether it's tied to a JSON library that isn't portable to devkitPPC, in which case the JSON evaluation in §6 still applies to whatever glue code sits between Wolfram and Cobalt's UI layer.
-
-If Wolfram turns out to need real adaptation work to build under devkitPPC, that's still likely worth doing rather than starting the ATProto logic fresh — it keeps lexicon/session logic consistent with the rest of Ewan's ATProto tooling rather than forking a third implementation. Don't assume either way without actually trying to compile it under the toolchain first.
-
-**If Wolfram turns out to be incomplete for what Cobalt needs (missing lexicons, gaps in session/OAuth handling, etc.), the right move is to develop Wolfram itself alongside Cobalt, not fork or duplicate ATProto logic inside Cobalt's own tree.** Extending the shared SDK keeps Wolfram useful for other projects and avoids ending up with two divergent, half-correct ATProto implementations across Ewan's own codebase. When extending Wolfram, validate new lexicon/record/session handling against other established ATProto SDKs rather than working from the spec alone or guessing at edge cases — the lexicon docs don't always cover every real-world quirk (optional fields, error response shapes, pagination cursors) that a mature client implementation has already had to work out in practice:
-- **`bluesky-social/atproto`** (TypeScript) — the canonical, Bluesky-PBC-maintained reference implementation, listed as the leading implementation on `atproto.com/sdks`. When in doubt about correct behaviour for a given lexicon or endpoint, this is the first place to check, even though it's a different language entirely — its type definitions and request/response handling reflect what the real network actually does, not just what the spec says it should do.
-- **`ATProtoKit`** (Swift) — arguably the closest validation target to Wolfram in spirit: also a from-scratch, non-JS, native-platform client SDK (built for iOS/macOS) rather than a JS runtime wrapper. Worth comparing its approach to session handling, XRPC request shaping, and record types specifically, since it's already solved a lot of the "not the reference TS implementation, on a constrained-ish native platform" problems Wolfram will run into.
-- **`bluesky-social/indigo`** (Go) and **`atrium`** (Rust) — both Bluesky/community-maintained implementations in compiled, statically-typed languages closer to C's own constraints than TypeScript is. Useful for cross-checking how a non-JS implementation handles things like CBOR/CAR encoding, DID resolution, or the repo/MST side of the protocol if Wolfram needs to go beyond basic XRPC read/write.
-- When any of these disagree on behaviour not fully pinned down by the lexicon spec, treat the official TypeScript implementation as the tiebreaker, since it's the one the actual PDS/AppView implementations are built and tested against.
-
-Beyond that, don't start the rest of the project from a blank Makefile either — there's enough of an ecosystem here to build on real starting points instead of reinventing the toolchain setup:
-
-- **`devkitPro/wut`'s own `samples/` directory** — canonical, always-current "hello world" examples for both Makefile- and CMake-based WUT projects (`samples/cmake/helloworld` is the minimal CMake starting point referenced in WUT's own docs). This is the right base for getting a bare RPX booting and exiting cleanly before anything else is added.
-- **SDL2 for Wii U** — note this has moved. `wiiu-sdl2` is **no longer** GaryOderNichts/SDL_mirror, whose newest Wii U branch (`wiiu-2.0.12`) was last touched in early 2021. devkitPro's package now builds **upstream SDL 2.32.10 plus a ~7,400-line Wii U patch** adding `src/video/wiiu`, `src/render/wiiu`, `src/thread/wiiu` and `src/audio/wiiu`. So Cobalt is on SDL 2.32, with a full GX2 render backend and real SDL threads — not 2.0.x.
-- **`KarvinJ/wii-u-tetris`** — a small, complete SDL2 starter template for Wii U (requires WUT + SDL2 + `libromfs-wiiu`). Worth cloning and reading through even if none of its code is reused directly — it's a working example of the exact stack (WUT + SDL2 + romfs assets) Cobalt is planning to use, at a scale small enough to actually read end-to-end in one sitting.
-- **`yawut/libromfs-wiiu`** — romfs implementation for bundling assets (fonts, icons) into the RPX/WUHB, referenced in §4's `romfs/` directory. Use this rather than hand-rolling asset loading from SD card paths.
-- **`devkitPro/wut-packages`** — the actual package definitions for `SDL2`, `SDL2_image`, `SDL2_ttf`, `curl`, `mbedtls`, `physfs`, and more. Useful both as documentation of what's available via pacman and, if a package needs a patch or a newer version than what's currently released, as a reference for how these are built for the WUT toolchain.
-- **`wiiu-fling`** (community pacman repo) — supplementary packages (`libiosuhax`, `libutils`, etc.) not yet upstreamed into devkitPro's own repos. Only reach for this if something's genuinely missing from the official devkitPro packages; prefer official packages where both exist, since fling occasionally ships "transitional" stopgap versions that get silently superseded.
-- **hb-appstore, Fireplace-WiiU, WiiU-Shell** — cited by the WiiUBrew wiki as real-world apps built on WUT + SDL2. Useful as examples of a *shipped* app's project structure and packaging (WUHB metadata, icon conventions) rather than as code to lift from directly.
-- **`PretendoNetwork/juxtaposition`** — worth knowing about, but it's a different kind of thing than the rest of this list, not a native-homebrew template. It's Pretendo's Miiverse server (Node/TypeScript, `apps/miiverse-api` + `apps/juxtaposition-ui`), built to be talked to by the Wii U's built-in browser applet over the console's old XML/AJAX-based web API — not code that runs as a native RPX on-console. It doesn't fit alongside SDL_mirror or wut samples as something to build Cobalt's client on top of. What it *is* useful for:
-  - A concrete example of the alternative architecture Cobalt isn't taking: driving the Wii U's system browser against a custom backend, rather than a native homebrew app. Worth a skim if the native-SDL2 approach ever hits a wall serious enough to reconsider that tradeoff, but not a reason to switch given the goals in §1.
-  - A real example of designing a modern backend that has to accommodate a genuinely old, fixed client-side web API it can't change — a constraint-shaped-by-legacy-console problem, which is at least thematically close to what Cobalt's `atproto/` and `net/` layers deal with (working within XRPC as specified, not free to invent a nicer protocol).
-  - Its monorepo shape (`apps/`, `packages/`, `migrations/`) is a reasonable reference if Cobalt ever grows a companion server component, but that's speculative — nothing in the current plan calls for one.
-
-When setting up the initial project skeleton, start from the WUT sample's CMake/Makefile structure, then layer in SDL2 (SDL_mirror) and romfs (libromfs-wiiu) the way `wii-u-tetris` demonstrates, rather than assembling the build system from scratch by trial and error.
-
-## 9. Coding Conventions
-
-- Language: C, with C++ acceptable for UI/state-management code where it meaningfully reduces boilerplate (RAII for WUT resource cleanup is a reasonable use case). Don't mix idioms gratuitously within a single file.
-- Match the WUT ecosystem's general style: snake_case for functions/variables, explicit resource cleanup (`OSScreen`/GX2/SDL objects freed on every exit path, including error paths — the Wii U does not forgive a leaked GX2 context the way a desktop OS forgives a leaked file handle).
-- Every `ProcUI` foreground/background transition must be handled — don't assume the app stays foregrounded for its whole lifetime; the OS can background it (e.g. HOME menu overlays even though the button press itself isn't delivered to the app the same way).
-- Log liberally during development (to console via any available debug output, or to a log file on SD) since on-device debugging is much harder than on a desktop target. Strip or gate verbose logging behind a debug build flag before release builds.
-- No dynamic memory allocation inside per-frame render/input loops where avoidable — allocate once, reuse buffers. The Wii U's memory model is more forgiving than the Wii's but still nowhere near desktop-class.
-
-### Commits
-
-Cobalt follows the same commit conventions as Wolfram (see that repo's `CONTRIBUTING.md`), so the two read as one body of work rather than two houses' styles:
-
-- **`type(scope): description`.** Types in use across both repos: `feat`, `fix`, `docs`, `test`, `refactor`, `style`, `build`, `chore`. The scope is the module — `atproto`, `ui`, `app`, `net`, `cache`, `util`, `input`, `build`, `tests` — and is dropped when a change genuinely spans the repo (`docs: …`, `chore: …`). Description in lowercase, imperative, no trailing full stop.
-- **Keep each commit to one module or concern**, on a feature branch.
-- **Honest attribution.** Commit trailers must accurately reflect who/what did the work — a `Co-Authored-By:`, `Claude-Session:`, or `Generated with …` trailer is fine when an AI agent materially contributed, and human co-authors get the standard `Co-authored-by:` trailer too. Don't add trailers for contributors who weren't involved, and don't strip real ones — check the message reflects reality before committing.
-
-## 10. Testing & Verification
-
-- **Cemu first, real hardware for acceptance.** Cemu is available and should be used to catch crashes/hangs/layout mistakes and to take UI screenshots cheaply before a hardware pass — but a milestone isn't done until it's confirmed on Ewan's real Wii U via SD card or Aroma's FTP server: no crashes/hangs on launch, feed load, thread view, and compose directly on console.
-- Cemu is a real net-positive over "no emulator," but its GX2/timing/networking emulation is not 1:1 with hardware — treat a Cemu pass as raising confidence, not as proof, for anything console-timing- or networking-sensitive. Favour smaller, more frequent real-hardware passes over large batches of Cemu-only-verified changes.
-- Networking behaviour must still be verified on real hardware as a matter of course — Cemu's `nsysnet`/curl/mbedTLS emulation is not guaranteed to match the console's.
-- **Cemu without `otp.bin`/`seeprom.bin` cannot go online at all** ("No otp.bin found. Online mode cannot be used" in Cemu's log — confirmed by actually launching `cobalt.wuhb` in Cemu, which hung indefinitely on the loading screen: `nn::ac`'s network-connection check per §6/§9 has nothing to observe and never resolves). Without those console-key dumps configured in Cemu, expect Cobalt to hang at the network-availability gate before rendering anything — this is not a Cobalt bug, and is not on its own evidence that a change broke something. Anything past that gate (feed load, thread view, compose, notifications) needs either those keys configured in Cemu, or a real-hardware pass.
-- There is no unit-testing framework standard to this ecosystem; prioritise integration-level manual test passes over trying to force a desktop-style test suite onto platform-specific code. Pure-logic code (ATProto record parsing, cache logic) *can* reasonably be unit tested if extracted into platform-independent files — do this where practical, since it's the one part of the codebase that can be tested off-console.
-
-## 11. Known Constraints & Risks
-
-- **Legal/distribution grey area:** Wii U homebrew requires the end user to have already exploited their own console; Cobalt itself doesn't need to (and must not) include or facilitate that exploit. Keep the README's setup instructions scoped to "assuming you already have Aroma installed."
-- **TLS/crypto library availability:** confirm early which TLS portlib is realistically usable, since this gates all networking work. Don't build extensive networking code against an assumed library without confirming it builds and actually completes a TLS handshake against a real ATProto endpoint first.
-- **No OAuth (see §7):** app-password auth is a real limitation for users who've disabled password-based login on their account; be upfront about this in the README rather than treating it as a temporary gap.
-- **Text input ergonomics:** composing a post via the Wii U software keyboard is slow. Consider whether a companion approach (e.g. drafting via GamePad touch keyboard, which is generally faster than the swkbd overlay) is worth prioritising early.
-- **Small homebrew community:** fewer reference implementations to lean on than, say, 3DS homebrew. Budget extra time for reverse-engineering-adjacent debugging against WiiUBrew wiki documentation, which is itself community-maintained and occasionally incomplete.
-
-## 12. Suggested Build Order
-
-1. Bare WUT + SDL2 "hello world" that boots on the real Wii U, handles ProcUI lifecycle correctly, and exits cleanly.
-2. Networking spike: confirm TLS handshake + a successful `com.atproto.server.createSession` call against a real PDS, logged to screen/SD — before any UI work depends on it.
-3. Minimal timeline view: fetch and render a plain-text timeline (no images, no rich formatting) on the TV screen.
-4. GamePad integration: build both the TV+GamePad paired layout and the standalone GamePad-only (Off-TV Play) layout together, since neither should be an afterthought bolted onto the other — see §5.
-5. Session persistence, sign-out, error states (no network, expired session, rate limiting).
-6. Rich rendering: avatars/embedded images, link cards, thread view.
-7. Notifications.
-8. Packaging polish: WUHB icon/metadata, README, release build flags.
-
-Treat steps 1–2 as blocking for everything else — if networking doesn't reliably work on real hardware, nothing downstream matters yet.
-
-**Where this stands:** steps 1–5 are written, plus threads, likes, reposts and composing from step 6's neighbourhood. All of it passes the host checks. **None of it has been through a hardware pass.**
-
-That is a deliberate departure from the rule above, made on Ewan's instruction to keep building, and the risk it was guarding against grows with every increment: the first console run now has to settle the TLS handshake, `SDL_CreateThread` under the Wii U SDL port, `createSession`, the timeline, the thread view, and record writes all at once. If it goes badly, bisecting will be slow. A hardware pass is worth more than the next feature.
-
-Step 4 (the GamePad/Off-TV split) was satisfied structurally from the start rather than as a later step: every screen lays itself out per surface.
-
-### What the toolchain actually offers
-
-Checked against the `wut-packages` and `pacman-packages` PKGBUILDs rather than assumed. Anything outside `wiiu-*` ∪ `ppc-*` has to be vendored as source that builds for `-mcpu=750` newlib with no dynamic loader.
-
-- **Images are viable.** `wiiu-sdl2_image` 2.6.3 links libjpeg-turbo, libpng, libwebp and giflib statically (`--disable-*-shared`, which is required — there is no `dlopen`). `IMG_Load_RW(SDL_RWFromMem(...))` decodes straight from a downloaded buffer, which is exactly what `fortheusers/chesto` does on this platform in production. TIFF, JPEG-XL and AVIF are off. Prefer this over vendoring stb_image: libjpeg-turbo is faster and far more robust on truncated or hostile input, which matters when decoding bytes off the network.
-- **No `sqlite3` portlib exists**, for Wii U or ppc. A local cache means vendoring the amalgamation and supplying a VFS.
-- **No `libxml2`** either; `ppc-libexpat`, `ppc-mxml` and `ppc-tinyxml2` are there.
-- **`wiiu-curl` is built `--disable-ipv6 --disable-threaded-resolver --disable-pthreads`.** So: no IPv6, and DNS resolution is synchronous inside the request — another reason network calls belong on the worker thread.
-
-**C++ is fully available**, and the constraints Cobalt assumed are not real ones. devkitPPC r50 ships gcc 16.1.0 configured `--enable-languages=c,c++ --enable-threads=posix --enable-libstdcxx-time=yes`, with no exception or RTTI disabling; `wut.ld` explicitly keeps `.eh_frame` and `.gcc_except_table`. `std::thread`/`std::mutex` are real, not stubs — devkitPro's newlib routes `pthread_create` to a hook that wut implements on `OSCreateThread`. The `-fno-exceptions -fno-rtti` in the Makefile is a legitimate *binary size* choice, not a correctness one; decide it deliberately. Two things to know: `--disable-libstdcxx-verbose` means an uncaught exception terminates without a useful message, and `--disable-__cxa_atexit` weakens cross-TU static destruction order, so avoid non-trivial global destructors.
-
-**C# / .NET is not possible.** Mono's PowerPC support covers Wii and PS3, never Wii U; modern .NET has never supported 32-bit big-endian PowerPC at all. Do not spend time on it.
-
-**Text shaping is better than assumed, with three real gaps.** `wiiu-sdl2_ttf` *is* built against `ppc-harfbuzz` (the PKGBUILD passes `--disable-harfbuzz-builtin`, not `--disable-harfbuzz`), so intra-run GSUB/GPOS shaping works. But SDL_ttf sets one script and direction for a whole string, does no BiDi (`ppc-libfribidi` is available if needed), and does no font fallback — one `TTF_Font` is one face, so a missing glyph is `.notdef`. Mixed CJK/Latin/emoji therefore needs a run-segmenter in Cobalt. Colour emoji via a CBDT font works, with the catch that such faces are non-scalable and `ptsize` becomes a strike *index*; COLRv1 does not, since SDL_ttf never walks the paint graph.
-
-### Parity with `bluesky-social/social-app`
-
-The stated goal is to go as far as the hardware allows. Some of it never will, and those should not be attempted:
-
-| Not viable | Why |
-|---|---|
-| OAuth sign-in | §7 — nowhere to host a redirect target; app passwords are the ceiling, so accounts with 2FA cannot sign in at all |
-| Video | No decoder, and no realistic path to one at Espresso's clock |
-| Push notifications | No service the console can register with |
-| GIFs / animated media | Same decode problem as video, plus per-frame budget |
-
-Reachable, in rough order of value: ~~images and avatars~~ (done — see §13), ~~profiles~~ (done), ~~post images and link cards~~ (done — see §13), ~~mutes and blocks~~ (done — see §13), ~~search~~ (done, actor search only — see §13), ~~custom feeds~~ (done, one hardcoded feed only — see §13), ~~lists~~ (done, browse-only — see §13), ~~threadgates~~ (done, following/mentioned/nobody only — see §13). Everything protocol-shaped for these already exists in Wolfram; the work is Cobalt-side. This completes the roadmap list this section originally set out — see §13 for what to reach for next.
-
-**Language policy.** Cobalt may use C++ where it earns its place — RAII around a resource with a manual free/close (mbedTLS contexts, SDL surfaces/textures, file handles), and state-management code where it meaningfully cuts boilerplate over the equivalent hand-rolled C. It is not a rewrite target: existing C modules that work and are tested stay C unless a specific change is touching them anyway, since a wholesale port is a large, separate undertaking with its own review burden, not something to fold into an unrelated feature commit. Wolfram itself stays **C only** — it is the shared SDK across Ewan's ATProto work and its portability is the point (§9 there is explicit about this) — but consuming Wolfram from C++ is exactly what its `wolfram-cpp` layer (`cpp/wolfram-cpp/`, `WOLFRAM_BUILD_CPP=ON`) is for: header-only RAII handles (`unique_handle<T, Free>`) generated from Wolfram's own `wf_*_free` ownership contracts, plus `wf_status` → `std::error_code`. Cobalt does not consume it today — every `wf_agent_*`/`wf_*_free` call site in `atproto/` is hand-paired C — but it is the natural place to reach for it in new Wolfram-facing code, rather than another hand-rolled cleanup path.
-
-C# was considered and ruled out; see "C# / .NET is not possible" above.
-
-**External C++ libraries.** Checked against `devkitPro/pacman-packages`'s `ppc/` tree (devkitPPC, so Wii/Wii U/GameCube-wide) and `devkitPro/wut-packages` (Wii U-specific overlays: `SDL2*`, `curl`, `mbedtls`, `physfs`, `wut`) rather than assumed, the same standard §12 already holds "What the toolchain actually offers" to. Nothing in either list earns its place against Cobalt's current or near-term roadmap (search, custom feeds, lists, mutes/blocks, threadgates — all protocol-plus-UI work against Wolfram and SDL, needing no new library) enough to justify the binary size and packaging cost of an additional static dependency:
-
-- `glm` (header-only vector/matrix math, C++) is the one worth remembering if a future screen needs real 2D transforms (rotation, scaling animations) beyond the axis-aligned rects everything currently draws — not worth pulling in speculatively.
-- `libfribidi` (C) was already flagged in §12 for the BiDi gap SDL_ttf doesn't cover; still un-vendored, still the right answer when mixed-direction script text is tackled.
-- `json-cpp`, `jansson`, `yaml_cpp`, `libzip`, `box2d`, `ode`, `lua51` were checked and don't fit anything on the roadmap: JSON is already cJSON via Wolfram, there is no YAML config, no archive format to unpack, and no physics or scripting surface in a Bluesky client.
-
----
-
-## 13. Decisions Already Made (keep this current)
-
-Findings and choices settled in the code. Where these contradict an earlier section, these win — the earlier text describes the plan, this describes what was actually built.
-
-### SDL2 owns ProcUI — do not drive it yourself
-
-The Wii U SDL2 port drives ProcUI internally: `WIIU_VideoInit` calls `ProcUIInitEx` and registers the save/acquire/release callbacks, `WIIU_PumpEvents` calls `ProcUIProcessMessages` and turns the result into `SDL_QUIT` and the `SDL_APP_*` lifecycle events, and `WIIU_VideoQuit` calls `ProcUIShutdown`. (Verified against the symbols in `libSDL2.a`'s `SDL_wiiuvideo.o`.)
-
-So Cobalt must **not** call `ProcUIInit`/`ProcUIProcessMessages`/`ProcUIShutdown`. Two consumers of one message queue means whichever loop runs first eats the foreground-release notifications the other needs — a fast route to an app that will not return to the Wii U Menu. §9's "handle every foreground/background transition" is satisfied by handling `SDL_APP_WILLENTERBACKGROUND` / `SDL_APP_DIDENTERFOREGROUND` in `src/main.c`. Textures do not survive a foreground release, so the text caches are flushed on re-acquire.
-
-### wut owns nn::ac — do not initialise or finalise it
-
-`__init_wut_socket` (linked in as soon as anything references sockets, which curl does) runs `socket_lib_init()`, `AddDevice()`, `ACInitialize()` and `ACConnectAsync()`. `__fini_wut_socket` calls `ACClose()` and `ACFinalize()` at exit.
-
-`src/net/net.c` therefore only *queries* AC and uses synchronous `ACConnect()` as a fallback for wut's async connect not having landed yet. Calling `ACInitialize`/`ACFinalize` here would double-finalize against wut's own teardown.
-
-### Wolfram is in, and its Wii U support was built out here
-
-§8's question is settled: Wolfram is used, not reimplemented. Its Wii U support was a stub and has been filled in (in the Wolfram repo, not forked into Cobalt):
-
-- `src/platform/wiiu_platform.c` returned `WF_ERR_NOT_IMPLEMENTED`, a NULL mutex allocator and a clock stuck at 0. Now implemented against `coreinit` `OSMutex` and `OSGetTime`.
-- Wolfram lumped every console into one "embedded" bucket and routed the Wii U through the hand-rolled socket/TLS transport, which depends on libogc's `net_*` API. The Wii U has a real libcurl portlib, so it now uses the same curl transport as desktop — which is also what §6 already called for.
-- `.devdeps/wiiu.cmake` passed `-mwiiu`, which devkitPPC's gcc does not accept; it now delegates to devkitPro's own `WiiU.cmake`.
-
-Build Wolfram before Cobalt; the Makefile picks it up automatically from `../wolfram/build-wiiu` and defines `COBALT_HAS_WOLFRAM`. Without it Cobalt still builds and boots, and the diagnostics screen says the SDK is absent. Everything protocol-shaped goes behind `src/atproto/`.
-
-### The Wii U has no usable CSPRNG — everything unpredictable fails closed
-
-devkitPro's mbedTLS for Wii U does define `mbedtls_hardware_poll`, so seeding a DRBG from it compiles and runs. The package source (`wut-packages/mbedtls/mbedtls-2.28.8.patch`) shows it is, per byte:
-
-```c
-srand(OSGetSystemTick());
-output[i] = rand() & 0xff;
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+./build/zincfox [--port 1-65535]
 ```
 
-and the `PKGBUILD` enables `MBEDTLS_NO_PLATFORM_ENTROPY`, so that is the **only** source in the pool — nothing sits behind it. Every draw from `mbedtls_entropy_func()` on this console is a function of the tick counter.
-
-It also cannot be replaced at link time. The patch puts the function in `library/entropy.c`, the same translation unit that registers it in `mbedtls_entropy_init()`, so a competing definition collides and `ld --wrap` does not redirect an intra-unit reference. This was checked before designing around it.
-
-Three consumers were affected, and all three now fail closed:
-
-- **Wolfram's P-256 signing and key generation.** Wolfram already refuses this class of entropy on the Wii; `src/crypto/wiiu_random.c` does the same on Wii U until the application provisions 64 real bytes via `wf_wiiu_set_entropy_seed()`.
-- **libcurl's TLS handshake** — client randoms and ephemeral key agreement for every HTTPS request. curl holds its own mbedTLS entropy context, so Wolfram's seed did not reach it. Fixed via `wf_xrpc_client_set_tls_rng()` (added to Wolfram for this), which installs `CURLOPT_SSL_CTX_FUNCTION` and calls `mbedtls_ssl_conf_rng()` on the config curl hands the callback. curl runs that callback after its own `mbedtls_ssl_conf_rng()` and before `mbedtls_ssl_setup()`, so ours covers the whole handshake — verified against curl 8.7.1, which is what `wiiu-curl` ships.
-- **The credential store's device key and CTR nonces** (`src/cache/session_store.c`). A device key drawn from the tick counter is recoverable from the console's uptime when the file was created, and a repeated CTR nonce leaks the XOR of two saved sessions.
-
-All three draw from one seed file. `src/util/rng.c` is Cobalt's own CTR-DRBG, seeded from it and never from `mbedtls_entropy_func()`; `provision_entropy()` in `src/atproto/atproto.c` seeds both it and Wolfram, then rotates.
-
-Consequences to design around:
-- **A missing seed disables networking.** This is a deliberate change from the earlier "not fatal" position, which was written believing curl's TLS was independent of the seed — it is not. `cobalt_session_init()` reports a `no entropy seed` blocker and the sign-in screen refuses. Cobalt could complete a handshake in that state and it would look entirely normal to the user, which is exactly why it must not.
-- **Seed provisioning follows Channel Blue** rather than inventing a second scheme. `make bundle` generates a fresh 64-byte seed with `openssl rand` into `dist/wiiu/apps/cobalt/entropy.bin`; the app reads it from `sd:/wiiu/apps/cobalt/entropy.bin` and on every boot does load → seed both DRBGs → rotate → save → commit. The ordering is load-bearing: both DRBGs are deterministic, so booting twice on one seed regenerates identical key material *and* identical TLS client randoms, and the commit is withheld unless the replacement actually reached the card.
-- The seed is **not distributable**. One per installation; `.gitignore` blocks `entropy.bin` and `dist/`.
-- **Cobalt now requires a Wolfram with `wf_xrpc_client_set_tls_rng()`.** An older checkout will fail to compile rather than silently building without the fix, which is the right way round.
-- **Worth reporting upstream.** The poll affects every Wii U homebrew using mbedTLS, not just Cobalt. No devkitPro issue for it was found. An honest upstream fix may have to be "fail" rather than "return tick bytes", since no PowerPC-reachable hardware RNG is documented for this console — IOSU gatekeeps the crypto hardware. Note that is *not found*, not *proven absent*; the WiiUBrew `/dev/crypto` page could not be read while checking.
-
-### Assets and font
-
-`assets/` artwork is generated, not hand-drawn: `python3 tools/gen_assets.py` writes the 128×128 icon and both splash screens from a palette defined in that script (stdlib only — no Pillow or ImageMagick needed). Regenerate after a palette change rather than editing the PNGs.
-
-`romfs/font.ttf` is **Lato Regular, a placeholder** — see `romfs/FONTS.md`. It is OFL-1.1 and safe to redistribute, but it is not the rounded, Pop-style face §5 asks for, and the OFL text still needs to ship alongside it before any release.
-
-### Asset paths are probed, not assumed
-
-`src/util/paths.c` probes candidate content roots for a `content.marker` sentinel and logs every probe, so a failure to find assets on hardware shows up as an explicit list of what was tried rather than a bare "font load failed". `/vol/content` (WUHB) and the SD app directory (bare RPX) are both covered.
-
-### Logging
-
-`src/util/log.c` fans out to every sink wut offers — Cafe OS, UDP on port 4405, Aroma's LoggingModule, and `sd:/wiiu/apps/cobalt/cobalt.log` (flushed per line so it survives a hang). Given there is no emulator, `nc -ul 4405` from a PC on the same LAN is the fastest debug loop available.
-
-### The trust store is fetched at build time, not committed
-
-devkitPro's `wiiu-curl` is built against mbedTLS and the Wii U has no system certificate store behind it, so without an explicit `CURLOPT_CAINFO` every HTTPS request fails verification. This is the first thing that blocks §12's step 2, and it is not obvious from the failure: curl reports it as a connection error, which reads as a network problem.
-
-`make` therefore runs `tools/fetch_cacert.sh` into `romfs/cacert.pem`, and `src/atproto/session.c` hands that path to `wf_xrpc_client_set_ca_bundle()`. The bundle is git-ignored on purpose — the Mozilla set expires, and a stale copy committed to the repo would fail on console months later looking like a network bug. `make cacert` forces a refresh. An offline build is not a hard failure: it produces a working RPX that simply cannot reach a PDS, and the diagnostics screen reports the trust store as missing.
-
-A trust store fixes certificate *verification* only. Handshake *randomness* is a separate problem on this platform and is dealt with in the entropy section above — both have to be right before the transport is worth trusting.
-
-### Network I/O runs on a worker thread
-
-Wolfram's transport is blocking libcurl. A sign-in against a cold PDS is several seconds of DNS, TLS handshake and server-side password hashing. Doing that on the frame loop would stop the app pumping SDL events — and since SDL owns ProcUI here, a stalled event pump is a stalled ProcUI message queue, i.e. a console sitting on a frozen frame that will not return to the Wii U Menu.
-
-`src/atproto/session.c` therefore owns an SDL worker thread with a one-job-at-a-time handoff: the UI submits a request, keeps drawing, and calls `cobalt_session_poll()` each frame for the result. If `SDL_CreateThread` fails, requests fall back to running synchronously on the caller — functional, but visibly stalling — and the diagnostics screen reports which mode is live, because "slow" and "hung" look identical from the couch otherwise.
-
-Any future network call belongs behind the same job mechanism. Adding a synchronous one anywhere on the frame path reintroduces the freeze.
-
-### The session layer drives `wf_agent`
-
-It briefly did not. `wf_agent` is the ergonomic entry point but it is opaque, and on a console with no system trust store and no usable entropy source its settings were unreachable — so the first cut composed `wf_session` by hand instead. That was a workaround, and it capped the client at whatever could be rebuilt call by call.
-
-Both gaps were closed in Wolfram rather than around it (§8: extend the shared SDK, do not fork it), so `src/atproto/session.c` now uses `wf_agent` with `wf_agent_set_ca_bundle()` and `wf_agent_set_tls_rng()`. Three things came with that and are worth knowing before changing it:
-
-- The agent installs **its own** transparent refresh-and-retry. Cobalt's hand-rolled refresh handler is gone; do not add another.
-- `wf_agent_login()` re-points the client at the account's real PDS from `didDoc#atproto_pds`. Cobalt no longer does this itself.
-- Because refreshes happen inside a request, `publish_session()` reads credentials back **out of** the agent and runs after every job, not just after sign-in. A timeline fetch can rotate the tokens.
-
-Still worth fixing in Wolfram:
-
-- **`wf_session_login` swallows the XRPC error envelope.** It returns a bare `wf_status`, so a wrong password, a takendown account and a missing 2FA token are all `WF_ERR_HTTP`. Cobalt's sign-in errors are written to be useful without it, but that is a workaround — the envelope is right there in the response.
-- **`struct wf_agent` is defined twice**, in `agent.c` and `_internal.h`, hand-synced. If they drift, translation units disagree about field offsets with no diagnostic.
-
-### The feed is flattened once, not walked per frame
-
-Wolfram returns `wf_agent_feed_list`, which keeps `record`, `embed` and `reason` as owned cJSON subtrees so it stays bounded whatever a PDS sends. That is right for an SDK and wrong for a render loop — the UI would be parsing JSON every frame, against §9's no-allocation-on-the-frame-path rule.
-
-So `src/atproto/feed.c` flattens a fetch into fixed-size structs with everything pre-formatted: relative age, counts line, repost attribution, embed marker. Drawing then touches nothing but `char` arrays. Fixed sizes rather than heap strings are also a bound on hostile input — a display name cannot make the client allocate.
-
-Two consequences to keep in mind:
-- The window is 60 posts (`COBALT_FEED_MAX_POSTS`). Paging past it drops the tail rather than growing.
-- Embeds are **markers**, not content: `[image]`, `[link]`, `[quote]`. Nothing is downloaded or drawn. An unrecognised embed type renders as nothing rather than a guess, so a new lexicon shows as absent rather than as the wrong thing.
-
-Timestamps go through `src/util/timefmt.c`, which does the civil-date conversion arithmetically rather than via `timegm` (not portable to devkitPPC) or `mktime` (drags in local time, and the console's timezone is not worth trusting). It only accepts the UTC form — a numeric offset read as if it were Zulu would put posts hours out of order, which is worse than showing no timestamp.
-
-### Credentials are stored encrypted, and that is worth less than it sounds
-
-`src/cache/session_store.c` persists the session as AES-256-CTR under a 32-byte `device.key` generated per installation, satisfying §7's "encrypted or at minimum not in plaintext". Sign-out overwrites both files before unlinking so the tokens are not left in free clusters on the card.
-
-Do not oversell it in the README or anywhere else. The key lives beside the file it protects, because the Wii U gives homebrew no keystore and no per-title secret to bind to. It defends against incidental exposure — a log, a screenshot, a stray copy of `session.dat` — and against nothing at all once someone has the whole card. If a future decision depends on this being real at-rest encryption, that decision is wrong.
-
-### Text entry is Cobalt's own keyboard, not swkbd
-
-`src/ui/keyboard.c` draws a QWERTY grid rather than calling the system software keyboard. swkbd is a C++ `nn::` API that composites itself into the app's GX2 render passes, and Cobalt only reaches GX2 through SDL2 — driving it would mean punching through the abstraction everything else is built on. §11 already flagged the swkbd overlay as slow and a GamePad touch keyboard as the faster option, so this is that.
-
-It obeys §5's two-input rule by construction: touch on the GamePad, and a focus moved by D-pad or stick for someone on a Pro Controller. B is backspace; leaving a field is the Cancel key.
-
-### Interactions are applied locally, then reconciled
-
-A like or repost updates the post in place — count moved, marker shown — instead of refetching the feed for one changed number. That is what every other client does, and on a console the alternative is a visible stall for a button press.
-
-Two rules keep it honest, and both are tested:
-- The count only moves when the state actually **changed**. A duplicate confirmation (a retry after the agent's refresh handler fired mid-request) must not double-count.
-- A count already at zero never goes negative.
-
-The same post is frequently on screen in the feed *and* a loaded thread, so both copies are updated together — `cobalt_feed_apply_*` and `cobalt_thread_apply_*` share one post-level implementation.
-
-The direction of a toggle is decided inside `session.c` from the post's own viewer state, not passed in by the screen. A screen that passed its own idea of "liked" could disagree with what was last fetched and send the wrong verb.
-
-### A reply must name its root, and Cobalt refuses to guess
-
-An ATProto reply record names both its parent and the thread root. Naming the wrong root does not fail — it publishes, and lands in the wrong conversation for every other client, which is the kind of bug that looks like someone else's.
-
-So the root is carried on every `cobalt_post` from the moment it is parsed: from the feed item's `reply` ref, or from the record's own `reply` for a thread node. A post that is not a reply records **itself** as its root, so there is no special case at the call site and no path that sends an empty ref. `cobalt_session_begin_post()` refuses a reply with a partial ref set rather than filling in a plausible value, and `wf_agent_reply_refs` is used rather than `wf_agent_reply` — the latter uses the parent as its own root, which is correct only for a reply to a top-level post.
-
-### Composing asks before it posts
-
-Posting is public and irreversible, and OK on a games-console keyboard is one D-pad slip from a key someone was aiming at. So the compose screen commits to a confirmation row (Post / Keep editing / Discard) rather than straight to the network, and B from there returns to editing rather than discarding — losing a post typed on a D-pad would be a genuinely bad outcome.
-
-The character count is codepoints, not bytes: Bluesky's limit is 300 graphemes, and counting bytes would make a post of CJK or accented text appear to blow the limit at a third of its real length. Codepoints disagree with graphemes only on emoji sequences and combining marks, and erring towards refusing a post the server would have taken is the safer direction.
-
-### Notification rows are not posts
-
-A like carries no text of its own and a follow has nothing to open, so notifications get their own compact row rather than a cut-down post card — drawing them as posts would leave a column of near-empty tiles.
-
-Two things are resolved at parse time rather than left to the screen:
-- **Wording.** `like` becomes "liked your post". An unrecognised reason is shown **verbatim** rather than mapped to something generic: Bluesky adds reasons over time, and a row reading "did something" says less than the raw lexicon word does.
-- **What to open.** A reply, mention or quote *is* a post and is its own subject; a like or repost points at what the *viewer* wrote, which lives in `reasonSubject`. Getting that backwards opens a plausible-looking wrong post, so it is a tested function rather than a condition inside a draw call.
-
-`updateSeen` fires only on a top-of-list fetch. Doing it while paging backwards through history would mark things read that the user has not reached yet. Its failure is logged, not surfaced — the notifications arrived, and an error about a badge would be noise.
-
-### Shared list state is the worker's, and needs the lock
-
-The feed, thread, notification list and profile are the worker's own buffers, handed to screens by pointer rather than copied. That is deliberate — copying 50 KB per frame to draw it is the alternative — but it means the UI must hold `cobalt_session_lock()` across the *whole* of update and draw, which `app.c` does.
-
-The reason is sharper than general tidiness. The worker edits these in place while a screen is on it: a like rewrites a counts line, a refresh clears and refills the list. A torn read of a counts line is not a one-frame flicker, because `ui/render.c`'s text cache keys on **string contents** — it renders the texture, then copies the key. A string that changes between those two steps gets its texture stored under the wrong key and draws wrongly until it is evicted, up to 128 lookups later.
-
-SDL mutexes are reentrant, so accessors that take the lock internally are safe to call while it is held.
-
-### Two rules every list screen shares
-
-Both were bugs before they were rules, and both are now single tested functions rather than repeated logic:
-
-- **`cobalt_list_clamp()`** — a list can shrink under the cursor (replying re-roots a thread on its parent, which is usually much shorter). The scroll maths only ever raises `scroll` to meet `selected`, so it cannot recover from a cursor past the end: the screen draws nothing and takes one press of UP per row to escape.
-- **`cobalt_feed_can_page()`** — not simply `has_more`. The window is fixed, so once full, every further page appends nothing while the server still returns a cursor. A screen that auto-pages on reaching the last row would request forever, holding `busy` true so no interaction ever ran, and earning a rate limit.
-
-### Avatars are fetched, decoded and scaled off the frame loop — textures are not
-
-Images were the biggest visible gap against `social-app`, and the whole of the work is in getting the threading right.
-
-SDL's Wii U backends — `src/render/wiiu/` and `src/video/wiiu/` — contain **no locking of any kind**. No mutex, no spinlock, nothing. Creating a texture from a worker thread would be writing into the same GX2 command buffer the frame is being built in: corruption, not tearing. So the split in `ui/imagecache.c` is not caution, it is the only correct arrangement:
-
-- **Loader threads** (three per cache, because each image is its own TLS handshake and the cost is almost all round-trip latency) do the HTTPS GET, the decode and the downscale. All three are pure CPU work on an `SDL_Surface` and touch no renderer.
-- **The main thread** turns finished surfaces into textures, in `cobalt_imagecache_pump()`, and is the only thread that ever destroys one.
-
-Consequences worth keeping:
-
-- **A cache belongs to one renderer.** A texture cannot be shared between the TV and GamePad, so there is one cache per surface, hanging off the render context (`cobalt_render_set_images()`) rather than threaded through every drawing call. Asking a cache with the wrong context is refused, not silently wrong.
-
-  **This costs a duplicate fetch, and that is a known, accepted cost — not an oversight.** Both surfaces draw the same screen, so every avatar is downloaded and decoded twice, once per cache. The fix is to share the *fetch* while keeping textures per-renderer: a URL-keyed staging store that the second requester waits on rather than re-requesting. That needs a second condition variable and a "someone else is already loading this" state, and writing that blind — for a pipeline that has never run on hardware once — is how you get a deadlock that only appears on the console. Do the simple version first, confirm it works, then dedupe. Do not skip the confirmation.
-- **Slots carry a generation counter.** A loader captures it before releasing the lock and re-checks it after. A result for a request nobody wants any more — evicted, or flushed by a foreground release — is discarded rather than written into whatever took the slot.
-- **Eviction skips anything in flight.** Only `READY` and `FAILED` slots are reusable. Taking a loading one would throw away a request already paid for, and a fast scroll would then never settle.
-- **`cobalt_imagecache_flush()` on `SDL_APP_DIDENTERFOREGROUND`**, next to the text cache flush, for the same reason: textures do not survive a GX2 context release.
-- **Scaling is a real box filter, not `SDL_BlitScaled`.** That is nearest-neighbour here, and a 1000×1000 avatar down to 64 by nearest discards 99.6% of the pixels — a shimmering mess. Averaging costs a few milliseconds on a thread that has them. It averages *premultiplied*, or transparent pixels bleed their colour into the edges.
-- **Downscaling bounds the texture budget by construction.** Twenty-four full-size avatars would be 96 MB as ARGB8888.
-- **Everything degrades to a placeholder.** No SDL2_image, no trust store, a loader that will not start, a fetch that fails: the card draws a disc tinted from a hash of the handle with the author's first codepoint on it. That is deliberately not a grey circle — a column of identical grey reads as one voice.
-
-`net/http.c` is a plain HTTPS GET into memory, deliberately outside the ATProto layer: fetching an avatar is not protocol-shaped work, and routing it through Wolfram would serialise images behind the one request the session worker may have in flight. It repeats two platform details Wolfram also handles, because they are properties of *this console* rather than of the SDK — the bundled CA bundle, and the application DRBG for the handshake (§13's RNG note). It is https-only and caps the transfer in the write callback, aborting the download rather than discarding an oversized result afterwards: the URL comes from a PDS response and a hostile one could point at an endless stream.
-
-Avatar counts are on the diagnostics screen. Without them there is no way to tell "nobody has set one" from "every fetch is failing", which are very different problems and look identical.
-
-### Post images and link cards reuse the avatar pipeline, through a second cache
-
-Images embedded in a post (`app.bsky.embed.images`) and link-card previews
-(`app.bsky.embed.external`, plus the media half of `recordWithMedia`) draw
-through the same off-frame-loop fetch/decode/upload split as avatars — see the
-section above — rather than a parallel implementation. What's different is the
-fit: an avatar is decoded CIRCLE at a small fixed size, a thumbnail is decoded
-CONTAIN (aspect-preserving, no crop) at a larger one, and `cobalt_imagecache`
-bakes both the fit and the decode size into the cache instance itself. One
-cache cannot serve both, so there are now two per surface — `cobalt_render`
-carries a second borrowed pointer (`cobalt_render_set_thumbs()` /
-`cobalt_render_thumbs()`) alongside the avatar one, created, pumped, flushed
-and destroyed in lockstep with it in `main.c`. `COBALT_THUMB_TEXTURE_MAX`
-(320px) is deliberately smaller than a CDN thumbnail can arrive at, for the
-same texture-budget reasoning §13's avatar section gives for 64px avatars.
-
-Card height is a fixed budget per embed shape (one image, a 2-4 image row, a
-link card), not something computed from the source image's aspect ratio.
-This wasn't a shortcut: `cobalt_postcard_height()` has no rect to measure
-against in the first place — every caller draws at the same fixed width
-regardless of list indent (thread.c passes indent to *draw*, never to
-height), so there was already no way for it to do pixel-exact layout even for
-the post text above the embed, and `text_lines` is a fixed line count for the
-same reason. Matching that convention rather than being the one part of the
-card that's an exception keeps `cobalt_postcard_height()` and
-`cobalt_postcard_draw()` unable to disagree about a card's size — both call
-the same `embed_block_height()` — which is worth more than a height that
-happens to track a particular photo's aspect ratio.
-
-The pure geometry — contain-fit sizing, and the link card's host-only display
-string (`cobalt_feed_link_domain`, "bsky.app" rather than the full URI) — is
-exposed and unit tested (`tests/test_main.c`), per §10's carve-out for
-platform-independent logic. The embed-JSON parsing that feeds it
-(`fill_embed_media` in `atproto/feed.c`) is behind `COBALT_HAS_WOLFRAM` like
-the rest of the view-flattening code, so it gets sweep and link coverage but
-not a unit test run — same situation as `fill_from_view` already was.
-
-Alt text landed alongside this rather than in the same pass, initially dropped
-for scope. `cobalt_post_image.alt` is captured the same way `thumb` is; every
-image with one gets a small "ALT" corner badge (`draw_alt_badge()`, a
-translucent dark chip so it reads over arbitrary photo content rather than
-just the theme's own colours), and the *focused* card additionally draws the
-first image's alt text as a wrapped caption below the media
-(`draw_embed_media()`'s `focused` branch). Only the focused card, and only the
-first image of however many the post carries: this is the accessibility
-affordance actually available on a platform with no screen reader for
-homebrew, but there is no per-image selection in a list-based UI to show more
-than one at a time yet — a real gap, not a silent one, and worth closing if a
-later pass gives posts per-image navigation. `cobalt_postcard_height()` grew a
-`focused` parameter so it can reserve the caption's extra height only where
-`cobalt_postcard_draw()` is about to spend it, rather than on every card in
-the list — the same reasoning as everything else in this section's "fixed
-budget, not width-derived" convention, just gated on focus instead of width.
-
-### Mute and block: a profile action, and two list screens sharing one view
-
-Left/Right on the profile header row mute/unmute and block/unblock the
-viewed account — same input language as a post row's Left/Right =
-like/repost, different target. `cobalt_profile` gained `viewer_blocking`
-(a record URI, same undo shape as `viewer_following`) and `viewer_muted`
-(a plain flag; `muteActor`/`unmuteActor` have no record to hand back).
-
-Browsing the *full* muted/blocked lists needed more than that single
-account's viewer state, so this pulled in two Wolfram-side extensions
-alongside the Cobalt work:
-
-- `wf_agent_profile` (used for a single fetched profile) already carried
-  `viewer.following`; it was missing `viewer.blocking`/`viewer.muted`
-  entirely, so a profile screen had no way to show current mute/block state
-  at all until that was added.
-- `wf_agent_profile_view` (the lighter per-row type behind `getBlocks`,
-  `getMutes`, `getFollowers`, `getFollows`, and others, via one shared
-  parser) had the same gap — and mattered more here, since unblocking a row
-  needs *that row's own* block record URI, and there was no way to get it
-  without a redundant per-row `getProfile` call. Both were fixed in Wolfram
-  the same way: parse `viewer.blocking`/`viewer.muted` when present, leave
-  them NULL/false when the source view carries no viewer subtree at all
-  (most `profileView` items don't). Purely additive — no existing caller's
-  behaviour changed.
-
-`atproto/actors.c` (`cobalt_actor_list`) is the flattened-row type this
-produces on the Cobalt side — same "Wolfram hands back owned heap strings,
-the render loop wants fixed buffers" reasoning as `feed.h`/`notifications.h`.
-It's deliberately not `mutes.c`/`blocks.c` split apart: a muted-account row
-and a blocked-account row are the same shape (avatar, name, handle, one
-action), and `app/graph.c`'s `cobalt_graph_view` draws both from one
-implementation parameterised by `cobalt_graph_kind`, reachable from two new
-rows on what used to be the account screen's single sign-out button (now a
-small three-row menu). Unmuting/unblocking from a list row removes it
-locally (`cobalt_actor_list_remove`) rather than waiting on a refetch, the
-same "apply locally, reconcile on the next real fetch" rule interactions
-already follow elsewhere in this file.
-
-This is the concrete home for the `wolfram-cpp` adoption the language-policy
-entry above talks about — RAII handles wrapping `wf_agent_actor_list`/
-`wf_agent_profile`'s owned members instead of the hand-paired
-`memset`/`_free` this code actually uses today. Not done as part of this
-change: the C version needed shipping first, and the two are not
-entangled enough to justify blocking one on the other.
-
-### `atproto.c` no longer includes a `wolfram/version.h` that was never shipped
-
-Found while validating the images/link-card work above, against a sibling
-Wolfram checkout for the first time in a while: `#include <wolfram/version.h>`
-in `atproto.c` names a header Wolfram has never produced. `WOLFRAM_VERSION_STRING`
-is a CMake `PUBLIC` compile definition on Wolfram's own target, propagated to
-consumers through `target_link_libraries` — which only works inside a CMake
-build graph. Cobalt links Wolfram from a plain Makefile (`-I`/`-l`), outside
-that graph entirely, so it was never getting the macro either way; the include
-simply doesn't resolve to anything Wolfram produces. This had never been
-caught because `COBALT_HAS_WOLFRAM` code only gets sweep/link coverage with a
-sibling Wolfram checkout present, and there is no CI here to force that
-combination. Fixed by dropping the include and returning a fixed
-`"wolfram (linked)"` string instead of fabricating a version number Cobalt has
-no build-time path to. Getting a real version onto the diagnostics screen
-again would need either a real exported header from Wolfram or a runtime
-accessor function — neither exists today — not a Cobalt-side fix.
-
-### Search is actor search only, and reuses the mute/block row shape wholesale
-
-`app.bsky.actor.searchActors` is what's implemented — Cobalt has no post
-search, since there's no `app.bsky.feed.searchPosts` call anywhere in this
-pass and no UI for it. `wf_agent_search_actors_typed` already existed in
-Wolfram (`actor_typed.h`), unlike mutes/blocks which needed Wolfram-side
-additions first — no SDK work was needed here.
-
-The result rows are literally `cobalt_actor_list` (`atproto/actors.c`), the
-same flattened avatar/name/handle type the mute/block lists use — a search
-result and a muted-account row are the same shape for the same reason those
-two are the same shape as each other. `app/search.c` draws its own row (not
-`app/graph.c`'s, which is a static function local to that file) rather than
-exporting one, since the two files' rows differ enough at the edges — no
-Left/Right undo action on a search result, a query keyboard instead of a
-fixed title — that a shared draw function would need its own
-what-mode-am-I-in branching, which is what `cobalt_graph_kind` already exists
-to avoid *within* one screen, not something worth extending *across* two.
-
-New job kind `COBALT_JOB_SEARCH_ACTORS` reuses `job_input.text` (already sized
-for compose, comfortably larger than a search query needs) rather than adding
-a dedicated query field. It is not routed through the `run_actor_list` helper
-`run_muted_list`/`run_blocked_list` share, because `wf_agent_search_actors_typed`
-takes a query string ahead of limit/cursor and that helper's function-pointer
-parameter has no slot for one — `run_search_actors` duplicates the fetch/flatten/
-paginate shape by hand instead of reshaping a helper two other call sites
-depend on for one new caller.
-
-`app/search.c` is a new screen (`COBALT_SCREEN_SEARCH`), reachable from a new
-"Search" row on the home menu between "New post" and "Notifications", gated on
-`signed_in()` the same as those two. It has two sub-modes on one screen, the
-same shape `compose.c` already uses for "edit, then something else": typing
-owns the screen via the existing on-screen keyboard (`ui/keyboard.c`) until OK
-is pressed, then browsing takes over with the muted/blocked lists' up/down +
-touch + paging behaviour. B from browsing returns to typing rather than
-leaving the screen, so revising a query doesn't mean re-opening search from
-the menu.
-
-**Not done, and worth closing in a later pass:** selecting a result doesn't
-open that account's profile yet. `app/profile.c` has no "open by DID from an
-arbitrary list screen" entry point today — `app.c`'s `profile_return` field
-tracks one fixed origin screen, and adding a second caller without checking
-how that interacts with the existing timeline/thread-originated profile
-navigation felt like the wrong thing to do inside a feature commit whose
-actual subject is search. A search result is currently a dead end past
-reading the name and handle, which is a real gap, not a silent one.
-
-**Verification note:** this was written and built without hardware or a
-console-adjacent devkitPro image available in the dev environment — only
-`wiiu-sdl2`, `wiiu-sdl2_ttf`, `wiiu-curl`, `wiiu-mbedtls` and similar were
-already installed, not `wiiu-sdl2_image`, so a full `make` link fails on
-`imagecache.c`'s `#include <SDL_image.h>` — a pre-existing environment gap
-unrelated to this change (confirmed: `make` fails identically on a clean
-checkout with no changes). The devkitPPC compiler was used directly to compile
-`search.o` and `app.o` in isolation and both succeeded with no errors or
-warnings; the touched Wolfram-side header (`actor_typed.h`) was not modified.
-The host test harness (`make -C tests`) also could not run — no host SDL2
-dev package in this environment either. Per §10 and §12's own "None of it has
-been through a hardware pass" note, **none of this has been run on the
-actual console**, same standing caveat as the rest of the roadmap since step 5.
-
-*(Update, later pass: `wiiu-sdl2_image` was installed into this dev
-environment and a `src/app/profile.c` / `src/atproto/profile.c` object-name
-collision under the Makefile's flat VPATH — unrelated to search, present since
-before it — was fixed, so `make` now links end-to-end here. Still not a
-hardware pass; see the custom-feeds entry below for what that build actually
-covered.)*
-
-### Custom feeds: one hardcoded generator, reusing the timeline wholesale
-
-`app.bsky.feed.getFeed` is what's implemented — not the user's actual saved
-feeds. Reading those needs `app.bsky.actor.getPreferences`'s `savedFeeds` (or
-the newer `savedFeedsPrefV2`) parsed out of the preferences blob, plus a
-`getFeedGenerators` call to get each one's display name/avatar — real scope,
-deferred rather than half-done here. Instead `app/app.c` carries a small
-`FEEDS[]` table (currently one entry, Bluesky's official "What's Hot") behind
-a new "Feeds" row on the home menu, between Search and Notifications.
-
-The feed-viewing half adds nothing new: `wf_agent_get_feed_typed` returns
-`wf_agent_feed_view_list`, which is a **typedef alias** for the exact same
-`wf_agent_feed_list` `getTimeline`/`getAuthorFeed` return (see
-`feedgen_typed.h`) — so a custom feed is "the timeline, sourced elsewhere."
-`atproto/session.c` gained `COBALT_JOB_FEED` and `run_feed`, a near-duplicate
-of `run_timeline` that calls `wf_agent_get_feed_typed(agent, in->uri, ...)`
-instead and writes into the *same* `s.feed` storage — no new UI code, no new
-row/card rendering, `app/timeline.c` and `ui/postcard.c` are untouched.
-Opening a feed just calls `cobalt_session_begin_feed(uri, false)` and switches
-to `COBALT_SCREEN_TIMELINE`; leaving it and reopening Timeline from the home
-menu re-fetches the home timeline into the same storage, overwriting the
-custom feed's posts the same way opening the custom feed overwrote whatever
-was there before. The feed picker itself (`update_feeds`/`draw_feeds`, both in
-`app.c`) is a small static-row list, modelled directly on the account screen's
-own inline menu (`update_account`/`draw_account`) rather than getting its own
-file — at one row today it doesn't earn a `feeds.c`.
-
-**Not done, and worth closing in a later pass:** B from the timeline while
-viewing a custom feed goes to Home, not back to the feed picker — `timeline.c`
-hardcodes its BACK target to `COBALT_SCREEN_HOME` and giving it a second
-return target is the same shape of change §"Search is actor search only"
-above declined to make for `profile_return`, for the same reason (not this
-commit's actual subject). The saved-feeds-from-preferences work described
-above is the other open item.
-
-**Verification note:** built with `wiiu-sdl2_image` installed and the
-`profile.c` collision fix in place (see the update above) — `make -j4` from a
-clean worktree succeeds end-to-end, producing `cobalt.elf`/`.rpx`/`.wuhb` with
-no errors or warnings. Still no hardware pass — same standing caveat as
-everything since step 5.
-
-### Lists: read-only, own lists and their members only
-
-Wolfram's `list_typed.h` exposes `wf_agent_get_lists_typed`
-(`app.bsky.graph.getLists`) and `wf_agent_get_list_typed`
-(`app.bsky.graph.getList`) — no create/edit/delete wrapper — so this is
-browsing only: the signed-in account's own lists, and one list's members at a
-time. Creating or editing a list from Cobalt is out of scope until Wolfram
-grows that surface.
-
-New `atproto/curated_lists.{c,h}` (named to avoid `app/lists.c`'s basename —
-see the `profile.c`/`actor_profile.c` collision entry above; the same
-devkitPro flat-VPATH issue would have reproduced here) holds
-`cobalt_list_summary_list` (name/description/avatar/uri per list) and reuses
-`cobalt_actor_list` wholesale for a list's members, via a small adapter
-(`cobalt_actor_list_append_from_wolfram_list_items`) that flattens
-`wf_agent_list_item_list`'s items — each one's `subject` is a
-`wf_agent_profile_view`, the exact type `cobalt_actor_list_append_from_wolfram`
-already consumes for mutes/blocks/search, so a list member is, again, the same
-row shape as everything else in `actors.h`.
-
-`app/lists.c` is one screen with two sub-modes (`browsing_members`), the same
-"pick one thing, then look at what it opens onto" shape `search.c` uses:
-false shows the list-of-lists menu, true shows the selected list's members
-with `search.c`/`graph.c`'s row drawing duplicated rather than shared (this
-codebase's standing convention — see §"Language policy" on not forcing shared
-abstractions prematurely). A "Lists" entry sits on the home menu between Feeds
-and Notifications.
-
-**Not done, and worth closing in a later pass:** tapping a member doesn't open
-their profile — the same DID-forwarding `search.c` does for its results would
-need the same `COBALT_LISTS_VIEW_OPEN_PROFILE`-style action `search.c` already
-has, just not wired here yet. List creation/editing, described above, is the
-other open item.
-
-**Verification note:** `make -j4` succeeds end-to-end from a clean worktree —
-`cobalt.elf`/`.rpx`/`.wuhb`, no errors or warnings. Still no hardware pass.
-
-`tests/` does two things with the build machine's own compiler. It runs a `-fsyntax-only -Werror` sweep over every translation unit that does not need devkitPro headers — including `main.c`, which owns the startup and shutdown ordering and is exactly the code a hardware pass is slowest to tell you about — in both the with-Wolfram and without-Wolfram configurations, so a changed SDK signature is caught in a second rather than after a card swap. And it unit tests the genuinely platform-independent logic §10 carves out: the credential store's round trip and its refusal of damaged or foreign files, the service-URL normaliser, the keyboard's text model, and the async request handshake.
-
-`make test` runs both. It is a filter on the obvious failures, not evidence anything works — every milestone's acceptance test is still the console.
-
-There is a **third** step for the same reason. The sweep is `-fsyntax-only`, so it never resolves a symbol: a function deleted while callers remained compiles perfectly and fails only at link time — which has already happened here once. The unit-test binary catches that, but links only the *without-Wolfram* configuration, leaving the halves of `feed.c`, `notifications.c` and `session.c` behind `COBALT_HAS_WOLFRAM` with no link coverage at all.
-
-`make -C tests linkcheck` links exactly those, against a host build of Wolfram, into a binary that is never run. It needs `../wolfram/build-host` and is skipped without one, so a checkout with only the headers still gets the sweep and the unit tests. Two small stub sets make it possible (`tests/linkcheck_stubs.c`): `net/net.c` is excluded from the sweep because it needs `<nn/ac.h>`, and `wf_wiiu_*` exist only in Wolfram's Wii U build by design.
-
-Verified to work by deleting a function that only the Wolfram-side code calls: the sweep passed, the link check failed.
-
-### Threadgates: reply controls on new top-level posts, via Wolfram's existing `wf_agent_create_threadgate`
-
-`compose.c`'s confirmation screen gained a Y-cycled reply-gate choice (everyone / followed+mentioned / nobody), shown and editable only for a new top-level post — not for a reply, since Bluesky scopes a threadgate to the post it is attached to and the official client does not offer a separate choice for a reply's own replies either. `cobalt_session_begin_post` grew a `reply_gate` parameter (a plain `int`, not `compose.h`'s `cobalt_reply_gate` enum, to avoid `atproto/` — which sits below `app/` — depending on an app-layer type); `run_post` writes the `app.bsky.feed.threadgate` record right after a successful post via `wf_agent_create_threadgate`, using `followingRule`+`mentionRule` for the middle option and an empty allow array for nobody. A threadgate failure is logged but does not roll back the already-published post.
-
-**Scoped out, not silently dropped:** list-based threadgates (allow only members of a specific list) — Wolfram's `allow_json` parameter accepts arbitrary rule JSON so it is not a Wolfram gap, just not wired into the compose UI yet, since Cobalt's lists feature (§13, above) is itself browse-only with no natural "pick a list to gate with" UI today. Editing or removing a threadgate after the fact is also not implemented — `wf_agent_delete_record_by_uri` exists for it, but there is no "my threadgated posts" screen to launch it from yet.
-
-**Verification note:** `make -j4` succeeds end-to-end — `cobalt.elf`/`.rpx`/`.wuhb`, no errors or warnings. Still no hardware pass, and this closes the last item on §12's original roadmap list.
-
----
-
-*This file should be kept current as the project evolves. If you (the agent) make an architectural decision not reflected here — e.g. picking a specific TLS portlib, or discovering GamePad-only UI isn't viable for some reason — update the relevant section rather than leaving this file to drift out of sync with the codebase.*
+"Verified" means: clean build (zero warnings under the strict flags), `ctest`
+green, and — for anything touching the network path — a real client connection
+path for the claimed states with automated regression fixtures retained where
+licensing permits.
+
+## Configuration
+
+- **All configurable behavior belongs in the global `zincfox.conf` file.** Do
+  not add hidden environment flags, command-only switches, or per-module
+  configuration files for server behavior. A new setting must have a bounded
+  type/range, a documented default, load/save coverage, and an explanation of
+  its retained-memory or resource effect when relevant.
+- Configuration must never make an unbounded queue, cache, world, or player
+  store possible. Dynamic choices must resolve to one of documented finite
+  limits and select the safe lower limit when host information is unavailable.
+
+## Versioning
+
+- Releases use strict semantic versioning `v<major>.<minor>.<patch>`.
+- The version lives only in the `VERSION` line of `CMakeLists.txt`; derive any
+  runtime version string from that single source of truth, not a separate file.
+- **No version jumps**: bump from the immediately previous released version.
+  Never skip a patch, minor, or major number; do not backfill gaps with phantom
+  tags or releases.
+- **Substantial changes require a release cut**: a user-visible protocol or
+  gameplay behavior, persistence/world-format change, compatibility claim,
+  public interface change, or material resource-budget change must not be
+  allowed to accumulate indefinitely after a release. Before merging the next
+  substantial tranche, audit the commits since the latest tag and cut the next
+  sequential version when the tranche is ready. Documentation-only, test-only,
+  formatting, and internal refactors do not require a version cut unless they
+  change the published contract.
+- **Release procedure follows Wolfram**: change the single `VERSION` line,
+  create a signed annotated `v<major>.<minor>.<patch>` tag on that same commit
+  (falling back to an annotated tag only when signing is unavailable), push the
+  commit and tag, and create the matching GitHub release with generated notes.
+  For pre-1.0 releases, publish source only; attach built artifacts starting at
+  `v1.0.0`.
+
+## Code style
+
+- Header guards (`ZINCFOX_PROTOCOL_<FILE>_HPP`), not `#pragma once` — matches
+  the convention in `wolfram/include/wolfram/` and `clay/include/clay/`.
+- `.clang-format` in this repo (LLVM base, 4-space indent, 80 columns,
+  attached braces) — run `clang-format -i` on changed files.
+- Comments explain *why*, sparingly; never narrate obvious code.
+- No C++ exceptions for expected protocol/server states. Use explicit
+  result/error types. Reserve exceptions/aborts for genuine programmer errors.
+- Avoid RTTI-heavy or virtual object hierarchies for packets/entities when
+  tagged values or tables are simpler.
+
+## Memory invariants
+
+The initial scaffold deliberately chooses simple fixed bounds:
+
+- 32 connection slots;
+- one 8 KiB receive buffer per slot;
+- one 128 KiB transmit buffer per slot (sized for one columnar 24-section
+  chunk frame with full sky light);
+- one small protocol / session record per slot;
+- one `pollfd` table for the listener plus those slots.
+
+The fixed socket-buffer payload is therefore **4.25 MiB** at maximum connection
+capacity (32 slots x 136 KiB), plus small connection/poller metadata and
+operating-system socket buffers. This is not a promise that the process RSS is
+4.25 MiB, but it is the first explicit retained-memory budget owned by Zincfox
+itself.
+
+When adding a subsystem, document its steady-state and worst-case retained
+memory in the PR when practical.
+
+Every long-lived subsystem should answer four questions:
+
+1. What owns this memory?
+2. What is the normal retained size?
+3. What is the maximum retained size or eviction/backpressure rule?
+4. What input can cause the subsystem to grow?
+
+## Commits and pull requests
+
+Matches the convention in `wolfram/AGENTS.md` / `keepsake/AGENTS.md`.
+
+- **Atomic conventional commits**: every commit is exactly one logical change.
+  Scope by module — `feat(protocol)`, `feat(server)`, `fix(net)`,
+  `test(protocol)`, etc. Never combine a code change with a docs update, or
+  changes to two unrelated modules, in one commit. Write the message to explain
+  the reasoning, not just restate the file list. Split multi-concern work into
+  sequential commits instead.
+- **Metadata files may be updated directly on `main`.** This covers project-level
+  metadata and documentation such as `AGENTS.md`, `README.md`, `docs/**`, and
+  similar non-code files that guide how the repository is maintained.
+- **All other work lands via feature branches and pull requests.** Code,
+  tests, build scripts, and any behavioral change must be developed on a
+  dedicated `feat/<area>` or `fix/<area>` branch and merged through a PR so
+  review and CI run before it reaches `main`.
+- **Honest attribution**: commits may carry a `Co-authored-by:` trailer crediting
+  an AI agent, and may reference the specific model used, in the commit message,
+  a PR, or code comments — attribution should reflect who/what actually did the
+  work.
+- **No commented-out code** left in place; delete dead code or move it to a
+  test.
+
+## Issue tracking
+
+- **Track every discovered issue**: a bug, protocol mismatch, portability
+  defect, missing test, documentation inconsistency, or deferred compatibility
+  problem found during development or review must have a GitHub issue unless it
+  is fixed in the same atomic change and leaves no follow-up work.
+- Create issues with the repository templates under
+  `.github/ISSUE_TEMPLATE/` (`bug_report.yml` for defects and
+  `feature_request.yml` for requested behavior). Include the exact version or
+  commit, reproduction or evidence, affected protocol state, and relevant
+  test/CI output. Do not substitute private notes or an untracked TODO for a
+  reportable issue.
+- Link the issue from the implementing pull request and close it only when the
+  fix or explicitly scoped follow-up has been verified. Release audits must
+  review open issues before declaring a tranche complete.
+
+## Do not do these without explicit human sign-off
+
+- Add a JVM/Paper/Spigot server as the actual backend.
+- Copy Mojang proprietary server source or decompiled implementation code.
+- Add an unbounded network/task/chunk queue.
+- Replace protocol validation with permissive "best effort" parsing.
+- Introduce a dependency-heavy game/server framework.
+- Claim vanilla compatibility for a release without client/protocol tests.
+- Weaken warnings, sanitizers or tests merely to get CI green.
