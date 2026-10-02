@@ -114,6 +114,7 @@ static bool s_drc_hit_valid = false;
 typedef enum {
    ACCOUNT_ROW_MUTED = 0,
    ACCOUNT_ROW_BLOCKED,
+   ACCOUNT_ROW_LANG,
    ACCOUNT_ROW_SIGN_OUT,
    ACCOUNT_ROW_COUNT,
 } account_row;
@@ -581,6 +582,9 @@ update_account(cobalt_app *app, const cobalt_input *in)
          cobalt_graph_view_open(&app->graph, COBALT_GRAPH_BLOCKED);
          app->screen = COBALT_SCREEN_BLOCKED_LIST;
          COBALT_LOGI("account: opened blocked accounts");
+         break;
+      case ACCOUNT_ROW_LANG:
+         cobalt_session_cycle_post_lang();
          break;
       case ACCOUNT_ROW_SIGN_OUT:
          COBALT_LOGI("account: sign out requested");
@@ -1077,8 +1081,11 @@ draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
                                     panel.w - 2 * m->pad_tile, 1, colours[i]);
    }
 
-   static const char *ROW_LABEL[ACCOUNT_ROW_COUNT] = {
-      "Muted accounts", "Blocked accounts", "Sign out",
+   char lang_label[48];
+   snprintf(lang_label, sizeof(lang_label), "Post language: %s",
+            cobalt_session_post_lang()[0] ? cobalt_session_post_lang() : "none");
+   const char *ROW_LABEL[ACCOUNT_ROW_COUNT] = {
+      "Muted accounts", "Blocked accounts", lang_label, "Sign out",
    };
    const int label_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
 
