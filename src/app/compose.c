@@ -49,6 +49,8 @@ name_cmp(const void *a, const void *b)
    return strcmp((const char *) a, (const char *) b);
 }
 
+static int s_scan_too_large;
+
 int
 cobalt_compose_scan_images(const char *dir, char names[][COBALT_PICKER_NAME_MAX],
                            int max)
@@ -58,6 +60,7 @@ cobalt_compose_scan_images(const char *dir, char names[][COBALT_PICKER_NAME_MAX]
       return 0;
    }
    int n = 0;
+   s_scan_too_large = 0;
    struct dirent *e;
    while (n < max && (e = readdir(d)) != NULL) {
       if (e->d_name[0] == '.' || !cobalt_attach_mime(e->d_name) ||
@@ -70,8 +73,11 @@ cobalt_compose_scan_images(const char *dir, char names[][COBALT_PICKER_NAME_MAX]
          continue;
       }
       struct stat st;
-      if (stat(path, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size <= 0 ||
-          st.st_size > COBALT_ATTACH_MAX_BYTES) {
+      if (stat(path, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size <= 0) {
+         continue;
+      }
+      if (st.st_size > COBALT_ATTACH_MAX_BYTES) {
+         s_scan_too_large++;
          continue;
       }
       snprintf(names[n++], COBALT_PICKER_NAME_MAX, "%s", e->d_name);
@@ -88,6 +94,7 @@ cobalt_compose_open_picker(cobalt_compose *compose, const char *dir)
       return;
    }
    snprintf(compose->picker_dir, sizeof(compose->picker_dir), "%s", dir);
+   mkdir(dir, 0777);
    compose->picker_count = cobalt_compose_scan_images(
       dir, compose->picker_names, COBALT_PICKER_MAX);
    compose->picker_sel = 0;
@@ -515,11 +522,19 @@ draw_picker(cobalt_compose *compose, cobalt_render *r, cobalt_surface_id surface
    const int visible = 6;
 
    if (compose->picker_count == 0) {
-      cobalt_draw_text_wrapped(r, COBALT_FONT_BODY,
-                               "No images found. Copy .jpg or .png files "
-                               "(under 950 KB) into the folder below on the SD "
-                               "card, then try again.",
-                               m->pad_edge, top, m->width - 2 * m->pad_edge, 4,
+      char msg[240];
+      if (s_scan_too_large > 0) {
+         snprintf(msg, sizeof(msg),
+                  "%d image(s) are over 950 KB, which Bluesky will not accept. "
+                  "Shrink them, or copy smaller .jpg or .png files into the "
+                  "folder below.", s_scan_too_large);
+      } else {
+         snprintf(msg, sizeof(msg),
+                  "No images found. Copy .jpg or .png files (under 950 KB) "
+                  "into the folder below on the SD card, then try again.");
+      }
+      cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, msg, m->pad_edge, top,
+                               m->width - 2 * m->pad_edge, 4,
                                COBALT_COLOUR_TEXT);
       cobalt_draw_text(r, COBALT_FONT_CAPTION, compose->picker_dir, m->pad_edge,
                        top + 4 * row_h, COBALT_COLOUR_TEXT_DIM);
