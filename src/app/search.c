@@ -281,11 +281,8 @@ cobalt_search_view_draw(cobalt_search_view *view, cobalt_render *r,
 
    if (view->browsing) {
       draw_browsing(view, r, surface);
-      SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
-      cobalt_draw_text(r, COBALT_FONT_CAPTION,
-                       cobalt_session_busy() ? "Searching..."
-                                             : "B: new search",
-                       m->pad_edge, m->height - m->pad_edge - 20, hint);
+      cobalt_draw_hints(r, cobalt_session_busy() ? "Searching..."
+                                             : "B: new search");
    } else {
       draw_editing(view, r, surface);
    }

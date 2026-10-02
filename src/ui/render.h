@@ -71,6 +71,13 @@ void cobalt_fill_rounded_rect(cobalt_render *r, const SDL_Rect *rect, int radius
                               SDL_Color colour);
 
 /*
+ * Control prompts as a row of pills along the bottom edge. `spec` is a list of
+ * "Key: label" entries separated by two or more spaces; an entry without a
+ * colon is drawn as a plain pill. Rows wrap upward if they run out of width.
+ */
+void cobalt_draw_hints(cobalt_render *r, const char *spec);
+
+/*
  * A Wii U menu style tile: rounded, light, with a soft drop shadow and a top
  * sheen. `focus` is 0..1 and drives the highlight and lift (AGENTS.md §5 asks
  * for tiles that respond to focus rather than static flat cards).
