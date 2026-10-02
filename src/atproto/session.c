@@ -9,7 +9,9 @@
 #include "util/rng.h"
 
 #ifdef COBALT_HAS_WOLFRAM
+#include <wolfram/actor_prefs_typed.h>
 #include <wolfram/actor_typed.h>
+#include <wolfram/feed_gen_typed.h>
 #include <wolfram/agent.h>
 #include <wolfram/embed.h>
 #include <wolfram/feed_typed.h>
@@ -131,6 +133,7 @@ static struct {
    char feed_arg[COBALT_POST_URI_MAX];
    cobalt_actor_list search;
    cobalt_list_summary_list lists;
+   cobalt_saved_feeds saved_feeds;
    cobalt_actor_list list_members;
 
 #ifdef COBALT_HAS_WOLFRAM
@@ -1796,6 +1799,83 @@ run_lists(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
    r->ok = true;
 }
 
+/*
+ * The account's saved custom feeds. savedFeedsPrefV2 items of type "feed" carry
+ * the generator's AT-URI in `value`; getFeedGenerators supplies display names.
+ * Falls back to the URI's record key when a generator can't be resolved, so a
+ * feed is never silently dropped from the picker.
+ */
+static void
+run_saved_feeds(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
+{
+   (void) in;
+   if (!s.wf) {
+      set_message(r, "Sign in first.");
+      return;
+   }
+
+   wf_actor_preferences prefs;
+   memset(&prefs, 0, sizeof(prefs));
+   wf_status status = wf_agent_get_actor_prefs_typed(s.wf, &prefs);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: getPreferences failed (%d)", (int) status);
+      set_message(r, "Could not load your saved feeds (wolfram status %d).", (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   const char *uris[COBALT_SAVED_FEEDS_MAX];
+   int n = 0;
+   for (size_t i = 0; i < prefs.saved_feeds_v2.item_count && n < COBALT_SAVED_FEEDS_MAX; i++) {
+      const wf_actor_pref_saved_feed *it = &prefs.saved_feeds_v2.items[i];
+      if (it->type && it->value && strcmp(it->type, "feed") == 0 && it->value[0]) {
+         uris[n++] = it->value;
+      }
+   }
+   if (n == 0) {
+      for (size_t i = 0; i < prefs.saved_feeds.saved_count && n < COBALT_SAVED_FEEDS_MAX; i++) {
+         if (prefs.saved_feeds.saved[i] && prefs.saved_feeds.saved[i][0]) {
+            uris[n++] = prefs.saved_feeds.saved[i];
+         }
+      }
+   }
+
+   wf_feedgen_generator_list gens;
+   memset(&gens, 0, sizeof(gens));
+   if (n > 0 && wf_feedgen_get_feed_generators_typed(s.wf, uris, (size_t) n, &gens) != WF_OK) {
+      COBALT_LOGW("session: getFeedGenerators failed; using record keys as names");
+      memset(&gens, 0, sizeof(gens));
+   }
+
+   SDL_LockMutex(s.lock);
+   memset(&s.saved_feeds, 0, sizeof(s.saved_feeds));
+   for (int i = 0; i < n; i++) {
+      const char *name = NULL;
+      for (size_t g = 0; g < gens.generator_count; g++) {
+         if (gens.generators[g].uri && strcmp(gens.generators[g].uri, uris[i]) == 0) {
+            name = gens.generators[g].display_name;
+            break;
+         }
+      }
+      if (!name || !name[0]) {
+         const char *slash = strrchr(uris[i], '/');
+         name = slash ? slash + 1 : uris[i];
+      }
+      const int k = s.saved_feeds.count++;
+      snprintf(s.saved_feeds.feeds[k].label, sizeof(s.saved_feeds.feeds[k].label), "%s", name);
+      snprintf(s.saved_feeds.feeds[k].uri, sizeof(s.saved_feeds.feeds[k].uri), "%s", uris[i]);
+   }
+   const int total = s.saved_feeds.count;
+   SDL_UnlockMutex(s.lock);
+
+   wf_feedgen_generator_list_free(&gens);
+   wf_actor_preferences_free(&prefs);
+   COBALT_LOGI("session: %d saved feeds", total);
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
 /* One list's members (app.bsky.graph.getList). `in->uri` is the list's AT
  * URI, set by cobalt_session_begin_list_members. */
 static void
@@ -1940,6 +2020,7 @@ run_job(cobalt_job_kind kind, const job_input *in, cobalt_auth_state *state)
       case COBALT_JOB_FEED:     run_feed(in, &r, state);      break;
       case COBALT_JOB_SEARCH_POSTS: run_search_posts(in, &r, state); break;
       case COBALT_JOB_LISTS:        run_lists(in, &r, state);        break;
+      case COBALT_JOB_SAVED_FEEDS:  run_saved_feeds(in, &r, state);  break;
       case COBALT_JOB_LIST_MEMBERS: run_list_members(in, &r, state); break;
       case COBALT_JOB_NONE:
       default:                                           break;
@@ -2512,6 +2593,20 @@ const cobalt_list_summary_list *
 cobalt_session_lists(void)
 {
    return &s.lists;
+}
+
+const cobalt_saved_feeds *
+cobalt_session_saved_feeds(void)
+{
+   return &s.saved_feeds;
+}
+
+bool
+cobalt_session_begin_saved_feeds(void)
+{
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   return submit(COBALT_JOB_SAVED_FEEDS, &in);
 }
 
 bool

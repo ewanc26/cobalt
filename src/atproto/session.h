@@ -82,6 +82,7 @@ typedef enum {
    COBALT_JOB_FOLLOWERS,
    COBALT_JOB_FOLLOWING,
    COBALT_JOB_SEARCH_POSTS,
+   COBALT_JOB_SAVED_FEEDS,
 } cobalt_job_kind;
 
 typedef struct {
@@ -347,6 +348,21 @@ const cobalt_actor_list *cobalt_session_search_results(void);
  */
 bool cobalt_session_begin_lists(bool paging);
 const cobalt_list_summary_list *cobalt_session_lists(void);
+
+#define COBALT_SAVED_FEEDS_MAX 16
+
+typedef struct {
+   int count;
+   struct {
+      char label[COBALT_POST_NAME_MAX];
+      char uri[COBALT_POST_URI_MAX];
+   } feeds[COBALT_SAVED_FEEDS_MAX];
+} cobalt_saved_feeds;
+
+/* The account's saved custom feeds (getPreferences + getFeedGenerators).
+ * Empty until cobalt_session_begin_saved_feeds() has completed. */
+const cobalt_saved_feeds *cobalt_session_saved_feeds(void);
+bool cobalt_session_begin_saved_feeds(void);
 bool cobalt_session_begin_list_members(const char *list_uri, bool paging);
 const cobalt_actor_list *cobalt_session_list_members(void);
 

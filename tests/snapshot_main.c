@@ -202,6 +202,15 @@ main(int argc, char **argv)
    wf_mock_pds_register(pds, "app.bsky.actor.searchActors", sr);
 
    wf_mock_pds_register(pds, "app.bsky.feed.getFeed", tl);
+   wf_mock_pds_register(pds, "app.bsky.actor.getPreferences",
+      "{\"preferences\":[{\"$type\":\"app.bsky.actor.defs#savedFeedsPrefV2\",\"items\":["
+      "{\"type\":\"timeline\",\"value\":\"following\",\"pinned\":true,\"id\":\"a\"},"
+      "{\"type\":\"feed\",\"value\":\"at://did:plc:x/app.bsky.feed.generator/cats\",\"pinned\":true,\"id\":\"b\"},"
+      "{\"type\":\"feed\",\"value\":\"at://did:plc:x/app.bsky.feed.generator/poetry\",\"pinned\":false,\"id\":\"c\"}]}]}");
+   wf_mock_pds_register(pds, "app.bsky.feed.getFeedGenerators",
+      "{\"feeds\":[{\"uri\":\"at://did:plc:x/app.bsky.feed.generator/cats\",\"cid\":\"g1\","
+      "\"did\":\"did:web:x\",\"creator\":{\"did\":\"did:plc:x\",\"handle\":\"x.test\"},"
+      "\"displayName\":\"Cat Pics\",\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}]}");
    wf_mock_pds_register(pds, "app.bsky.graph.getLists",
       "{\"lists\":[{\"uri\":\"at://did:plc:abc/app.bsky.graph.list/1\",\"cid\":\"l1\","
       "\"name\":\"Friends\",\"purpose\":\"app.bsky.graph.defs#curatelist\","
@@ -287,6 +296,10 @@ main(int argc, char **argv)
    settle(5);
    open_home_item(3);
    settle(10);
+   settle(30);
+   CHECK(cobalt_session_saved_feeds()->count == 2);
+   CHECK(strcmp(cobalt_session_saved_feeds()->feeds[0].label, "Cat Pics") == 0);
+   CHECK(strcmp(cobalt_session_saved_feeds()->feeds[1].label, "poetry") == 0);
    shoot("feeds");
 
    frame(COBALT_BTN_BACK);
