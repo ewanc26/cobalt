@@ -35,7 +35,10 @@ nothing has been run on a Wii U yet.
 | Avatars, on posts, replies, notifications and profiles | done |
 | Post images and link cards | done |
 | Mute and block, from a profile or the account screen's lists | done |
-| Search, custom feeds, lists | not started |
+| Actor search | done |
+| Custom feeds, browse-only lists | done |
+| Reply gates (threadgates) on new posts | done |
+| Quote post rendering, delete own post, followers/following lists, profile tabs | not started — issues #20–#23 |
 | Video, GIFs, DMs, push notifications | not planned — see below |
 
 **Nothing here has run on a Wii U yet.** It builds, and an extensive host test
