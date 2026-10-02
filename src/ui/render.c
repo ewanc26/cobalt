@@ -63,6 +63,7 @@ struct cobalt_render {
 
 /* --- helpers --- */
 static void open_fallback_fonts(cobalt_render *r, const char *font_path);
+static TTF_Font *open_font_cached(const char *path, int pt);
 
 static uint32_t
 pack_colour(SDL_Color c)
@@ -216,7 +217,7 @@ cobalt_render_create(cobalt_surface_id surface, const char *font_path, bool prev
    SDL_SetRenderDrawBlendMode(r->renderer, SDL_BLENDMODE_BLEND);
 
    for (int i = 0; i < COBALT_FONT_COUNT; i++) {
-      r->fonts[i] = TTF_OpenFont(font_path, font_size_for(r->m, (cobalt_font_id) i));
+      r->fonts[i] = open_font_cached(font_path, font_size_for(r->m, (cobalt_font_id) i));
       if (!r->fonts[i]) {
          /* Not fatal — see the header. Shapes still draw, text is skipped. */
          COBALT_LOGE("font %s @%dpt failed to open: %s", font_path,
@@ -557,6 +558,64 @@ font_of(cobalt_render *r, cobalt_font_id id)
  *
  * The fallback face is an optional bundled fallback.ttf, never a system font.
  */
+/*
+ * Fonts are read into memory once and every size is opened from that buffer.
+ * Left to stream from the file, FreeType seeks and reads the card for each
+ * cold glyph, and on the console each of those took 100-700 ms while the
+ * worker was also using the card. The buffers are shared by both surfaces and
+ * live until exit.
+ */
+typedef struct {
+   char path[512];
+   unsigned char *data;
+   size_t size;
+} font_blob;
+
+static font_blob font_blobs[4];
+
+static TTF_Font *
+open_font_cached(const char *path, int pt)
+{
+   font_blob *blob = NULL;
+   for (size_t i = 0; i < sizeof(font_blobs) / sizeof(font_blobs[0]); i++) {
+      if (font_blobs[i].data && strcmp(font_blobs[i].path, path) == 0) {
+         blob = &font_blobs[i];
+         break;
+      }
+   }
+   if (!blob) {
+      for (size_t i = 0; i < sizeof(font_blobs) / sizeof(font_blobs[0]); i++) {
+         if (!font_blobs[i].data) {
+            blob = &font_blobs[i];
+            break;
+         }
+      }
+      FILE *f = blob ? fopen(path, "rb") : NULL;
+      if (f) {
+         fseek(f, 0, SEEK_END);
+         long len = ftell(f);
+         fseek(f, 0, SEEK_SET);
+         unsigned char *data = len > 0 ? (unsigned char *) malloc((size_t) len) : NULL;
+         if (data && fread(data, 1, (size_t) len, f) == (size_t) len) {
+            blob->data = data;
+            blob->size = (size_t) len;
+            snprintf(blob->path, sizeof blob->path, "%s", path);
+         } else {
+            free(data);
+            blob = NULL;
+         }
+         fclose(f);
+      } else {
+         blob = NULL;
+      }
+   }
+   if (!blob) {
+      return TTF_OpenFont(path, pt);
+   }
+   SDL_RWops *rw = SDL_RWFromConstMem(blob->data, (int) blob->size);
+   return rw ? TTF_OpenFontRW(rw, 1, pt) : NULL;
+}
+
 static void
 open_fallback_fonts(cobalt_render *r, const char *font_path)
 {
@@ -577,7 +636,7 @@ open_fallback_fonts(cobalt_render *r, const char *font_path)
    }
    fclose(f);
    for (int i = 0; i < COBALT_FONT_COUNT; i++) {
-      r->fallbacks[i] = TTF_OpenFont(path, font_size_for(r->m, (cobalt_font_id) i));
+      r->fallbacks[i] = open_font_cached(path, font_size_for(r->m, (cobalt_font_id) i));
    }
 }
 
