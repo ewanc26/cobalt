@@ -485,6 +485,15 @@ cobalt_draw_tile(cobalt_render *r, const SDL_Rect *rect, float focus)
    SDL_Rect body = *rect;
    body.y -= (int) (2.0f * focus);
 
+   if (focus > 0.0f) {
+      /* A rounded ring just outside the body: SDL_RenderDrawRect would draw
+       * square corners around a rounded tile. */
+      SDL_Color edge = COBALT_COLOUR_ACCENT;
+      edge.a = (Uint8) (220 * focus);
+      const SDL_Rect ring = { body.x - 2, body.y - 2, body.w + 4, body.h + 4 };
+      cobalt_fill_rounded_rect(r, &ring, radius + 2, edge);
+   }
+
    SDL_Color base = focus > 0.0f ? COBALT_COLOUR_TILE_FOCUS : COBALT_COLOUR_TILE;
    cobalt_fill_rounded_rect(r, &body, radius, base);
 
@@ -497,12 +506,6 @@ cobalt_draw_tile(cobalt_render *r, const SDL_Rect *rect, float focus)
       cobalt_fill_rounded_rect(r, &sheen, radius / 2, gloss);
    }
 
-   if (focus > 0.0f) {
-      SDL_Color edge = COBALT_COLOUR_ACCENT;
-      edge.a = (Uint8) (200 * focus);
-      set_draw_colour(r, edge);
-      SDL_RenderDrawRect(r->renderer, &body);
-   }
 }
 
 void

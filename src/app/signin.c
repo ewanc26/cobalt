@@ -225,7 +225,7 @@ draw_status(const cobalt_signin *s, cobalt_render *r, int y)
 
    if (cobalt_session_busy()) {
       cobalt_draw_text(r, COBALT_FONT_BODY, "Signing in...",
-                       m->pad_edge, y, COBALT_COLOUR_TILE);
+                       m->pad_edge, y, COBALT_COLOUR_TEXT_DIM);
       return;
    }
 
