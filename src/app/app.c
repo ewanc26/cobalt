@@ -1027,7 +1027,7 @@ draw_notice(const cobalt_app *app, cobalt_render *r, int y, int width)
 
    if (cobalt_session_busy()) {
       cobalt_draw_text(r, COBALT_FONT_CAPTION, "Working...", m->pad_edge, y,
-                       COBALT_COLOUR_TILE);
+                       COBALT_COLOUR_TEXT_DIM);
       return;
    }
 
@@ -1038,7 +1038,7 @@ draw_notice(const cobalt_app *app, cobalt_render *r, int y, int width)
    cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, app->notice, m->pad_edge, y,
                             width, 2,
                             app->notice_is_error ? COBALT_COLOUR_ERROR
-                                                 : COBALT_COLOUR_TILE);
+                                                 : COBALT_COLOUR_TEXT_DIM);
 }
 
 static void
@@ -1051,8 +1051,8 @@ draw_home_tv(cobalt_app *app, cobalt_render *r)
     * about 100px wide, which truncated every label. */
    const int cols = (MENU_COUNT + 1) / 2;
    const int rows = (MENU_COUNT + cols - 1) / cols;
-   const int top = m->pad_edge + 110;
-   const int tile_h = 140;
+   const int top = cobalt_content_top(r);
+   const int tile_h = 130;
    const int tile_w = (m->width - 2 * m->pad_edge - m->gap * (cols - 1)) / cols;
 
    for (int i = 0; i < MENU_COUNT; i++) {
@@ -1082,7 +1082,7 @@ draw_home_tv(cobalt_app *app, cobalt_render *r)
     * than cramming the hint into the tile. */
    const int detail_y = top + rows * tile_h + (rows - 1) * m->gap + m->gap * 2;
    cobalt_draw_text(r, COBALT_FONT_BODY, menu_hint(app->selected),
-                    m->pad_edge, detail_y, COBALT_COLOUR_TILE);
+                    m->pad_edge, detail_y, COBALT_COLOUR_TEXT);
 
    draw_notice(app, r, detail_y + m->font_body + m->gap, m->width - 2 * m->pad_edge);
 
