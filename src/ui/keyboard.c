@@ -9,6 +9,8 @@
 #define LAYER_LOWER   0
 #define LAYER_UPPER   1
 #define LAYER_SYMBOLS 2
+#define LAYER_EMOJI   3
+#define EMOJI_PER_ROW 10
 
 /*
  * Character rows.
@@ -25,8 +27,17 @@ static const char *const LAYERS[3][CHAR_ROWS] = {
    { "1234567890", "!@#$%^&*()", "-_=+[]{};:", "'\"\\|/?<>,~" },
 };
 
+/* Rendered by the monochrome Noto Emoji fallback font in romfs. */
+static const char *const EMOJI[CHAR_ROWS][EMOJI_PER_ROW] = {
+   { "😀", "😂", "😊", "😍", "🥰", "😭", "😅", "🙂", "😉", "😎" },
+   { "👍", "👎", "👏", "🙏", "💪", "👀", "🤔", "😢", "😡", "🥺" },
+   { "❤", "💔", "✨", "🔥", "🎉", "🌟", "💯", "☀", "🌙", "🌈" },
+   { "🐱", "🐶", "🦊", "🌸", "🌿", "🍵", "☕", "🍕", "🎮", "📚" },
+};
+
 typedef enum {
    K_CHAR = 0,
+   K_EMOJI,
    K_SHIFT,
    K_LAYER,
    K_SPACE,
@@ -44,7 +55,7 @@ typedef struct {
    char label[8];
    key_kind kind;
    int span;         /* width in grid units */
-   char text;        /* K_CHAR only */
+   char text[8];     /* K_CHAR only: one character, possibly multi-byte */
 } key_def;
 
 /*
@@ -52,12 +63,13 @@ typedef struct {
  * stays wide at both surface sizes without a second layout table.
  */
 static const key_def FUNCTION_ROW[] = {
-   { "Shift",  K_SHIFT,     2, 0 },
-   { "#+=",    K_LAYER,     2, 0 },
-   { "Space",  K_SPACE,     6, 0 },
-   { "Del",    K_BACKSPACE, 2, 0 },
-   { "OK",     K_OK,        2, 0 },
-   { "Cancel", K_CANCEL,    3, 0 },
+   { "Shift",  K_SHIFT,     2, { 0 } },
+   { "#+=",    K_LAYER,     2, { 0 } },
+   { "Space",  K_SPACE,     6, { 0 } },
+   { "Del",    K_BACKSPACE, 2, { 0 } },
+   { "OK",     K_OK,        2, { 0 } },
+   { "Cancel", K_CANCEL,    3, { 0 } },
+   { "Emoji",  K_EMOJI,     2, { 0 } },
 };
 
 #define FUNCTION_KEYS ((int) (sizeof(FUNCTION_ROW) / sizeof(FUNCTION_ROW[0])))
@@ -66,7 +78,7 @@ static int
 row_length(int layer, int row)
 {
    if (row < CHAR_ROWS) {
-      return (int) strlen(LAYERS[layer][row]);
+      return (layer == LAYER_EMOJI) ? EMOJI_PER_ROW : (int) strlen(LAYERS[layer][row]);
    }
    return FUNCTION_KEYS;
 }
@@ -78,10 +90,14 @@ key_at(int layer, int row, int col)
    if (row < CHAR_ROWS) {
       key_def k;
       memset(&k, 0, sizeof(k));
-      k.label[0] = LAYERS[layer][row][col];
+      if (layer == LAYER_EMOJI) {
+         snprintf(k.label, sizeof(k.label), "%s", EMOJI[row][col]);
+      } else {
+         k.label[0] = LAYERS[layer][row][col];
+      }
       k.kind = K_CHAR;
       k.span = 1;
-      k.text = k.label[0];
+      memcpy(k.text, k.label, sizeof(k.text));
       return k;
    }
 
@@ -90,6 +106,8 @@ key_at(int layer, int row, int col)
    if (k.kind == K_LAYER) {
       snprintf(k.label, sizeof(k.label), "%s",
                (layer == LAYER_SYMBOLS) ? "ABC" : "#+=");
+   } else if (k.kind == K_EMOJI) {
+      snprintf(k.label, sizeof(k.label), "%s", (layer == LAYER_EMOJI) ? "abc" : "Emoji");
    } else if (k.kind == K_SHIFT) {
       snprintf(k.label, sizeof(k.label), "%s",
                (layer == LAYER_UPPER) ? "abc" : "ABC");
@@ -143,14 +161,14 @@ buffer_length(const cobalt_keyboard *kb)
 }
 
 static void
-append_char(cobalt_keyboard *kb, char c)
+append_str(cobalt_keyboard *kb, const char *text)
 {
-   size_t len = buffer_length(kb);
-   if (len + 1 >= kb->capacity) {
-      return; /* Full. Silently ignoring is better than truncating elsewhere. */
+   const size_t len = buffer_length(kb);
+   const size_t add = strlen(text);
+   if (len + add + 1 > kb->capacity) {
+      return; /* Full. Silently ignoring is better than truncating a sequence. */
    }
-   kb->buffer[len] = c;
-   kb->buffer[len + 1] = '\0';
+   memcpy(kb->buffer + len, text, add + 1);
 }
 
 static void
@@ -201,7 +219,7 @@ press(cobalt_keyboard *kb, key_def key)
 {
    switch (key.kind) {
       case K_CHAR:
-         append_char(kb, key.text);
+         append_str(kb, key.text);
          break;
 
       case K_SHIFT:
@@ -211,12 +229,16 @@ press(cobalt_keyboard *kb, key_def key)
          kb->layer = (kb->layer == LAYER_UPPER) ? LAYER_LOWER : LAYER_UPPER;
          break;
 
+      case K_EMOJI:
+         kb->layer = (kb->layer == LAYER_EMOJI) ? LAYER_LOWER : LAYER_EMOJI;
+         break;
+
       case K_LAYER:
          kb->layer = (kb->layer == LAYER_SYMBOLS) ? LAYER_LOWER : LAYER_SYMBOLS;
          break;
 
       case K_SPACE:
-         append_char(kb, ' ');
+         append_str(kb, " ");
          break;
 
       case K_BACKSPACE:
