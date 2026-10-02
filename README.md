@@ -7,6 +7,8 @@
 A native AT Protocol / Bluesky client for the Nintendo Wii U, built as Aroma
 homebrew with devkitPro/WUT and SDL2.
 
+**Version 0.1.0**
+
 Cobalt treats the Wii U as the platform it is rather than as a browser target:
 the TV and GamePad are both first-class displays, with support for normal
 two-screen use and Off-TV Play.
