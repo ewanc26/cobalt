@@ -1207,6 +1207,19 @@ test_selection_survives_a_shrinking_list(void)
 /* --- deleting your own post --- */
 
 static void
+test_follow_lists(void)
+{
+   begin("followers and following need an actor");
+
+   CHECK(!cobalt_session_begin_followers(NULL, false));
+   CHECK(!cobalt_session_begin_followers("", true));
+   CHECK(!cobalt_session_begin_following(NULL, false));
+   CHECK(cobalt_session_followers_list()->count == 0);
+   CHECK(cobalt_session_following_list()->count == 0);
+   CHECK(cobalt_session_follow_list_actor()[0] == '\0');
+}
+
+static void
 test_quote_helpers(void)
 {
    begin("quote post flattening");
@@ -1650,6 +1663,7 @@ main(int argc, char **argv)
    test_interactions();
    test_delete_post_helpers();
    test_quote_helpers();
+   test_follow_lists();
    test_compose();
    test_post_refuses_partial_refs();
    test_notification_wording();
