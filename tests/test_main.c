@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 void cobalt_test_set_root(const char *path);
 void cobalt_test_log_verbose(int on);
@@ -991,23 +992,23 @@ test_post_refuses_partial_refs(void)
    cobalt_session_init();
 
    /* Empty text is nothing to send. */
-   CHECK(!cobalt_session_begin_post("", NULL, NULL, NULL, NULL, 0));
-   CHECK(!cobalt_session_begin_post(NULL, NULL, NULL, NULL, NULL, 0));
+   CHECK(!cobalt_session_begin_post("", NULL, NULL, NULL, NULL, 0, NULL));
+   CHECK(!cobalt_session_begin_post(NULL, NULL, NULL, NULL, NULL, 0, NULL));
 
    /*
     * A parent without a root, or a root without a cid, must be refused rather
     * than sent. A reply naming the wrong conversation is worse than one that
     * never got posted: it is visible, wrong, and not obviously Cobalt's fault.
     */
-   CHECK(!cobalt_session_begin_post("hi", "at://parent", NULL, NULL, NULL, 0));
-   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", NULL, NULL, 0));
-   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", "at://root", NULL, 0));
-   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", "at://root", "", 0));
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", NULL, NULL, NULL, 0, NULL));
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", NULL, NULL, 0, NULL));
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", "at://root", NULL, 0, NULL));
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", "at://root", "", 0, NULL));
 
    /* A complete set is accepted (and fails later for want of an SDK, which is
     * not what is being checked here). */
    CHECK(cobalt_session_begin_post("hi", "at://parent", "cid", "at://root",
-                                   "rcid", 0));
+                                   "rcid", 0, NULL));
 
    cobalt_job_result result;
    for (int i = 0; i < 500 && !cobalt_session_poll(&result); i++) {
@@ -1346,10 +1347,10 @@ test_quote_compose(void)
    cobalt_compose_init(&c);
    CHECK(!cobalt_compose_is_quote(&c));
 
-   CHECK(!cobalt_session_begin_quote("hi", NULL, "cid", 0));
-   CHECK(!cobalt_session_begin_quote("hi", "at://x", NULL, 0));
-   CHECK(!cobalt_session_begin_quote("", "at://x", "cid", 0));
-   CHECK(!cobalt_session_begin_quote(NULL, "at://x", "cid", 0));
+   CHECK(!cobalt_session_begin_quote("hi", NULL, "cid", 0, NULL));
+   CHECK(!cobalt_session_begin_quote("hi", "at://x", NULL, 0, NULL));
+   CHECK(!cobalt_session_begin_quote("", "at://x", "cid", 0, NULL));
+   CHECK(!cobalt_session_begin_quote(NULL, "at://x", "cid", 0, NULL));
 
    /* The post language starts at none and cycles back round. */
    const char *first = cobalt_session_post_lang();
@@ -1359,6 +1360,87 @@ test_quote_compose(void)
       steps++;
    } while (strcmp(cobalt_session_post_lang(), first) != 0 && steps < 32);
    CHECK(steps > 1 && steps < 32);
+}
+
+static void
+test_image_attach(const char *root)
+{
+   begin("image attach");
+
+   CHECK(strcmp(cobalt_attach_mime("a/b/photo.JPG"), "image/jpeg") == 0);
+   CHECK(strcmp(cobalt_attach_mime("x.jpeg"), "image/jpeg") == 0);
+   CHECK(strcmp(cobalt_attach_mime("x.png"), "image/png") == 0);
+   CHECK(cobalt_attach_mime("x.gif") == NULL);
+   CHECK(cobalt_attach_mime("noext") == NULL);
+   CHECK(cobalt_attach_mime(NULL) == NULL);
+
+   char dir[512];
+   snprintf(dir, sizeof(dir), "%s/images", root);
+   mkdir(dir, 0755);
+   const char *files[] = { "b.png", "a.jpg", ".hidden.png", "c.gif", "empty.png" };
+   for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
+      char fp[640];
+      snprintf(fp, sizeof(fp), "%s/%s", dir, files[i]);
+      FILE *f = fopen(fp, "wb");
+      if (f) {
+         if (strcmp(files[i], "empty.png") != 0) {
+            fputs("data", f);
+         }
+         fclose(f);
+      }
+   }
+
+   static char names[COBALT_PICKER_MAX][COBALT_PICKER_NAME_MAX];
+   CHECK(cobalt_compose_scan_images(dir, names, COBALT_PICKER_MAX) == 2);
+   CHECK(strcmp(names[0], "a.jpg") == 0);
+   CHECK(strcmp(names[1], "b.png") == 0);
+   CHECK(cobalt_compose_scan_images("/nonexistent-cobalt-dir", names, 4) == 0);
+   CHECK(cobalt_compose_scan_images(dir, names, 1) == 1);
+
+   static cobalt_compose c;
+   cobalt_compose_init(&c);
+   snprintf(c.text, sizeof(c.text), "hello");
+   c.confirming = true;
+   c.confirm_choice = 3; /* image */
+
+   /* Open the picker, move down, attach the second file. */
+   cobalt_compose_open_picker(&c, dir);
+   CHECK(c.picking && c.picker_count == 2);
+   cobalt_input in = tap(COBALT_BTN_DOWN);
+   CHECK(cobalt_compose_update(&c, &in) == COBALT_COMPOSE_STAY);
+   CHECK(c.picker_sel == 1);
+   in = tap(COBALT_BTN_CONFIRM);
+   CHECK(cobalt_compose_update(&c, &in) == COBALT_COMPOSE_STAY);
+   CHECK(!c.picking);
+   char want[640];
+   snprintf(want, sizeof(want), "%s/b.png", dir);
+   CHECK(strcmp(c.attach_path, want) == 0);
+
+   /* Choosing the image button again removes it. */
+   in = tap(COBALT_BTN_CONFIRM);
+   CHECK(cobalt_compose_update(&c, &in) == COBALT_COMPOSE_STAY);
+   CHECK(c.attach_path[0] == '\0');
+
+   /* B backs out of the picker without attaching. */
+   cobalt_compose_open_picker(&c, dir);
+   in = tap(COBALT_BTN_BACK);
+   CHECK(cobalt_compose_update(&c, &in) == COBALT_COMPOSE_STAY);
+   CHECK(!c.picking && c.attach_path[0] == '\0' && c.confirming);
+
+   /* Replies never offer the image button: RIGHT from Post skips to Edit. */
+   cobalt_post post;
+   memset(&post, 0, sizeof(post));
+   snprintf(post.uri, sizeof(post.uri), "at://a/p/1");
+   snprintf(post.cid, sizeof(post.cid), "cid");
+   cobalt_compose_reply_to(&c, &post);
+   snprintf(c.text, sizeof(c.text), "hi");
+   c.confirming = true;
+   c.confirm_choice = 0;
+   in = tap(COBALT_BTN_RIGHT);
+   cobalt_compose_update(&c, &in);
+   CHECK(c.confirm_choice == 1);
+
+   CHECK(!cobalt_session_begin_quote("hi", "at://x", NULL, 0, "x.png"));
 }
 
 static void
@@ -1774,6 +1856,7 @@ main(int argc, char **argv)
    test_follow_lists();
    test_profile_tabs();
    test_quote_compose();
+   test_image_attach(root);
    test_pinned_prepend();
    test_compose();
    test_post_refuses_partial_refs();

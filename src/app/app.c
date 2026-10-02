@@ -822,12 +822,14 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                         ? cobalt_session_begin_quote(
                              app->compose.text, app->compose.quote_uri,
                              app->compose.quote_cid,
-                             (int) app->compose.reply_gate)
+                             (int) app->compose.reply_gate,
+                             app->compose.attach_path)
                         : cobalt_session_begin_post(
                              app->compose.text, app->compose.parent_uri,
                              app->compose.parent_cid, app->compose.root_uri,
                              app->compose.root_cid,
-                             (int) app->compose.reply_gate))) {
+                             (int) app->compose.reply_gate,
+                             app->compose.attach_path))) {
                   set_notice(app, "Could not start that post.", true);
                }
                break;

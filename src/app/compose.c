@@ -1,18 +1,101 @@
 #include "app/compose.h"
 #include "atproto/session.h"
 #include "util/log.h"
+#include "util/paths.h"
 
+#include <dirent.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #define CONFIRM_POST    0
 #define CONFIRM_EDIT    1
 #define CONFIRM_DISCARD 2
-#define CONFIRM_COUNT   3
+#define CONFIRM_IMAGE   3
+#define CONFIRM_COUNT   4
 
-static const char *const CONFIRM_LABELS[CONFIRM_COUNT] = {
-   "Post", "Keep editing", "Discard"
+/* Stored in confirm_choice as these ids; the row shows them in this order,
+ * minus IMAGE on a reply. */
+static const int CONFIRM_ORDER[CONFIRM_COUNT] = {
+   CONFIRM_POST, CONFIRM_IMAGE, CONFIRM_EDIT, CONFIRM_DISCARD
 };
+
+static int
+confirm_ids(const cobalt_compose *compose, int out[CONFIRM_COUNT])
+{
+   int n = 0;
+   for (int i = 0; i < CONFIRM_COUNT; i++) {
+      if (CONFIRM_ORDER[i] == CONFIRM_IMAGE && cobalt_compose_is_reply(compose)) {
+         continue;
+      }
+      out[n++] = CONFIRM_ORDER[i];
+   }
+   return n;
+}
+
+static const char *
+confirm_label(const cobalt_compose *compose, int id)
+{
+   switch (id) {
+      case CONFIRM_POST:    return "Post";
+      case CONFIRM_IMAGE:   return compose->attach_path[0] ? "Remove image"
+                                                            : "Add image";
+      case CONFIRM_EDIT:    return "Keep editing";
+      default:              return "Discard";
+   }
+}
+
+static int
+name_cmp(const void *a, const void *b)
+{
+   return strcmp((const char *) a, (const char *) b);
+}
+
+int
+cobalt_compose_scan_images(const char *dir, char names[][COBALT_PICKER_NAME_MAX],
+                           int max)
+{
+   DIR *d = dir ? opendir(dir) : NULL;
+   if (!d) {
+      return 0;
+   }
+   int n = 0;
+   struct dirent *e;
+   while (n < max && (e = readdir(d)) != NULL) {
+      if (e->d_name[0] == '.' || !cobalt_attach_mime(e->d_name) ||
+          strlen(e->d_name) >= COBALT_PICKER_NAME_MAX) {
+         continue;
+      }
+      char path[COBALT_ATTACH_PATH_MAX];
+      if (snprintf(path, sizeof(path), "%s/%s", dir, e->d_name) >=
+          (int) sizeof(path)) {
+         continue;
+      }
+      struct stat st;
+      if (stat(path, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size <= 0 ||
+          st.st_size > COBALT_ATTACH_MAX_BYTES) {
+         continue;
+      }
+      snprintf(names[n++], COBALT_PICKER_NAME_MAX, "%s", e->d_name);
+   }
+   closedir(d);
+   qsort(names, (size_t) n, COBALT_PICKER_NAME_MAX, name_cmp);
+   return n;
+}
+
+void
+cobalt_compose_open_picker(cobalt_compose *compose, const char *dir)
+{
+   if (!compose || !dir) {
+      return;
+   }
+   snprintf(compose->picker_dir, sizeof(compose->picker_dir), "%s", dir);
+   compose->picker_count = cobalt_compose_scan_images(
+      dir, compose->picker_names, COBALT_PICKER_MAX);
+   compose->picker_sel = 0;
+   compose->picking = true;
+}
 
 static const char *const REPLY_GATE_LABELS[COBALT_REPLY_GATE_COUNT] = {
    "Everyone can reply", "Followed/mentioned can reply", "Replies off"
@@ -145,14 +228,41 @@ cobalt_compose_update(cobalt_compose *compose, const cobalt_input *in)
       return COBALT_COMPOSE_STAY;
    }
 
+   if (compose->picking) {
+      if (cobalt_input_pressed(in, COBALT_BTN_UP) && compose->picker_sel > 0) {
+         compose->picker_sel--;
+      }
+      if (cobalt_input_pressed(in, COBALT_BTN_DOWN) &&
+          compose->picker_sel + 1 < compose->picker_count) {
+         compose->picker_sel++;
+      }
+      if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
+         compose->picking = false;
+      } else if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM) &&
+                 compose->picker_count > 0) {
+         snprintf(compose->attach_path, sizeof(compose->attach_path), "%s/%s",
+                  compose->picker_dir, compose->picker_names[compose->picker_sel]);
+         compose->picking = false;
+      }
+      return COBALT_COMPOSE_STAY;
+   }
+
    /* Confirmation row. */
+   int ids[CONFIRM_COUNT];
+   const int nids = confirm_ids(compose, ids);
+   int pos = 0;
+   for (int i = 0; i < nids; i++) {
+      if (ids[i] == compose->confirm_choice) {
+         pos = i;
+      }
+   }
    if (cobalt_input_pressed(in, COBALT_BTN_LEFT)) {
-      compose->confirm_choice =
-         (compose->confirm_choice + CONFIRM_COUNT - 1) % CONFIRM_COUNT;
+      pos = (pos + nids - 1) % nids;
    }
    if (cobalt_input_pressed(in, COBALT_BTN_RIGHT)) {
-      compose->confirm_choice = (compose->confirm_choice + 1) % CONFIRM_COUNT;
+      pos = (pos + 1) % nids;
    }
+   compose->confirm_choice = ids[pos];
 
    /* B goes back to editing rather than discarding: losing a post someone
     * just typed on a console keyboard would be a genuinely bad outcome. */
@@ -173,10 +283,10 @@ cobalt_compose_update(cobalt_compose *compose, const cobalt_input *in)
    if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
       chosen = compose->confirm_choice;
    } else if (s_confirm_hit_valid && in->touch_ended) {
-      for (int i = 0; i < CONFIRM_COUNT; i++) {
+      for (int i = 0; i < nids; i++) {
          if (cobalt_input_tapped(in, &s_confirm_hit[i])) {
-            compose->confirm_choice = i;
-            chosen = i;
+            compose->confirm_choice = ids[i];
+            chosen = ids[i];
             break;
          }
       }
@@ -191,6 +301,17 @@ cobalt_compose_update(cobalt_compose *compose, const cobalt_input *in)
             return COBALT_COMPOSE_STAY;
          }
          return COBALT_COMPOSE_SUBMIT;
+
+      case CONFIRM_IMAGE:
+         if (compose->attach_path[0]) {
+            compose->attach_path[0] = '\0';
+         } else {
+            char dir[COBALT_ATTACH_PATH_MAX];
+            if (cobalt_data_path(dir, sizeof(dir), "images")) {
+               cobalt_compose_open_picker(compose, dir);
+            }
+         }
+         return COBALT_COMPOSE_STAY;
 
       case CONFIRM_EDIT:
          compose->confirming = false;
@@ -288,21 +409,24 @@ draw_confirming(cobalt_compose *compose, cobalt_render *r,
                             box.x + m->pad_tile, box.y + m->pad_tile,
                             box.w - 2 * m->pad_tile, lines, COBALT_COLOUR_TEXT);
 
+   int ids[CONFIRM_COUNT];
+   const int nids = confirm_ids(compose, ids);
+
    const int row_h = m->font_body * 2;
    const int gap = m->gap;
-   const int button_w = (box.w - gap * (CONFIRM_COUNT - 1)) / CONFIRM_COUNT;
+   const int button_w = (box.w - gap * (nids - 1)) / nids;
    const int row_y = box.y + box_h + gap * 2;
 
-   for (int i = 0; i < CONFIRM_COUNT; i++) {
+   for (int i = 0; i < nids; i++) {
       SDL_Rect button = { m->pad_edge + i * (button_w + gap), row_y, button_w,
                           row_h };
-      const bool focused = (i == compose->confirm_choice);
+      const bool focused = (ids[i] == compose->confirm_choice);
       cobalt_draw_tile(r, &button, focused ? 1.0f : 0.0f);
 
-      SDL_Color colour = (i == CONFIRM_DISCARD) ? COBALT_COLOUR_ERROR
+      SDL_Color colour = (ids[i] == CONFIRM_DISCARD) ? COBALT_COLOUR_ERROR
                                                 : COBALT_COLOUR_ACCENT;
       const int label_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
-      cobalt_draw_text_centred(r, COBALT_FONT_BODY, CONFIRM_LABELS[i], button.x,
+      cobalt_draw_text_centred(r, COBALT_FONT_BODY, confirm_label(compose, ids[i]), button.x,
                                button.y + (row_h - label_h) / 2, button.w,
                                focused ? colour : COBALT_COLOUR_TEXT_DIM);
 
@@ -323,11 +447,60 @@ draw_confirming(cobalt_compose *compose, cobalt_render *r,
                REPLY_GATE_LABELS[compose->reply_gate]);
       cobalt_draw_text(r, COBALT_FONT_CAPTION, gate_line, m->pad_edge,
                        row_y + row_h + gap, hint);
+
+      if (compose->attach_path[0]) {
+         const char *name = strrchr(compose->attach_path, '/');
+         char img_line[COBALT_PICKER_NAME_MAX + 16];
+         snprintf(img_line, sizeof(img_line), "Image: %s",
+                  name ? name + 1 : compose->attach_path);
+         cobalt_draw_text(r, COBALT_FONT_CAPTION, img_line, m->pad_edge,
+                          row_y + row_h + gap +
+                             cobalt_font_line_height(r, COBALT_FONT_CAPTION),
+                          hint);
+      }
    }
 
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     cobalt_session_busy() ? "Posting..."
                                           : "A: choose    B: back to editing",
+                    m->pad_edge, m->height - m->pad_edge - 20, hint);
+}
+
+static void
+draw_picker(cobalt_compose *compose, cobalt_render *r, cobalt_surface_id surface)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int row_h = cobalt_font_line_height(r, COBALT_FONT_BODY) + m->line_gap;
+   const int visible = 6;
+
+   if (compose->picker_count == 0) {
+      cobalt_draw_text_wrapped(r, COBALT_FONT_BODY,
+                               "No images found. Copy .jpg or .png files "
+                               "(under 950 KB) into the folder below on the SD "
+                               "card, then try again.",
+                               m->pad_edge, top, m->width - 2 * m->pad_edge, 4,
+                               COBALT_COLOUR_TEXT);
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, compose->picker_dir, m->pad_edge,
+                       top + 4 * row_h, COBALT_COLOUR_TEXT_DIM);
+   } else {
+      int first = compose->picker_sel - visible + 1;
+      if (first < 0) {
+         first = 0;
+      }
+      for (int i = 0; i < visible && first + i < compose->picker_count; i++) {
+         SDL_Rect row = { m->pad_edge, top + i * (row_h + m->gap),
+                          m->width - 2 * m->pad_edge, row_h };
+         const bool focused = (first + i == compose->picker_sel);
+         cobalt_draw_tile(r, &row, focused ? 1.0f : 0.0f);
+         cobalt_draw_text(r, COBALT_FONT_BODY, compose->picker_names[first + i],
+                          row.x + m->pad_tile, row.y + m->line_gap / 2,
+                          focused ? COBALT_COLOUR_ACCENT : COBALT_COLOUR_TEXT);
+      }
+   }
+
+   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   cobalt_draw_text(r, COBALT_FONT_CAPTION, "Up/Down: choose    A: attach    B: back",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }
 
@@ -341,7 +514,9 @@ cobalt_compose_draw(cobalt_compose *compose, cobalt_render *r,
 
    draw_header(compose, r);
 
-   if (compose->confirming) {
+   if (compose->confirming && compose->picking) {
+      draw_picker(compose, r, surface);
+   } else if (compose->confirming) {
       draw_confirming(compose, r, surface);
    } else {
       draw_editing(compose, r, surface);

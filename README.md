@@ -62,7 +62,13 @@ keeps the `[quote]` marker.
 
 Also in: deleting your own posts (Y in the thread view), follower and following
 lists (X/Y on a profile header), and Posts / Replies / Media / Likes profile
-tabs (+ on a profile).
+tabs (+ on a profile). Pinned posts show first on a profile, and the account
+screen picks the language tag new posts carry.
+
+New posts and quotes can carry one image: in the post confirmation choose
+**Add image** and pick a `.jpg`/`.png` (under 950 KB) from `images/` in the
+app's data folder on the SD card. Alt text and images on replies are not done
+yet.
 
 Some things in the official client are not coming, because the console cannot
 do them rather than because nobody has got to them yet: **video** and **GIFs**

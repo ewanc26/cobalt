@@ -211,9 +211,22 @@ bool cobalt_session_begin_repost(const char *uri, const char *cid);
  * post exists ungated rather than silently vanishing. 0 = everyone,
  * 1 = followed/mentioned only, 2 = nobody.
  */
+/*
+ * An optional image (`attach_path`, NULL or "" for none) is uploaded and
+ * embedded; it is honoured for new posts and quotes, not replies (Wolfram has
+ * no reply-with-embed call). Limits and MIME mapping: cobalt_attach_*.
+ */
+#define COBALT_ATTACH_PATH_MAX  256
+/* Bluesky's blob limit is 1,000,000 bytes; leave headroom. */
+#define COBALT_ATTACH_MAX_BYTES 950000
+
+/* "image/jpeg" or "image/png" from a file name, NULL for anything else. */
+const char *cobalt_attach_mime(const char *path);
+
 bool cobalt_session_begin_post(const char *text, const char *parent_uri,
                                const char *parent_cid, const char *root_uri,
-                               const char *root_cid, int reply_gate);
+                               const char *root_cid, int reply_gate,
+                               const char *attach_path);
 
 /*
  * Language tag written to new posts ("" for none) and a step to the next
@@ -229,7 +242,8 @@ void cobalt_session_cycle_post_lang(void);
  * cobalt_session_begin_post.
  */
 bool cobalt_session_begin_quote(const char *text, const char *quote_uri,
-                                const char *quote_cid, int reply_gate);
+                                const char *quote_cid, int reply_gate,
+                                const char *attach_path);
 
 /*
  * Delete one of the viewer's own posts. Refused (false) unless `uri` is in the
