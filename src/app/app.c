@@ -1092,7 +1092,7 @@ static void
 draw_home_tv(cobalt_app *app, cobalt_render *r)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   draw_header(r, "AT Protocol for Wii U");
+   draw_header(r, "Bluesky for Wii U");
 
    /* Two rows of large tiles, Wii U menu style. Ten in one row left each
     * about 100px wide, which truncated every label. */
