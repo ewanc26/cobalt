@@ -37,6 +37,12 @@ typedef struct {
     * exactly once, rather than fighting the user's scrolling afterwards. */
    bool centred;
 
+   /* Set while "delete this post?" is on screen. A is yes, B is no, and
+    * nothing else acts — deleting is the one action here that cannot be
+    * undone, and Y sits next to buttons that are casually pressed. */
+   bool confirm_delete;
+   char delete_uri[COBALT_POST_URI_MAX];
+
    SDL_Rect hit[COBALT_THREAD_MAX_POSTS];
    int hit_index[COBALT_THREAD_MAX_POSTS];
    int hit_count;
