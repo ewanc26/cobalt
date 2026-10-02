@@ -45,6 +45,8 @@ extern const SDL_Color COBALT_COLOUR_TILE_EDGE;
 extern const SDL_Color COBALT_COLOUR_TEXT;
 extern const SDL_Color COBALT_COLOUR_TEXT_DIM;
 extern const SDL_Color COBALT_COLOUR_ACCENT;
+/* Darker green for text on white; ACCENT itself is too light to read at caption size. */
+extern const SDL_Color COBALT_COLOUR_ACCENT_TEXT;
 extern const SDL_Color COBALT_COLOUR_ERROR;
 
 /* Per-surface type scale and spacing. */

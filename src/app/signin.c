@@ -187,7 +187,7 @@ draw_header(cobalt_render *r, const char *title, const char *subtitle)
                     COBALT_COLOUR_TILE_FOCUS);
 
    const int title_h = cobalt_font_line_height(r, COBALT_FONT_TITLE);
-   SDL_Color dim = { 0xEE, 0xFA, 0xDC, 0xFF };
+   SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
                     m->pad_edge + title_h - m->line_gap, dim);
 }
@@ -328,7 +328,7 @@ draw_fields(cobalt_signin *s, cobalt_render *r, cobalt_surface_id surface)
    const int submit_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
    cobalt_draw_text_centred(r, COBALT_FONT_HEADING, "Sign in", submit.x,
                             submit.y + (row_h - submit_h) / 2, submit.w,
-                            COBALT_COLOUR_ACCENT);
+                            COBALT_COLOUR_ACCENT_TEXT);
    if (touchable) {
       s->hit[ROW_SUBMIT] = submit;
       s->hit_valid = true;

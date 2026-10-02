@@ -1014,7 +1014,7 @@ draw_header(cobalt_render *r, const char *subtitle)
                     COBALT_COLOUR_TILE_FOCUS);
 
    int title_h = cobalt_font_line_height(r, COBALT_FONT_TITLE);
-   SDL_Color dim = { 0xEE, 0xFA, 0xDC, 0xFF };
+   SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
                     m->pad_edge + title_h - m->line_gap, dim);
 }
@@ -1086,7 +1086,7 @@ draw_home_tv(cobalt_app *app, cobalt_render *r)
 
    draw_notice(app, r, detail_y + m->font_body + m->gap, m->width - 2 * m->pad_edge);
 
-   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
+   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     "A / touch: select     B: back     D-pad or stick: move",
                     m->pad_edge, m->height - m->pad_edge - 24, hint);
@@ -1153,7 +1153,7 @@ draw_home_drc(cobalt_app *app, cobalt_render *r)
    const int list_bottom = top + visible * pitch;
    draw_notice(app, r, list_bottom + 4, list_w);
 
-   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
+   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     app->display == COBALT_DISPLAY_DUAL ? "TV + GamePad" : "GamePad only",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
@@ -1228,7 +1228,7 @@ draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
    draw_notice(app, r, row_y + m->gap / 2, width);
 
-   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
+   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION, "A / touch: open     B: back",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }
@@ -1280,7 +1280,7 @@ draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
    draw_notice(app, r, row_y - m->gap / 2 + m->gap / 2, width);
 
-   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
+   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION, "A / touch: open     B: back",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }
@@ -1409,7 +1409,7 @@ draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
                                bad ? COBALT_COLOUR_ERROR : COBALT_COLOUR_TEXT);
    }
 
-   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
+   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION, "B: back",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }

@@ -238,7 +238,7 @@ draw_header(cobalt_render *r, const cobalt_profile *profile,
                                following ? "Following" : "Follow", button.x,
                                button.y + (button.h - label_h) / 2, button.w,
                                following ? COBALT_COLOUR_TEXT_DIM
-                                         : COBALT_COLOUR_ACCENT);
+                                         : COBALT_COLOUR_ACCENT_TEXT);
       y += button.h + m->gap;
 
       /* Mute/block have no dedicated buttons — Left/Right on this row,
@@ -255,7 +255,7 @@ draw_header(cobalt_render *r, const cobalt_profile *profile,
                      profile->viewer_muted ? "Muted" : "Blocked");
          }
          cobalt_draw_text(r, COBALT_FONT_CAPTION, status, left, y,
-                          COBALT_COLOUR_ACCENT);
+                          COBALT_COLOUR_ACCENT_TEXT);
       }
    }
 }
@@ -276,7 +276,7 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Profile", m->pad_edge, m->pad_edge,
                     COBALT_COLOUR_TILE_FOCUS);
    {
-      SDL_Color dim = { 0xEE, 0xFA, 0xDC, 0xFF };
+      SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
       cobalt_draw_text(r, COBALT_FONT_CAPTION,
                        cobalt_session_busy() ? "Loading..." : profile->handle,
                        m->pad_edge,
@@ -352,7 +352,7 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
                        y + m->gap, COBALT_COLOUR_TILE);
    }
 
-   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
+   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    char hint_text[160];
    snprintf(hint_text, sizeof(hint_text), "[%s]  +: tab   X: followers   Y: following   A/Left/Right: act   B: back",
             cobalt_profile_tab_name(cobalt_session_profile_tab()));
