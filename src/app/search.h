@@ -1,8 +1,8 @@
 #pragma once
 
 /*
- * Account search (app.bsky.actor.searchActors) — not post search, which
- * Cobalt does not implement.
+ * Account search (app.bsky.actor.searchActors) and, via Y while typing, post
+ * search (app.bsky.feed.searchPosts), whose results open in the timeline view.
  *
  * Two sub-modes on one screen, the same shape compose.c already uses for
  * "edit, then something else": typing owns the whole screen via the on-screen
@@ -31,11 +31,13 @@ typedef enum {
    COBALT_SEARCH_VIEW_STAY = 0,
    COBALT_SEARCH_VIEW_BACK,
    COBALT_SEARCH_VIEW_OPEN_PROFILE,
+   COBALT_SEARCH_VIEW_OPEN_POSTS,   /* post search started; show the feed */
 } cobalt_search_view_action;
 
 typedef struct {
    char query[COBALT_SEARCH_QUERY_MAX];
    cobalt_keyboard kb;
+   bool posts;      /* Y toggles People/Posts while typing */
    bool browsing;   /* false: editing the query; true: viewing results */
 
    int selected;
