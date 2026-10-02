@@ -991,23 +991,23 @@ test_post_refuses_partial_refs(void)
    cobalt_session_init();
 
    /* Empty text is nothing to send. */
-   CHECK(!cobalt_session_begin_post("", NULL, NULL, NULL, NULL));
-   CHECK(!cobalt_session_begin_post(NULL, NULL, NULL, NULL, NULL));
+   CHECK(!cobalt_session_begin_post("", NULL, NULL, NULL, NULL, 0));
+   CHECK(!cobalt_session_begin_post(NULL, NULL, NULL, NULL, NULL, 0));
 
    /*
     * A parent without a root, or a root without a cid, must be refused rather
     * than sent. A reply naming the wrong conversation is worse than one that
     * never got posted: it is visible, wrong, and not obviously Cobalt's fault.
     */
-   CHECK(!cobalt_session_begin_post("hi", "at://parent", NULL, NULL, NULL));
-   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", NULL, NULL));
-   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", "at://root", NULL));
-   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", "at://root", ""));
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", NULL, NULL, NULL, 0));
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", NULL, NULL, 0));
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", "at://root", NULL, 0));
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", "at://root", "", 0));
 
    /* A complete set is accepted (and fails later for want of an SDK, which is
     * not what is being checked here). */
    CHECK(cobalt_session_begin_post("hi", "at://parent", "cid", "at://root",
-                                   "rcid"));
+                                   "rcid", 0));
 
    cobalt_job_result result;
    for (int i = 0; i < 500 && !cobalt_session_poll(&result); i++) {
