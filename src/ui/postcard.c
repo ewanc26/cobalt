@@ -163,7 +163,7 @@ cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
 
    int h = m->pad_tile;
-   if (post->reposted_by[0]) {
+   if (post->reposted_by[0] || post->pinned) {
       h += caption_h;
    }
    h += body_h;                                     /* author row */
@@ -189,7 +189,7 @@ cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines
     * has to grow rather than let the circle spill onto the tile below. */
    const int avatar_min =
       m->pad_tile + AVATAR_SIDE(m) + m->pad_tile +
-      (post->reposted_by[0] ? caption_h : 0);
+      ((post->reposted_by[0] || post->pinned) ? caption_h : 0);
    if (h < avatar_min) {
       h = avatar_min;
    }
@@ -553,9 +553,13 @@ cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
    }
    int y = rect->y + m->pad_tile;
 
-   if (post->reposted_by[0]) {
+   if (post->reposted_by[0] || post->pinned) {
       char banner[COBALT_POST_NAME_MAX + 16];
-      snprintf(banner, sizeof(banner), "Reposted by %s", post->reposted_by);
+      if (post->pinned) {
+         snprintf(banner, sizeof(banner), "Pinned post");
+      } else {
+         snprintf(banner, sizeof(banner), "Reposted by %s", post->reposted_by);
+      }
       cobalt_draw_text(r, COBALT_FONT_CAPTION, banner, left, y,
                        COBALT_COLOUR_TEXT_DIM);
       y += caption_h;

@@ -57,6 +57,28 @@ cobalt_feed_remove_post(cobalt_feed *feed, const char *uri)
    return removed;
 }
 
+bool
+cobalt_feed_prepend_pinned(cobalt_feed *feed, const cobalt_post *post)
+{
+   if (!feed || !post || !post->uri[0]) {
+      return false;
+   }
+
+   cobalt_post pinned = *post;
+   pinned.pinned = true;
+   pinned.reposted_by[0] = '\0';
+
+   cobalt_feed_remove_post(feed, pinned.uri);
+   if (feed->count >= COBALT_FEED_MAX_POSTS) {
+      feed->count = COBALT_FEED_MAX_POSTS - 1;
+   }
+   memmove(&feed->posts[1], &feed->posts[0],
+           (size_t) feed->count * sizeof(feed->posts[0]));
+   feed->posts[0] = pinned;
+   feed->count++;
+   return true;
+}
+
 void
 cobalt_thread_reset(cobalt_thread *thread)
 {
@@ -659,6 +681,19 @@ fill_root(cobalt_post *post, const cJSON *reply_ref)
       snprintf(post->root_uri, sizeof(post->root_uri), "%s", uri);
       snprintf(post->root_cid, sizeof(post->root_cid), "%s", cid);
    }
+}
+
+bool
+cobalt_feed_pin_from_wolfram(cobalt_feed *feed,
+                             const struct wf_agent_post_list *list,
+                             int64_t now)
+{
+   if (!feed || !list || list->post_count == 0) {
+      return false;
+   }
+   static cobalt_post post;
+   fill_from_view(&post, &list->posts[0], now);
+   return cobalt_feed_prepend_pinned(feed, &post);
 }
 
 int
