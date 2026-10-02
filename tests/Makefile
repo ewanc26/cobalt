@@ -123,7 +123,7 @@ SWEEP_SOURCES := $(filter-out \
 
 LINK_SOURCES := $(filter-out $(SRC)/main.c, $(SWEEP_SOURCES))
 
-.PHONY: all check sweep linkcheck clean
+.PHONY: all check sweep linkcheck e2e clean
 
 all: sweep linkcheck check
 
@@ -174,6 +174,24 @@ else
 endif
 
 #---------------------------------------------------------------------------------
+# End-to-end against Wolfram's mock PDS. Needs a host Wolfram build made with
+#   cmake -S ../wolfram -B ../scratch-wf -DWOLFRAM_BUILD_TEST_HTTPD=ON
+# (WOLFRAM_E2E_BUILD overrides the path) and libmicrohttpd.
+#---------------------------------------------------------------------------------
+E2E_BUILD ?= $(WOLFRAM_ROOT)/../scratch-wf
+E2E_BIN   := $(OUT)/cobalt-e2e
+E2E_SOURCES := $(filter-out $(SRC)/main.c, $(SWEEP_SOURCES))
+MHD_LIBS  := $(shell pkg-config --libs libmicrohttpd 2>/dev/null || echo -L/opt/homebrew/lib -lmicrohttpd)
+
+e2e:
+	@mkdir -p $(OUT)/e2e-data
+	@$(CC) $(CFLAGS) -DCOBALT_HAS_WOLFRAM=1 -DCOBALT_E2E_HOST=1 -I$(WOLFRAM_ROOT)/include $(CJSON_CFLAGS) \
+		-o $(E2E_BIN) e2e_main.c linkcheck_stubs.c host_stubs.c $(WOLFRAM_ROOT)/test/mock_pds.c \
+		$(E2E_SOURCES) $(E2E_BUILD)/libwolfram.dylib $(E2E_BUILD)/_deps/cjson-build/libcjson.dylib \
+		$(MHD_LIBS) $(LDLIBS) -Wl,-rpath,$(abspath $(E2E_BUILD)) \
+		-Wl,-rpath,$(abspath $(E2E_BUILD))/_deps/cjson-build
+	@./$(E2E_BIN) $(OUT)/e2e-data
+
 check: $(TEST_BIN)
 	@mkdir -p $(SCRATCH)
 	@./$(TEST_BIN) $(SCRATCH)
