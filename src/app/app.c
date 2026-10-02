@@ -1025,11 +1025,28 @@ draw_home_drc(cobalt_app *app, cobalt_render *r)
    /* A vertical list: denser than the TV row, and every row is a touch target
     * comfortably larger than a fingertip. */
    const int top = m->pad_edge + 62;
-   const int row_h = 54;
+   const int row_h = 44;
+   const int pitch = row_h + m->gap / 2;
    const int list_w = m->width - 2 * m->pad_edge;
 
+   /* Ten rows do not fit in 480px: show a window that follows the selection and
+    * leaves room under it for a notice and the footer. */
+   int visible = (m->height - top - m->pad_edge - 70) / pitch;
+   if (visible < 1) visible = 1;
+   if (visible > MENU_COUNT) visible = MENU_COUNT;
+   static int first;
+   if (app->selected < first) first = app->selected;
+   if (app->selected >= first + visible) first = app->selected - visible + 1;
+   if (first > MENU_COUNT - visible) first = MENU_COUNT - visible;
+   if (first < 0) first = 0;
+
    for (int i = 0; i < MENU_COUNT; i++) {
-      SDL_Rect row = { m->pad_edge, top + i * (row_h + m->gap / 2), list_w, row_h };
+      if (i < first || i >= first + visible) {
+         SDL_Rect none = { 0, 0, 0, 0 };
+         s_drc_hit[i] = none;
+         continue;
+      }
+      SDL_Rect row = { m->pad_edge, top + (i - first) * pitch, list_w, row_h };
       s_drc_hit[i] = row;
 
       cobalt_draw_tile(r, &row, app->focus[i]);
@@ -1052,13 +1069,24 @@ draw_home_drc(cobalt_app *app, cobalt_render *r)
 
    s_drc_hit_valid = true;
 
-   const int list_bottom = top + MENU_COUNT * (row_h + m->gap / 2);
-   draw_notice(app, r, list_bottom + m->gap, list_w);
+   char more[32] = "";
+   if (visible < MENU_COUNT) {
+      snprintf(more, sizeof more, "%d of %d", app->selected + 1, MENU_COUNT);
+   }
+
+   const int list_bottom = top + visible * pitch;
+   draw_notice(app, r, list_bottom + 4, list_w);
 
    SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     app->display == COBALT_DISPLAY_DUAL ? "TV + GamePad" : "GamePad only",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
+   if (more[0]) {
+      int w = 0;
+      cobalt_text_size(r, COBALT_FONT_CAPTION, more, &w, NULL);
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, more, m->width - m->pad_edge - w,
+                       m->height - m->pad_edge - 20, hint);
+   }
 }
 
 static void
