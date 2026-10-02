@@ -283,7 +283,9 @@ main(int argc, char **argv)
       frame(COBALT_BTN_DOWN);
       settle(2);
    }
-   frame(COBALT_BTN_LEFT);
+   frame(COBALT_BTN_LEFT);   /* wraps to Emoji, the last key */
+   settle(2);
+   frame(COBALT_BTN_LEFT);   /* then Cancel */
    settle(2);
    frame(COBALT_BTN_CONFIRM);
    settle(5);
@@ -298,6 +300,8 @@ main(int argc, char **argv)
    shoot("search");
 
    for (int k = 0; k < 2; k++) { frame(COBALT_BTN_DOWN); settle(2); }
+   frame(COBALT_BTN_LEFT);
+   settle(2);
    frame(COBALT_BTN_LEFT);
    settle(2);
    frame(COBALT_BTN_CONFIRM);

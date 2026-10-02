@@ -479,6 +479,15 @@ test_keyboard_typing(void)
    kb.col = 5;
    CHECK(cobalt_keyboard_update(&kb, &confirm) == COBALT_KB_CANCELLED);
    CHECK_STR(buffer, "qwQW");
+
+   /* The Emoji key swaps in a layer of multi-byte characters; typing one
+    * appends its whole UTF-8 sequence and Del removes it in one step. */
+   buffer[0] = '\0';
+   type_key(&kb, 4, 6);
+   type_key(&kb, 0, 0);
+   CHECK_STR(buffer, "\xF0\x9F\x98\x80");
+   type_key(&kb, 4, 3);
+   CHECK_STR(buffer, "");
 }
 
 static void
