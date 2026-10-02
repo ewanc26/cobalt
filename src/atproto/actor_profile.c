@@ -160,3 +160,37 @@ cobalt_profile_from_wolfram(cobalt_profile *out,
 }
 
 #endif /* COBALT_HAS_WOLFRAM */
+
+const char *
+cobalt_profile_tab_name(int tab)
+{
+   switch (tab) {
+      case COBALT_PROFILE_TAB_POSTS:   return "Posts";
+      case COBALT_PROFILE_TAB_REPLIES: return "Replies";
+      case COBALT_PROFILE_TAB_MEDIA:   return "Media";
+      case COBALT_PROFILE_TAB_LIKES:   return "Likes";
+      default:                         return "Posts";
+   }
+}
+
+const char *
+cobalt_profile_tab_filter(int tab)
+{
+   switch (tab) {
+      case COBALT_PROFILE_TAB_REPLIES: return "posts_with_replies";
+      case COBALT_PROFILE_TAB_MEDIA:   return "posts_with_media";
+      case COBALT_PROFILE_TAB_LIKES:   return NULL;
+      default:                         return "posts_and_author_threads";
+   }
+}
+
+int
+cobalt_profile_tab_next(int tab, bool is_self)
+{
+   const int count = is_self ? COBALT_PROFILE_TAB_COUNT
+                             : COBALT_PROFILE_TAB_COUNT - 1;
+   if (tab < 0 || tab >= count) {
+      return COBALT_PROFILE_TAB_POSTS;
+   }
+   return (tab + 1) % count;
+}

@@ -1207,6 +1207,33 @@ test_selection_survives_a_shrinking_list(void)
 /* --- deleting your own post --- */
 
 static void
+test_profile_tabs(void)
+{
+   begin("profile tab filters and cycling");
+
+   CHECK(strcmp(cobalt_profile_tab_name(COBALT_PROFILE_TAB_MEDIA), "Media") == 0);
+   CHECK(strcmp(cobalt_profile_tab_filter(COBALT_PROFILE_TAB_REPLIES),
+                "posts_with_replies") == 0);
+   CHECK(strcmp(cobalt_profile_tab_filter(COBALT_PROFILE_TAB_MEDIA),
+                "posts_with_media") == 0);
+   CHECK(cobalt_profile_tab_filter(COBALT_PROFILE_TAB_LIKES) == NULL);
+
+   /* Other people's likes are private, so the cycle skips that tab. */
+   CHECK(cobalt_profile_tab_next(COBALT_PROFILE_TAB_POSTS, false) ==
+         COBALT_PROFILE_TAB_REPLIES);
+   CHECK(cobalt_profile_tab_next(COBALT_PROFILE_TAB_MEDIA, false) ==
+         COBALT_PROFILE_TAB_POSTS);
+   CHECK(cobalt_profile_tab_next(COBALT_PROFILE_TAB_MEDIA, true) ==
+         COBALT_PROFILE_TAB_LIKES);
+   CHECK(cobalt_profile_tab_next(COBALT_PROFILE_TAB_LIKES, true) ==
+         COBALT_PROFILE_TAB_POSTS);
+   /* A stale Likes tab on a profile that cannot show it falls back to Posts. */
+   CHECK(cobalt_profile_tab_next(COBALT_PROFILE_TAB_LIKES, false) ==
+         COBALT_PROFILE_TAB_POSTS);
+   CHECK(!cobalt_session_begin_profile_tab(COBALT_PROFILE_TAB_MEDIA));
+}
+
+static void
 test_follow_lists(void)
 {
    begin("followers and following need an actor");
@@ -1664,6 +1691,7 @@ main(int argc, char **argv)
    test_delete_post_helpers();
    test_quote_helpers();
    test_follow_lists();
+   test_profile_tabs();
    test_compose();
    test_post_refuses_partial_refs();
    test_notification_wording();

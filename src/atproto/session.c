@@ -61,6 +61,9 @@ typedef struct {
    /* Reply-control for a new top-level post; ignored on a reply. Matches
     * `cobalt_reply_gate`: 0 everyone, 1 followed/mentioned, 2 nobody. */
    int reply_gate;
+
+   /* Profile tab switches: a cobalt_profile_tab. */
+   int tab;
 } job_input;
 
 static struct {
@@ -101,6 +104,7 @@ static struct {
    cobalt_notifications notifications;
    cobalt_profile profile;
    cobalt_feed author_feed;
+   int profile_tab;
    cobalt_actor_list muted;
    cobalt_actor_list blocked;
    cobalt_actor_list followers;
@@ -1041,6 +1045,54 @@ run_notifications(const job_input *in, cobalt_job_result *r,
 }
 
 
+/* Replace s.author_feed with the posts for one profile tab. Failure leaves the
+ * feed empty rather than showing another tab's posts under the wrong label. */
+static void
+fetch_author_feed(const char *actor, int tab)
+{
+   wf_agent_feed_list list;
+   memset(&list, 0, sizeof(list));
+
+   wf_status status;
+   if (tab == COBALT_PROFILE_TAB_LIKES) {
+      status = wf_agent_get_actor_likes_typed(s.wf, actor, TIMELINE_PAGE, NULL,
+                                              &list);
+   } else {
+      status = wf_agent_get_author_feed_typed(s.wf, actor, TIMELINE_PAGE, NULL,
+                                              cobalt_profile_tab_filter(tab),
+                                              &list);
+   }
+
+   if (status == WF_OK) {
+      const int64_t now = cobalt_time_now();
+      SDL_LockMutex(s.lock);
+      cobalt_feed_reset(&s.author_feed);
+      cobalt_feed_append_from_wolfram(&s.author_feed, &list, now);
+      SDL_UnlockMutex(s.lock);
+      wf_agent_feed_list_free(&list);
+   } else {
+      COBALT_LOGW("session: author feed (tab %d) failed (%d) — showing the "
+                  "profile without posts", tab, (int) status);
+      SDL_LockMutex(s.lock);
+      cobalt_feed_reset(&s.author_feed);
+      SDL_UnlockMutex(s.lock);
+   }
+}
+
+static void
+run_profile_tab(const job_input *in, cobalt_job_result *r,
+                cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in first.");
+      return;
+   }
+   fetch_author_feed(in->uri, in->tab);
+   publish_session();
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
 static void
 run_profile(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
 {
@@ -1072,25 +1124,7 @@ run_profile(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
     * fatal to the screen: the profile itself already loaded and is worth
     * showing, so the feed is left empty and the header stands on its own.
     */
-   wf_agent_feed_list list;
-   memset(&list, 0, sizeof(list));
-
-   status = wf_agent_get_author_feed_typed(s.wf, in->uri, TIMELINE_PAGE, NULL,
-                                           NULL, &list);
-   if (status == WF_OK) {
-      const int64_t now = cobalt_time_now();
-      SDL_LockMutex(s.lock);
-      cobalt_feed_reset(&s.author_feed);
-      cobalt_feed_append_from_wolfram(&s.author_feed, &list, now);
-      SDL_UnlockMutex(s.lock);
-      wf_agent_feed_list_free(&list);
-   } else {
-      COBALT_LOGW("session: getAuthorFeed failed (%d) — showing the profile "
-                  "without posts", (int) status);
-      SDL_LockMutex(s.lock);
-      cobalt_feed_reset(&s.author_feed);
-      SDL_UnlockMutex(s.lock);
-   }
+   fetch_author_feed(in->uri, in->tab);
 
    publish_session();
 
@@ -1619,6 +1653,7 @@ run_job(cobalt_job_kind kind, const job_input *in, cobalt_auth_state *state)
       case COBALT_JOB_BLOCK:    run_block(in, &r, state);     break;
       case COBALT_JOB_MUTED_LIST:   run_muted_list(in, &r, state);   break;
       case COBALT_JOB_BLOCKED_LIST: run_blocked_list(in, &r, state); break;
+      case COBALT_JOB_PROFILE_TAB:  run_profile_tab(in, &r, state); break;
       case COBALT_JOB_FOLLOWERS:    run_followers(in, &r, state);    break;
       case COBALT_JOB_FOLLOWING:    run_following(in, &r, state);    break;
       case COBALT_JOB_SEARCH_ACTORS: run_search_actors(in, &r, state); break;
@@ -1961,7 +1996,38 @@ cobalt_session_begin_profile(const char *actor)
    job_input in;
    memset(&in, 0, sizeof(in));
    snprintf(in.uri, sizeof(in.uri), "%s", actor);
+   in.tab = COBALT_PROFILE_TAB_POSTS;
+   SDL_LockMutex(s.lock);
+   s.profile_tab = COBALT_PROFILE_TAB_POSTS;
+   SDL_UnlockMutex(s.lock);
    return submit(COBALT_JOB_PROFILE, &in);
+}
+
+bool
+cobalt_session_begin_profile_tab(int tab)
+{
+   if (tab < 0 || tab >= COBALT_PROFILE_TAB_COUNT || !s.profile.loaded ||
+       !s.profile.did[0]) {
+      return false;
+   }
+   if (tab == COBALT_PROFILE_TAB_LIKES && !s.profile.is_self) {
+      return false;
+   }
+
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", s.profile.did);
+   in.tab = tab;
+   SDL_LockMutex(s.lock);
+   s.profile_tab = tab;
+   SDL_UnlockMutex(s.lock);
+   return submit(COBALT_JOB_PROFILE_TAB, &in);
+}
+
+int
+cobalt_session_profile_tab(void)
+{
+   return s.profile_tab;
 }
 
 bool
