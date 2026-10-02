@@ -34,7 +34,7 @@ typedef enum {
 #define COBALT_DRC_WIDTH   854
 #define COBALT_DRC_HEIGHT  480
 
-/* Palette: Wii U menu greys and whites with Miiverse's green, not Bluesky blue. */
+/* Palette: Wii U menu greys and whites with a cobalt-blue accent. */
 extern const SDL_Color COBALT_COLOUR_BG_TOP;
 extern const SDL_Color COBALT_COLOUR_BG_BOTTOM;
 extern const SDL_Color COBALT_COLOUR_BAND_TOP;
@@ -45,7 +45,7 @@ extern const SDL_Color COBALT_COLOUR_TILE_EDGE;
 extern const SDL_Color COBALT_COLOUR_TEXT;
 extern const SDL_Color COBALT_COLOUR_TEXT_DIM;
 extern const SDL_Color COBALT_COLOUR_ACCENT;
-/* Darker green for text on white; ACCENT itself is too light to read at caption size. */
+/* Darker blue for text on white; ACCENT itself is too light to read at caption size. */
 extern const SDL_Color COBALT_COLOUR_ACCENT_TEXT;
 extern const SDL_Color COBALT_COLOUR_ERROR;
 
