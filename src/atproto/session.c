@@ -75,6 +75,9 @@ static struct {
    /* Set once at init and read-only afterwards, so no locking. */
    char ca_path[COBALT_PATH_MAX];
    bool have_ca;
+
+   /* Index into POST_LANGS; 0 is "none". Applied to each new agent. */
+   int post_lang;
    const char *blocker;
 
    SDL_mutex *lock;
@@ -283,6 +286,76 @@ set_message(cobalt_job_result *r, const char *fmt, ...)
    va_end(ap);
 }
 
+/* Tags offered on the account screen; "" means leave `langs` off. */
+static const char *const POST_LANGS[] = { "", "en", "cy", "ga", "gd", "fr",
+                                          "de", "es" };
+#define POST_LANG_COUNT ((int) (sizeof(POST_LANGS) / sizeof(POST_LANGS[0])))
+#define POST_LANG_FILE "postlang.txt"
+
+static void
+load_post_lang(void)
+{
+   char path[COBALT_PATH_MAX];
+   s.post_lang = 0;
+   if (!cobalt_data_path(path, sizeof(path), POST_LANG_FILE)) {
+      return;
+   }
+   FILE *f = fopen(path, "rb");
+   if (!f) {
+      return;
+   }
+   char tag[16] = { 0 };
+   size_t n = fread(tag, 1, sizeof(tag) - 1, f);
+   fclose(f);
+   tag[n] = '\0';
+   for (size_t i = 0; i < n; i++) {
+      if (tag[i] == '\n' || tag[i] == '\r') {
+         tag[i] = '\0';
+         break;
+      }
+   }
+   for (int i = 1; i < POST_LANG_COUNT; i++) {
+      if (strcmp(tag, POST_LANGS[i]) == 0) {
+         s.post_lang = i;
+         return;
+      }
+   }
+}
+
+static void
+save_post_lang(void)
+{
+   char path[COBALT_PATH_MAX];
+   if (!cobalt_data_path(path, sizeof(path), POST_LANG_FILE)) {
+      return;
+   }
+   FILE *f = fopen(path, "wb");
+   if (!f) {
+      COBALT_LOGW("session: could not save the post language");
+      return;
+   }
+   fprintf(f, "%s\n", POST_LANGS[s.post_lang]);
+   fclose(f);
+}
+
+const char *
+cobalt_session_post_lang(void)
+{
+   return POST_LANGS[s.post_lang];
+}
+
+void
+cobalt_session_cycle_post_lang(void)
+{
+   s.post_lang = (s.post_lang + 1) % POST_LANG_COUNT;
+   save_post_lang();
+#ifdef COBALT_HAS_WOLFRAM
+   if (s.wf) {
+      wf_agent_set_post_langs(s.wf, POST_LANGS[s.post_lang]);
+   }
+#endif
+}
+
 #ifdef COBALT_HAS_WOLFRAM
 
 /*
@@ -462,6 +535,10 @@ new_wf_agent(const char *service)
                   "hand the handshake to a tick-seeded generator", (int) rng);
       wf_agent_free(agent);
       return NULL;
+   }
+
+   if (wf_agent_set_post_langs(agent, POST_LANGS[s.post_lang]) != WF_OK) {
+      COBALT_LOGW("session: could not set the post language");
    }
 
    return agent;
@@ -1750,6 +1827,7 @@ cobalt_session_init(void)
    memset(&s, 0, sizeof(s));
 
    resolve_ca_bundle();
+   load_post_lang();
 
    s.lock = SDL_CreateMutex();
    s.wake = SDL_CreateCond();
