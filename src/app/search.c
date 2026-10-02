@@ -199,22 +199,24 @@ draw_editing(cobalt_search_view *view, cobalt_render *r,
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int top = cobalt_content_top(r);
 
-   /* People / Posts selector, right-aligned on the title line. */
+   /* People / Posts selector, right-aligned on the title line, same pill
+    * metrics as every control prompt. */
    {
-      const int seg_h = cobalt_font_line_height(r, COBALT_FONT_BODY) + 12;
-      const int seg_w = m->font_body * 5;
-      const int seg_y = m->pad_edge + 2;
+      const int seg_h = cobalt_pill_height(r);
       static const char *labels[2] = { "People", "Posts" };
+      int x = m->width - m->pad_edge;
       for (int i = 1; i >= 0; i--) {
-         SDL_Rect seg = { m->width - m->pad_edge - (2 - i) * seg_w -
-                             (1 - i) * 0 - (i == 0 ? 8 : 0),
-                          seg_y, seg_w, seg_h };
+         const int seg_w = cobalt_pill_width(r, NULL, labels[i]) + 8;
+         x -= seg_w;
+         SDL_Rect seg = { x, m->pad_edge, seg_w, seg_h };
+         x -= 8;
          const bool on = (view->posts == (i == 1));
          cobalt_fill_rounded_rect(r, &seg, seg_h / 2,
                                   on ? COBALT_COLOUR_ACCENT
                                      : (SDL_Color){ 0xFF, 0xFF, 0xFF, 0xE6 });
-         cobalt_draw_text_centred(r, COBALT_FONT_BODY, labels[i], seg.x,
-                                  seg.y + 6, seg.w,
+         cobalt_draw_text_centred(r, COBALT_FONT_CAPTION, labels[i], seg.x,
+                                  seg.y + (seg_h - cobalt_font_line_height(r, COBALT_FONT_CAPTION)) / 2,
+                                  seg.w,
                                   on ? (SDL_Color){ 0xFF, 0xFF, 0xFF, 0xFF }
                                      : COBALT_COLOUR_TEXT);
          if (surface == COBALT_SURFACE_DRC) {

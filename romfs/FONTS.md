@@ -18,3 +18,12 @@
   outlines in the text colour. SDL_ttf cannot paint colour COLRv1 glyphs, so a
   monochrome face is the reliable choice (AGENTS.md section 5).
 - It is optional: delete it and uncovered codepoints draw as a box again.
+
+## `icons.ttf`, `icons-fill.ttf` - Phosphor Icons (subset)
+
+- **Author:** Phosphor Icons (https://github.com/phosphor-icons/web).
+- **Licence:** MIT (`PHOSPHOR-LICENSE.txt`, shipped alongside).
+- **Why:** reply, repost and like glyphs on post cards, plus a few more for
+  later screens. Regular and Fill weights, subset to the glyphs Cobalt uses
+  (pyftsubset, no layout features) so each file is a few KB. Codepoints are
+  listed as `COBALT_ICON_*` in `src/ui/render.h`.
