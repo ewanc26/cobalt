@@ -7,6 +7,7 @@
 #include "app/search.h"
 #include "app/signin.h"
 #include "app/thread.h"
+#include "audio/sound.h"
 #include "app/timeline.h"
 #include "atproto/atproto.h"
 #include "atproto/session.h"
@@ -763,8 +764,8 @@ draw_back_pill(cobalt_render *r, cobalt_surface_id surface)
    }
 }
 
-void
-cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
+static void
+app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
 {
    if (!app || !in) {
       return;
@@ -1041,6 +1042,39 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
    for (int i = 0; i < MENU_COUNT; i++) {
       float target = (i == app->selected) ? 1.0f : 0.0f;
       app->focus[i] += (target - app->focus[i]) * FOCUS_RATE;
+   }
+}
+
+/* UI sounds are derived from what the frame did, not sprinkled through every
+ * screen: a screen change is a select or a back, a held-direction step is a
+ * tick, and a like or repost press on a post list is its own chime. */
+void
+cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
+{
+   if (!app || !in) {
+      return;
+   }
+   const cobalt_screen before = app->screen;
+   const bool had_notice = app->notice[0] != '\0';
+   const bool was_busy = cobalt_session_busy();
+   const bool back_tap = s_back_hit_valid && screen_has_back_pill(before) &&
+                         cobalt_input_tapped(in, &s_back_hit);
+
+   app_update_inner(app, in, now_ms);
+
+   if (app->screen != before) {
+      cobalt_sound_play(in->pressed[COBALT_BTN_BACK] || back_tap
+                           ? COBALT_SFX_BACK : COBALT_SFX_SELECT);
+   } else if (!was_busy && (before == COBALT_SCREEN_TIMELINE ||
+                            before == COBALT_SCREEN_THREAD) &&
+              (in->pressed[COBALT_BTN_LEFT] || in->pressed[COBALT_BTN_RIGHT])) {
+      cobalt_sound_play(in->pressed[COBALT_BTN_LEFT] ? COBALT_SFX_LIKE
+                                                     : COBALT_SFX_REPOST);
+   } else if (in->pressed[COBALT_BTN_UP] || in->pressed[COBALT_BTN_DOWN]) {
+      cobalt_sound_play(COBALT_SFX_MOVE);
+   }
+   if (!had_notice && app->notice[0]) {
+      cobalt_sound_play(COBALT_SFX_NOTICE);
    }
 }
 
