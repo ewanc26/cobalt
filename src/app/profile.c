@@ -97,6 +97,16 @@ cobalt_profile_view_update(cobalt_profile_view *view, const cobalt_input *in)
       return COBALT_PROFILE_VIEW_STAY;
    }
 
+   if (profile->loaded && cobalt_input_pressed(in, COBALT_BTN_MENU)) {
+      if (cobalt_session_begin_profile_tab(cobalt_profile_tab_next(
+             cobalt_session_profile_tab(), profile->is_self))) {
+         view->selected = HEADER_ROW;
+         view->scroll = 0;
+         view->last_visible = -1;
+      }
+      return COBALT_PROFILE_VIEW_STAY;
+   }
+
    if (view->selected == HEADER_ROW) {
       /* Same three-button language a post row already uses (A / Left /
        * Right), just mapped to follow/mute/block instead of open/like/repost.
@@ -338,14 +348,15 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
 
    /* An account with no posts is normal; say so rather than leaving a gap. */
    if (feed->count == 0 && !cobalt_session_busy()) {
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, "No posts to show.", m->pad_edge,
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, "Nothing to show here.", m->pad_edge,
                        y + m->gap, COBALT_COLOUR_TILE);
    }
 
    SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   char hint_text[160];
+   snprintf(hint_text, sizeof(hint_text), "[%s]  +: tab   X: followers   Y: following   A/Left/Right: act   B: back",
+            cobalt_profile_tab_name(cobalt_session_profile_tab()));
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
-                    cobalt_session_busy()
-                       ? "Working..."
-                       : "A: follow/open   Left: like/mute   Right: repost/block   X: followers   Y: following   B: back",
+                    cobalt_session_busy() ? "Working..." : hint_text,
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }
