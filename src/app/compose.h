@@ -71,6 +71,12 @@ typedef struct {
    char root_cid[COBALT_POST_CID_MAX];
    char reply_to[COBALT_POST_NAME_MAX];   /* handle, for the header */
 
+   /* Quoted post, if any. Independent of the reply fields: a quote is a new
+    * top-level post that embeds another, never a reply. */
+   char quote_uri[COBALT_POST_URI_MAX];
+   char quote_cid[COBALT_POST_CID_MAX];
+   char quote_handle[COBALT_POST_NAME_MAX];
+
    /* Only meaningful when this is a new top-level post; ignored on replies. */
    cobalt_reply_gate reply_gate;
 } cobalt_compose;
@@ -80,6 +86,11 @@ void cobalt_compose_init(cobalt_compose *compose);
 
 /* Start a reply to `post`, carrying its conversation root. */
 void cobalt_compose_reply_to(cobalt_compose *compose, const cobalt_post *post);
+
+/* Start a post that quotes `post`. */
+void cobalt_compose_quote(cobalt_compose *compose, const cobalt_post *post);
+
+bool cobalt_compose_is_quote(const cobalt_compose *compose);
 
 bool cobalt_compose_is_reply(const cobalt_compose *compose);
 

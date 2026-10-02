@@ -54,9 +54,15 @@ avatars — off the frame loop, aspect-fit, with a flat placeholder frame while
 loading. An image with alt text gets a small "ALT" badge, and the selected
 post's own alt text is shown in full below it — the Wii U has no screen
 reader for homebrew to hand it to instead, so the card shows it directly.
-Video and quote posts still show as a marker (`[video]`, `[quote]`): those
-embeds are not decoded, and silently dropping them would make a video-only
-post look like an empty card.
+Quoted posts render as a nested card (author, handle, first lines of text), and
+you can write one from the thread view with X. Video still shows as a marker
+(`[video]`): it is not decoded, and silently dropping it would make a
+video-only post look like an empty card. A quote of a blocked or deleted post
+keeps the `[quote]` marker.
+
+Also in: deleting your own posts (Y in the thread view), follower and following
+lists (X/Y on a profile header), and Posts / Replies / Media / Likes profile
+tabs (+ on a profile).
 
 Some things in the official client are not coming, because the console cannot
 do them rather than because nobody has got to them yet: **video** and **GIFs**
