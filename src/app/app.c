@@ -550,10 +550,10 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
 static void
 update_home(cobalt_app *app, const cobalt_input *in)
 {
-   /* GamePad-only: the vertical list, so every direction steps by one. With the
-    * TV showing, the tiles are a two-row grid and Up/Down jump a row. */
-   const int cols = (MENU_COUNT + 1) / 2;
-   const int vstep = (app->display == COBALT_DISPLAY_DUAL) ? cols : 1;
+   /* The GamePad is the controller and always shows the vertical list, so
+    * every direction steps by one whatever the TV is drawing; the TV grid just
+    * follows the highlight. */
+   const int vstep = 1;
 
    if (cobalt_input_pressed(in, COBALT_BTN_RIGHT)) {
       app->selected = (app->selected + 1) % MENU_COUNT;
@@ -1154,7 +1154,7 @@ draw_home_drc(cobalt_app *app, cobalt_render *r)
 
    /* Ten rows do not fit in 480px: show a window that follows the selection and
     * leaves room under it for a notice and the footer. */
-   int visible = (m->height - top - m->pad_edge - 70) / pitch;
+   int visible = (m->height - top - m->pad_edge - (app->notice[0] ? 70 : 34)) / pitch;
    if (visible < 1) visible = 1;
    if (visible > MENU_COUNT) visible = MENU_COUNT;
    static int first;
