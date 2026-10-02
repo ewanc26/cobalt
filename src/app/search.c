@@ -26,6 +26,7 @@ cobalt_search_view_open(cobalt_search_view *view)
    view->query[0] = '\0';
    view->browsing = false;
    view->posts = false;
+   view->mode_hit_valid = false;
    view->selected = 0;
    view->scroll = 0;
    view->last_visible = -1;
@@ -44,6 +45,14 @@ cobalt_search_view_update(cobalt_search_view *view, const cobalt_input *in)
    }
 
    if (!view->browsing) {
+      if (view->mode_hit_valid && in->touch_ended) {
+         for (int i = 0; i < 2; i++) {
+            if (cobalt_input_tapped(in, &view->mode_hit[i])) {
+               view->posts = (i == 1);
+               return COBALT_SEARCH_VIEW_STAY;
+            }
+         }
+      }
       if (cobalt_input_pressed(in, COBALT_BTN_ALT_Y)) {
          view->posts = !view->posts;
          return COBALT_SEARCH_VIEW_STAY;
@@ -190,6 +199,31 @@ draw_editing(cobalt_search_view *view, cobalt_render *r,
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int top = cobalt_content_top(r);
 
+   /* People / Posts selector, right-aligned on the title line. */
+   {
+      const int seg_h = cobalt_font_line_height(r, COBALT_FONT_BODY) + 12;
+      const int seg_w = m->font_body * 5;
+      const int seg_y = m->pad_edge + 2;
+      static const char *labels[2] = { "People", "Posts" };
+      for (int i = 1; i >= 0; i--) {
+         SDL_Rect seg = { m->width - m->pad_edge - (2 - i) * seg_w -
+                             (1 - i) * 0 - (i == 0 ? 8 : 0),
+                          seg_y, seg_w, seg_h };
+         const bool on = (view->posts == (i == 1));
+         cobalt_fill_rounded_rect(r, &seg, seg_h / 2,
+                                  on ? COBALT_COLOUR_ACCENT
+                                     : (SDL_Color){ 0xFF, 0xFF, 0xFF, 0xE6 });
+         cobalt_draw_text_centred(r, COBALT_FONT_BODY, labels[i], seg.x,
+                                  seg.y + 6, seg.w,
+                                  on ? (SDL_Color){ 0xFF, 0xFF, 0xFF, 0xFF }
+                                     : COBALT_COLOUR_TEXT);
+         if (surface == COBALT_SURFACE_DRC) {
+            view->mode_hit[i] = seg;
+            view->mode_hit_valid = true;
+         }
+      }
+   }
+
    SDL_Rect box = { m->pad_edge, top, m->width - 2 * m->pad_edge,
                     m->pad_tile * 2 + cobalt_font_line_height(r, COBALT_FONT_BODY) };
    cobalt_draw_tile(r, &box, 1.0f);
@@ -197,8 +231,8 @@ draw_editing(cobalt_search_view *view, cobalt_render *r,
    char display[COBALT_SEARCH_QUERY_MAX + 4];
    cobalt_keyboard_display_text(&view->kb, display, sizeof(display));
    const char *shown = display[0] ? display
-                       : view->posts ? "Search posts... (Y: people)"
-                                     : "Search accounts... (Y: posts)";
+                       : view->posts ? "Search posts..."
+                                     : "Search accounts...";
    cobalt_draw_text(r, COBALT_FONT_BODY, shown, box.x + m->pad_tile,
                     box.y + m->pad_tile,
                     display[0] ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM);
