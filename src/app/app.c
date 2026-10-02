@@ -276,6 +276,12 @@ cobalt_app_create(void)
    return app;
 }
 
+cobalt_screen
+cobalt_app_screen(const cobalt_app *app)
+{
+   return app ? app->screen : COBALT_SCREEN_HOME;
+}
+
 int
 cobalt_app_home_selection(const cobalt_app *app)
 {
@@ -731,6 +737,38 @@ update_signin(cobalt_app *app, const cobalt_input *in)
    }
 }
 
+/* The header's back pill, the Miiverse corner button. Screens where B types
+ * (compose, sign-in, search) keep the keyboard's own Cancel instead. */
+static SDL_Rect s_back_hit;
+static bool s_back_hit_valid = false;
+
+static bool
+screen_has_back_pill(cobalt_screen s)
+{
+   return s != COBALT_SCREEN_HOME && s != COBALT_SCREEN_COMPOSE &&
+          s != COBALT_SCREEN_SIGN_IN && s != COBALT_SCREEN_SEARCH;
+}
+
+static void
+draw_back_pill(cobalt_render *r, cobalt_surface_id surface)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const char *label = "B  Back";
+   int tw = 0, th = 0;
+   cobalt_text_size(r, COBALT_FONT_CAPTION, label, &tw, &th);
+   const int padx = m->pad_tile / 2 + 6;
+   SDL_Rect pill = { m->width - m->pad_edge - tw - 2 * padx, m->pad_edge,
+                     tw + 2 * padx, th + 10 };
+   const SDL_Color fill = { 0xFF, 0xFF, 0xFF, 0x38 };
+   const SDL_Color white = { 0xFF, 0xFF, 0xFF, 0xFF };
+   cobalt_fill_rounded_rect(r, &pill, pill.h / 2, fill);
+   cobalt_draw_text(r, COBALT_FONT_CAPTION, label, pill.x + padx, pill.y + 5, white);
+   if (surface == COBALT_SURFACE_DRC) {
+      s_back_hit = pill;
+      s_back_hit_valid = true;
+   }
+}
+
 void
 cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
 {
@@ -740,6 +778,15 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
 
    (void) now_ms;
    app->frames++;
+
+   cobalt_input tapped_back;
+   if (s_back_hit_valid && screen_has_back_pill(app->screen) &&
+       cobalt_input_tapped(in, &s_back_hit)) {
+      tapped_back = *in;
+      tapped_back.pressed[COBALT_BTN_BACK] = true;
+      tapped_back.touch_ended = false;
+      in = &tapped_back;
+   }
 
    if (in->quit_requested) {
       app->quit = true;
@@ -1509,6 +1556,12 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
             draw_home_tv(app, r);
          }
          break;
+   }
+
+   if (screen_has_back_pill(app->screen)) {
+      draw_back_pill(r, surface);
+   } else if (surface == COBALT_SURFACE_DRC) {
+      s_back_hit_valid = false;
    }
 
    cobalt_session_unlock();
