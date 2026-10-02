@@ -1169,10 +1169,53 @@ utf8_prev(const char *s, size_t pos)
    return i;
 }
 
+/* Draw one wrapped line whose first byte is at `base` in the whole text,
+ * switching colour at span boundaries. */
+static void
+draw_line_spans(cobalt_render *r, cobalt_font_id font_id, TTF_Font *font,
+                const char *line, int base, int x, int y, SDL_Color colour,
+                const cobalt_text_span *spans, int span_count)
+{
+   const int n = (int) strlen(line);
+   int p = 0;
+   while (p < n) {
+      const cobalt_text_span *in = NULL;
+      int next = n;
+      for (int i = 0; i < span_count; i++) {
+         const int a = spans[i].start - base;
+         const int b = spans[i].end - base;
+         if (a <= p && p < b) {
+            in = &spans[i];
+            next = b < n ? b : n;
+            break;
+         }
+         if (a > p && a < next) {
+            next = a;
+         }
+      }
+      char seg[TEXT_KEY_MAX];
+      int len = next - p;
+      if (len >= (int) sizeof(seg)) {
+         len = (int) sizeof(seg) - 1;
+      }
+      memcpy(seg, line + p, (size_t) len);
+      seg[len] = '\0';
+      const SDL_Color c = in ? in->colour : colour;
+      const int w = cobalt_draw_text(r, font_id, seg, x, y, c);
+      if (in && in->underline && w > 0) {
+         const SDL_Rect ul = { x, y + TTF_FontAscent(font) + 2, w, 1 };
+         cobalt_fill_rect(r, &ul, c);
+      }
+      x += w;
+      p = next;
+   }
+}
+
 static int
 wrapped_impl(cobalt_render *r, cobalt_font_id font_id, const char *utf8,
              int x, int y, int max_width, int first_line, int max_lines,
-             SDL_Color colour, bool draw, int *total_lines)
+             SDL_Color colour, bool draw, int *total_lines,
+             const cobalt_text_span *spans, int span_count)
 {
    if (total_lines) {
       *total_lines = 0;
@@ -1258,7 +1301,12 @@ wrapped_impl(cobalt_render *r, cobalt_font_id font_id, const char *utf8,
 
       if (drawn_lines >= first_line) {
          if (draw) {
-            cobalt_draw_text(r, font_id, line, x, y + used_height, colour);
+            if (spans && span_count > 0) {
+               draw_line_spans(r, font_id, font, line, (int) (cursor - utf8), x,
+                               y + used_height, colour, spans, span_count);
+            } else {
+               cobalt_draw_text(r, font_id, line, x, y + used_height, colour);
+            }
          }
          used_height += line_height;
       }
@@ -1278,7 +1326,7 @@ cobalt_draw_text_wrapped(cobalt_render *r, cobalt_font_id font_id, const char *u
                          int x, int y, int max_width, int max_lines, SDL_Color colour)
 {
    return wrapped_impl(r, font_id, utf8, x, y, max_width, 0, max_lines, colour,
-                       true, NULL);
+                       true, NULL, NULL, 0);
 }
 
 int
@@ -1287,7 +1335,7 @@ cobalt_draw_text_wrapped_from(cobalt_render *r, cobalt_font_id font_id,
                               int first_line, int max_lines, SDL_Color colour)
 {
    return wrapped_impl(r, font_id, utf8, x, y, max_width, first_line, max_lines,
-                       colour, true, NULL);
+                       colour, true, NULL, NULL, 0);
 }
 
 int
@@ -1296,7 +1344,7 @@ cobalt_text_wrapped_lines(cobalt_render *r, cobalt_font_id font_id,
 {
    int total = 0;
    SDL_Color none = { 0, 0, 0, 0 };
-   wrapped_impl(r, font_id, utf8, 0, 0, max_width, 0, 4096, none, false, &total);
+   wrapped_impl(r, font_id, utf8, 0, 0, max_width, 0, 4096, none, false, &total, NULL, 0);
    return total;
 }
 
@@ -1313,4 +1361,14 @@ cobalt_render_flush_text_cache(cobalt_render *r)
       }
       r->cache[i].in_use = false;
    }
+}
+
+int
+cobalt_draw_text_wrapped_spans(cobalt_render *r, cobalt_font_id font_id,
+                               const char *utf8, int x, int y, int max_width,
+                               int first_line, int max_lines, SDL_Color colour,
+                               const cobalt_text_span *spans, int span_count)
+{
+   return wrapped_impl(r, font_id, utf8, x, y, max_width, first_line, max_lines,
+                       colour, true, NULL, spans, span_count);
 }

@@ -183,6 +183,20 @@ int cobalt_draw_text_wrapped_from(cobalt_render *r, cobalt_font_id font, const c
                                   int x, int y, int max_width, int first_line,
                                   int max_lines, SDL_Color colour);
 
+/* A coloured byte range of the text being drawn (rich text facets). */
+typedef struct {
+   int start;
+   int end;
+   SDL_Color colour;
+   bool underline;
+} cobalt_text_span;
+
+/* As cobalt_draw_text_wrapped_from, colouring the byte ranges in `spans`. */
+int cobalt_draw_text_wrapped_spans(cobalt_render *r, cobalt_font_id font,
+                                   const char *utf8, int x, int y, int max_width,
+                                   int first_line, int max_lines, SDL_Color colour,
+                                   const cobalt_text_span *spans, int span_count);
+
 /* How many lines `utf8` wraps to at `max_width` (no truncation). */
 int cobalt_text_wrapped_lines(cobalt_render *r, cobalt_font_id font,
                               const char *utf8, int max_width);

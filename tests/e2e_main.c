@@ -64,8 +64,17 @@ main(int argc, char **argv)
    wf_mock_pds_register(pds, "app.bsky.feed.getTimeline", tl);
 
    char sr[1024];
-   snprintf(sr, sizeof sr, "{\"posts\":[%s],\"cursor\":\"s1\"}",
-            post_json("3", "found by search"));
+   snprintf(sr, sizeof sr, "{\"posts\":[{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/3\","
+      "\"cid\":\"bafy3\",\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\"},"
+      "\"record\":{\"text\":\"found by search\",\"createdAt\":\"2026-10-01T10:00:00.000Z\","
+      "\"facets\":[{\"index\":{\"byteStart\":9,\"byteEnd\":15},\"features\":"
+      "[{\"$type\":\"app.bsky.richtext.facet#link\",\"uri\":\"https://x.io\"}]},"
+      "{\"index\":{\"byteStart\":3,\"byteEnd\":99},\"features\":"
+      "[{\"$type\":\"app.bsky.richtext.facet#tag\",\"tag\":\"t\"}]},"
+      "{\"index\":{\"byteStart\":40,\"byteEnd\":50},\"features\":"
+      "[{\"$type\":\"app.bsky.richtext.facet#mention\",\"did\":\"did:plc:b\"}]}]},"
+      "\"likeCount\":0,\"repostCount\":0,\"replyCount\":0,"
+      "\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}],\"cursor\":\"s1\"}");
    wf_mock_pds_register(pds, "app.bsky.feed.searchPosts", sr);
 
    char fd[1024];
@@ -110,6 +119,11 @@ main(int argc, char **argv)
    CHECK(wait_job(&r) && r.ok);
    CHECK(cobalt_session_feed()->count == 1);
    CHECK(strcmp(cobalt_session_feed()->posts[0].text, "found by search") == 0);
+   /* Facets: link kept, end clipped to the text, out-of-range start dropped. */
+   CHECK(cobalt_session_feed()->posts[0].facet_count == 2);
+   CHECK(cobalt_session_feed()->posts[0].facets[0].kind == COBALT_FACET_LINK);
+   CHECK(cobalt_session_feed()->posts[0].facets[1].kind == COBALT_FACET_TAG);
+   CHECK(cobalt_session_feed()->posts[0].facets[1].end == 15);
    CHECK(cobalt_session_feed()->has_more);
 
    /* Refresh follows the search, not the home timeline. */
