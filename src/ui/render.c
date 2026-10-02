@@ -1169,10 +1169,14 @@ utf8_prev(const char *s, size_t pos)
    return i;
 }
 
-int
-cobalt_draw_text_wrapped(cobalt_render *r, cobalt_font_id font_id, const char *utf8,
-                         int x, int y, int max_width, int max_lines, SDL_Color colour)
+static int
+wrapped_impl(cobalt_render *r, cobalt_font_id font_id, const char *utf8,
+             int x, int y, int max_width, int first_line, int max_lines,
+             SDL_Color colour, bool draw, int *total_lines)
 {
+   if (total_lines) {
+      *total_lines = 0;
+   }
    TTF_Font *font = font_of(r, font_id);
    if (!r || !font || !utf8 || max_width <= 0 || max_lines <= 0) {
       return 0;
@@ -1185,7 +1189,7 @@ cobalt_draw_text_wrapped(cobalt_render *r, cobalt_font_id font_id, const char *u
    int drawn_lines = 0;
    int used_height = 0;
 
-   while (*cursor && drawn_lines < max_lines) {
+   while (*cursor && drawn_lines < first_line + max_lines) {
       size_t len = 0;          /* bytes committed to this line */
       size_t last_break = 0;   /* byte offset just past the last space */
       bool overflowed = false;
@@ -1225,7 +1229,7 @@ cobalt_draw_text_wrapped(cobalt_render *r, cobalt_font_id font_id, const char *u
 
       line[len] = '\0';
 
-      bool is_last_allowed = (drawn_lines == max_lines - 1);
+      bool is_last_allowed = (drawn_lines == first_line + max_lines - 1);
       const char *tail = cursor + (overflowed && last_break > 0 ? last_break : len);
       while (*tail == ' ') {
          tail++;
@@ -1252,14 +1256,48 @@ cobalt_draw_text_wrapped(cobalt_render *r, cobalt_font_id font_id, const char *u
          }
       }
 
-      cobalt_draw_text(r, font_id, line, x, y + used_height, colour);
-      used_height += line_height;
+      if (drawn_lines >= first_line) {
+         if (draw) {
+            cobalt_draw_text(r, font_id, line, x, y + used_height, colour);
+         }
+         used_height += line_height;
+      }
       drawn_lines++;
+      if (total_lines) {
+         *total_lines = drawn_lines;
+      }
 
       cursor = tail;
    }
 
    return used_height;
+}
+
+int
+cobalt_draw_text_wrapped(cobalt_render *r, cobalt_font_id font_id, const char *utf8,
+                         int x, int y, int max_width, int max_lines, SDL_Color colour)
+{
+   return wrapped_impl(r, font_id, utf8, x, y, max_width, 0, max_lines, colour,
+                       true, NULL);
+}
+
+int
+cobalt_draw_text_wrapped_from(cobalt_render *r, cobalt_font_id font_id,
+                              const char *utf8, int x, int y, int max_width,
+                              int first_line, int max_lines, SDL_Color colour)
+{
+   return wrapped_impl(r, font_id, utf8, x, y, max_width, first_line, max_lines,
+                       colour, true, NULL);
+}
+
+int
+cobalt_text_wrapped_lines(cobalt_render *r, cobalt_font_id font_id,
+                          const char *utf8, int max_width)
+{
+   int total = 0;
+   SDL_Color none = { 0, 0, 0, 0 };
+   wrapped_impl(r, font_id, utf8, 0, 0, max_width, 0, 4096, none, false, &total);
+   return total;
 }
 
 void

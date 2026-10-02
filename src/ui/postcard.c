@@ -540,9 +540,9 @@ draw_embed_media(cobalt_render *r, const cobalt_post *post, int x, int y,
 }
 
 void
-cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
-                     const SDL_Rect *rect, bool focused, int text_lines,
-                     int indent)
+cobalt_postcard_draw_scrolled(cobalt_render *r, const cobalt_post *post,
+                              const SDL_Rect *rect, bool focused, int text_lines,
+                              int indent, int first_line)
 {
    if (!r || !post || !rect) {
       return;
@@ -633,8 +633,9 @@ cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
    /* An image-only post has no text at all, which is legitimate — the embed
     * note below is then the only thing describing it. */
    if (post->text[0]) {
-      cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, post->text, text_left, y,
-                               text_width, text_lines, COBALT_COLOUR_TEXT);
+      cobalt_draw_text_wrapped_from(r, COBALT_FONT_BODY, post->text, text_left, y,
+                                    text_width, first_line, text_lines,
+                                    COBALT_COLOUR_TEXT);
    }
    y += text_lines * (body_h + m->line_gap);
 
@@ -710,4 +711,26 @@ cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
                           COBALT_COLOUR_ACCENT_TEXT);
       }
    }
+}
+
+void
+cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
+                     const SDL_Rect *rect, bool focused, int text_lines,
+                     int indent)
+{
+   cobalt_postcard_draw_scrolled(r, post, rect, focused, text_lines, indent, 0);
+}
+
+int
+cobalt_postcard_text_total(cobalt_render *r, const cobalt_post *post, int card_w,
+                           int indent)
+{
+   if (!r || !post || !post->text[0]) {
+      return 0;
+   }
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const int width = card_w - indent * INDENT_STEP(m) -
+                     (AVATAR_SIDE(m) + AVATAR_GAP(m)) - 2 * m->pad_tile;
+   return width > 0 ? cobalt_text_wrapped_lines(r, COBALT_FONT_BODY, post->text, width)
+                    : 0;
 }

@@ -87,6 +87,17 @@ void cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
                           const SDL_Rect *rect, bool focused, int text_lines,
                           int indent);
 
+/* As cobalt_postcard_draw, starting the post text at wrapped line `first_line`
+ * (for scrolling a post taller than the screen). */
+void cobalt_postcard_draw_scrolled(cobalt_render *r, const cobalt_post *post,
+                                   const SDL_Rect *rect, bool focused,
+                                   int text_lines, int indent, int first_line);
+
+/* Total wrapped lines of the post's text in a row of full width `card_w` at
+ * reply depth `indent`. */
+int cobalt_postcard_text_total(cobalt_render *r, const cobalt_post *post,
+                               int card_w, int indent);
+
 #ifdef __cplusplus
 }
 #endif

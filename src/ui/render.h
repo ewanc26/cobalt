@@ -177,6 +177,16 @@ int cobalt_draw_text_wrapped(cobalt_render *r, cobalt_font_id font, const char *
                              int x, int y, int max_width, int max_lines,
                              SDL_Color colour);
 
+/* As cobalt_draw_text_wrapped, but skips the first `first_line` wrapped lines,
+ * for scrolling through a long post. */
+int cobalt_draw_text_wrapped_from(cobalt_render *r, cobalt_font_id font, const char *utf8,
+                                  int x, int y, int max_width, int first_line,
+                                  int max_lines, SDL_Color colour);
+
+/* How many lines `utf8` wraps to at `max_width` (no truncation). */
+int cobalt_text_wrapped_lines(cobalt_render *r, cobalt_font_id font,
+                              const char *utf8, int max_width);
+
 /* Bottom edge of the blue title band, and where screen content may start. */
 int cobalt_header_height(cobalt_render *r);
 int cobalt_content_top(cobalt_render *r);

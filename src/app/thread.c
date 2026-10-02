@@ -30,6 +30,8 @@ cobalt_thread_view_reset(cobalt_thread_view *view)
       return;
    }
    view->selected = 0;
+   view->text_scroll = 0;
+   view->text_for = 0;
    view->scroll = 0;
    view->last_visible = -1;
    view->centred = false;
@@ -84,18 +86,37 @@ cobalt_thread_view_update(cobalt_thread_view *view, const cobalt_input *in)
     */
    cobalt_list_clamp(&view->selected, &view->scroll, thread->count);
 
-   if (cobalt_input_pressed(in, COBALT_BTN_DOWN) &&
-       view->selected < thread->count - 1) {
-      view->selected++;
+   /* Down and Up read through a long post before leaving it. */
+   const int text_max = view->text_total - view->text_window;
+   if (cobalt_input_pressed(in, COBALT_BTN_DOWN)) {
+      if (view->text_scroll < text_max) {
+         view->text_scroll++;
+      } else if (view->selected < thread->count - 1) {
+         view->selected++;
+      }
    }
-   if (cobalt_input_pressed(in, COBALT_BTN_UP) && view->selected > 0) {
-      view->selected--;
+   if (cobalt_input_pressed(in, COBALT_BTN_UP)) {
+      if (view->text_scroll > 0) {
+         view->text_scroll--;
+      } else if (view->selected > 0) {
+         view->selected--;
+      }
+   }
+   if (view->selected != view->text_for) {
+      view->text_for = view->selected;
+      view->text_scroll = 0;
+      view->text_total = 0;
+      view->text_window = 0;
    }
 
    if (view->hit_valid && in->touch_ended) {
       for (int i = 0; i < view->hit_count; i++) {
          if (cobalt_input_tapped(in, &view->hit[i])) {
             view->selected = view->hit_index[i];
+            view->text_for = view->selected;
+            view->text_scroll = 0;
+            view->text_total = 0;
+            view->text_window = 0;
             break;
          }
       }
@@ -207,21 +228,89 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
       return;
    }
 
+   /* The selected post shows as much of its text as fits, scrolled by lines;
+    * the others keep the fixed truncation. */
+   int sel_lines = TEXT_LINES;
+   int win = 0;
+   int first = 0;
+   int tot = 0;
+   if (view->selected >= 0 && view->selected < thread->count) {
+      const cobalt_post *sp = &thread->posts[view->selected];
+      const int full_w = m->width - 2 * m->pad_edge;
+      const int total = cobalt_postcard_text_total(r, sp, full_w,
+                                                   thread->depth[view->selected]);
+      const int line_h = cobalt_font_line_height(r, COBALT_FONT_BODY) + m->line_gap;
+      const int base = cobalt_postcard_height(r, sp, 0, true);
+      int fit = line_h > 0 ? (bottom - top - base) / line_h : TEXT_LINES;
+      if (fit < TEXT_LINES) {
+         fit = TEXT_LINES;
+      }
+      sel_lines = total < fit ? (total > TEXT_LINES ? total : TEXT_LINES) : fit;
+      win = sel_lines < total ? sel_lines : total;
+      if (touchable) {
+         view->text_total = total;
+         view->text_window = win;
+      }
+      tot = total;
+      first = view->text_scroll;
+      if (first > total - win) {
+         first = total - win;
+      }
+      if (first < 0) {
+         first = 0;
+      }
+      if (touchable) {
+         view->text_scroll = first;
+      }
+   }
+
+   /* Make sure the (possibly tall) selected card is actually on screen. */
+   while (view->scroll < view->selected) {
+      int span = 0;
+      for (int k = view->scroll; k <= view->selected; k++) {
+         span += cobalt_postcard_height(r, &thread->posts[k],
+                                        k == view->selected ? sel_lines : TEXT_LINES,
+                                        k == view->selected) + m->gap;
+      }
+      if (span <= bottom - top) {
+         break;
+      }
+      view->scroll++;
+   }
+
    int y = top;
    int last_fitted = view->scroll;
 
    for (int i = view->scroll; i < thread->count; i++) {
       const cobalt_post *post = &thread->posts[i];
-      const int h = cobalt_postcard_height(r, post, TEXT_LINES,
-                                           i == view->selected);
+      const int lines = i == view->selected ? sel_lines : TEXT_LINES;
+      const int h = cobalt_postcard_height(r, post, lines, i == view->selected);
 
       if (y + h > bottom && i > view->scroll) {
          break;
       }
 
       SDL_Rect rect = { m->pad_edge, y, m->width - 2 * m->pad_edge, h };
-      cobalt_postcard_draw(r, post, &rect, i == view->selected, TEXT_LINES,
-                           thread->depth[i]);
+      cobalt_postcard_draw_scrolled(r, post, &rect, i == view->selected, lines,
+                                    thread->depth[i],
+                                    i == view->selected ? first : 0);
+
+      if (i == view->selected && tot > win && win > 0) {
+         const int track_h = rect.h - 2 * m->pad_tile;
+         int thumb_h = track_h * win / tot;
+         if (thumb_h < 8) {
+            thumb_h = 8;
+         }
+         const int span = tot - win;
+         const int thumb_y = rect.y + m->pad_tile +
+                             (track_h - thumb_h) * first / span;
+         SDL_Color track = COBALT_COLOUR_TEXT_DIM;
+         track.a = 70;
+         const SDL_Rect tr = { rect.x + rect.w - 6, rect.y + m->pad_tile, 3, track_h };
+         const SDL_Rect th = { rect.x + rect.w - 6, thumb_y, 3, thumb_h };
+         cobalt_fill_rect(r, &tr, track);
+         cobalt_fill_rect(r, &th, COBALT_COLOUR_ACCENT);
+      }
 
       /* The post the thread was opened on gets an accent edge, so it stays
        * findable after scrolling away from it and back. */

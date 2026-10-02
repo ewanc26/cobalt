@@ -7,10 +7,10 @@
 static const char *
 post_json(const char *n, const char *text)
 {
-   static char buf[4][1400];
+   static char buf[4][2000];
    static int k;
    char *b = buf[k++ & 3];
-   snprintf(b, 1400,
+   snprintf(b, 2000,
       "{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/%s\",\"cid\":\"bafy%s\","
       "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\","
       "\"displayName\":\"Alice Example\"},\"record\":{\"$type\":\"app.bsky.feed.post\","
@@ -51,10 +51,10 @@ register_fixtures(wf_mock_pds *pds)
       post_json("1", "Hello from the Wii U. A longer post that should wrap across several lines on both the television and the GamePad so we can see how the card handles it."),
       post_json("2", "second post"), post_json("3", "third post with unicode: caf\u00e9 \u65e5\u672c\u8a9e \\ud83d\\ude00"), longp, imgp, extp);
    wf_mock_pds_register(pds, "app.bsky.feed.getTimeline", tl);
-   char th[4000];
+   char th[6000];
    snprintf(th, sizeof th, "{\"thread\":{\"$type\":\"app.bsky.feed.defs#threadViewPost\",\"post\":%s,"
       "\"replies\":[{\"$type\":\"app.bsky.feed.defs#threadViewPost\",\"post\":%s,\"replies\":[]}]}}",
-      post_json("1", "Hello from the Wii U."), post_json("9", "A reply in the thread."));
+      post_json("1", "Line 1 of a long thread post that must scroll. Line 2 of a long thread post that must scroll. Line 3 of a long thread post that must scroll. Line 4 of a long thread post that must scroll. Line 5 of a long thread post that must scroll. Line 6 of a long thread post that must scroll. Line 7 of a long thread post that must scroll. Line 8 of a long thread post that must scroll. Line 9 of a long thread post that must scroll. Line 10 of a long thread post that must scroll. Line 11 of a long thread post that must scroll. Line 12 of a long thread post that must scroll. Line 13 of a long thread post that must scroll. Line 14 of a long thread post that must scroll. Line 15 of a long thread post that must scroll. Line 16 of a long thread post that must scroll."), post_json("9", "A reply in the thread."));
    wf_mock_pds_register(pds, "app.bsky.feed.getPostThread", th);
    wf_mock_pds_register(pds, "app.bsky.actor.getProfile",
       "{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\",\"displayName\":\"Alice Example\","
