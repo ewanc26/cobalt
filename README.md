@@ -3,232 +3,215 @@
 A native AT Protocol / Bluesky client for the Nintendo Wii U, built as Aroma
 homebrew with devkitPro/WUT and SDL2.
 
-It is meant to feel like a Wii U app that happens to show Bluesky content —
-rounded tiles, the system's blues and whites, a real GamePad layout — rather
-than the Bluesky website rendered on a TV through the console's ageing browser.
-Both screens are first-class: TV plus GamePad together, and Off-TV Play with the
-GamePad on its own.
+Cobalt is designed as a Wii U application rather than a web client squeezed
+onto an old browser. The TV and GamePad are both first-class displays, with
+support for normal two-screen play and Off-TV Play.
 
-Cobalt is named after a blue mineral, following the naming convention across
-Ewan's other projects (Wolfram, Malachite, Tourmaline, Inkwell, Bismuth), and
-deliberately echoing [Channel Blue](https://github.com/ewanc26), its Wii
-counterpart.
+Cobalt is part of Ewan's AT Protocol projects, alongside
+[Wolfram](https://github.com/ewanc26/wolfram), the SDK that provides its
+wire-level AT Protocol implementation. The name follows the same mineral and
+material naming convention as Wolfram, Malachite, Tourmaline, Inkwell and
+Bismuth, while deliberately echoing [Channel Blue](https://github.com/ewanc26),
+the Wii counterpart.
 
 ## Status
 
-**Early, but usable in shape.** Reading, posting and interacting all exist;
-nothing has been run on a Wii U yet.
+**Early, but usable in shape.**
 
-| | |
-|---|---|
-| Boots on real hardware, exits cleanly to the Wii U Menu | done |
-| TV + GamePad and Off-TV Play layouts | done |
-| Diagnostics screen (paths, network, TLS, session) | done |
-| Sign in with an app password, on-screen keyboard | done |
-| Session saved across boots, sign out | done |
-| Timeline — text posts, reposts, paging | done |
-| Threads, with replies and re-rooting | done |
-| Like and repost, with undo | done |
-| Posting and replying | done |
-| Notifications, with mark-as-seen | done |
-| Profiles, follow and unfollow | done |
-| Avatars, on posts, replies, notifications and profiles | done |
-| Post images and link cards | done |
-| Mute and block, from a profile or the account screen's lists | done |
-| Actor search | done |
-| Custom feeds, browse-only lists | done |
-| Reply gates (threadgates) on new posts | done |
-| Quote post rendering and quote posting | done |
-| Delete own post, followers/following lists, profile tabs, pinned post | done |
-| Post language tag, image attach with alt text (posts, quotes, replies) | done |
-| Post search (Y toggles People/Posts in Search) | done |
-| Video, GIFs, DMs, push notifications | not planned — see below |
+The application has a substantial amount of the core Bluesky client surface
+implemented and has been through host-side compilation, unit tests, link
+checks and a live desktop simulator. It has **not yet been run on a real Wii
+U**. Treat the feature list below as implemented and host-tested, not as a
+claim of hardware support.
 
-**Nothing here has run on a Wii U yet.** It builds, and an extensive host test
-suite passes, but every milestone's real acceptance test is the console and none
-of them have had one. Treat the "done" column as "written and host-tested".
+### Implemented
 
-Avatars are fetched, decoded and scaled on background threads and drawn as
-circles; until one arrives — and permanently, for accounts that have not set
-one — the card shows the author's initial on a disc tinted from their handle,
-so the column stays scannable rather than becoming a row of identical grey.
-Post images and link-card previews are decoded and drawn the same way as
-avatars — off the frame loop, aspect-fit, with a flat placeholder frame while
-loading. An image with alt text gets a small "ALT" badge, and the selected
-post's own alt text is shown in full below it — the Wii U has no screen
-reader for homebrew to hand it to instead, so the card shows it directly.
-Quoted posts render as a nested card (author, handle, first lines of text), and
-you can write one from the thread view with X. Video still shows as a marker
-(`[video]`): it is not decoded, and silently dropping it would make a
-video-only post look like an empty card. A quote of a blocked or deleted post
-keeps the `[quote]` marker.
+- TV + GamePad and Off-TV Play layouts
+- Diagnostics screen covering paths, networking, TLS, SDK and session state
+- App-password sign-in with an on-screen keyboard
+- Encrypted session persistence and sign-out
+- Home timeline with paging, reposts and threads
+- Replies, posting, quote posts and reply gates
+- Likes and reposts, including undo
+- Notifications and mark-as-seen
+- Profiles, follows and unfollows
+- Followers, following and profile tabs
+- Pinned posts
+- Post, reply and quote images with alt text
+- Link-card previews
+- Avatars throughout posts, replies, notifications and profiles
+- Actor search
+- Custom feed browsing
+- Read-only lists and list members
+- Mute and block, including browsable lists
+- Post search
 
-Also in: deleting your own posts (Y in the thread view), follower and following
-lists (X/Y on a profile header), and Posts / Replies / Media / Likes profile
-tabs (+ on a profile). Pinned posts show first on a profile, and the account
-screen picks the language tag new posts carry.
+### Deliberately not planned
 
-Posts, quotes and replies can carry one image: in the post confirmation choose
-**Add image** and pick a `.jpg`/`.png` (under 950 KB) from `images/` in the
-app's data folder on the SD card, then type its alt text (optional).
+Some Bluesky features do not have a realistic implementation path on the
+Wii U:
 
-Some things in the official client are not coming, because the console cannot
-do them rather than because nobody has got to them yet: **video** and **GIFs**
-(no decoder, and no realistic path to one at this clock speed), **push
-notifications** (no service the console can register with), and **OAuth
-sign-in** (nowhere to host a redirect target — see Authentication below).
+- **Video and GIFs** — there is no suitable decoder available for this target
+  at the performance and dependency budget Cobalt is working with.
+- **Push notifications** — the Wii U has no service Cobalt can register with
+  for modern push delivery.
+- **OAuth sign-in** — the console has nowhere sensible to host the redirect
+  target, making the browser-based flow a poor fit for this application.
+
+These are platform constraints, not simply items that have not been reached yet.
 
 ## Requirements
 
-You need a Wii U that **already** has [Aroma](https://aroma.foryour.cafe/)
-installed. Cobalt does not install or facilitate the exploit that gets you
-there, and never will — it assumes you have already done that yourself.
+Cobalt requires a Wii U with [Aroma](https://aroma.foryour.cafe/) already
+installed. It does not install or facilitate the exploit required to get
+Aroma running.
 
-You also need a **Bluesky app password**, not your account password. Create one
-under Settings → Privacy and Security → App Passwords. Accounts with two-factor
-authentication enabled cannot use app passwords; see "Authentication" below.
+For networked AT Protocol features you also need a Bluesky **app password**.
+Cobalt does not use or store your normal account password.
 
-## Installing
+The development environment requires:
 
-Copy `cobalt.wuhb` to `sd:/wiiu/apps/` on the console's SD card, then launch it
-from the Wii U Menu (Aroma shows homebrew alongside your installed titles).
-
-If you build it yourself, use `make bundle` and copy the whole `dist/wiiu` tree
-across — that carries the per-installation entropy seed described below, which
-the app needs and which is not part of the `.wuhb`.
+- devkitPro with devkitPPC and the WUT SDK
+- Wii U SDL2, SDL2_ttf and SDL2_image
+- Wii U curl and mbedTLS
+- a sibling checkout of [Wolfram](https://github.com/ewanc26/wolfram) for
+  AT Protocol functionality
+- OpenSSL on the build machine for generating the per-installation entropy
+  seed
 
 ## Building
 
-```sh
-# Toolchain (once)
-sudo dkp-pacman -S wiiu-dev wiiu-sdl2 wiiu-sdl2_ttf wiiu-sdl2_image \
-                   wiiu-curl wiiu-mbedtls
+Install the Wii U toolchain and port libraries through devkitPro, then build
+Wolfram first:
 
-# Wolfram — the AT Protocol SDK, as a sibling checkout.
-# Needs a version with wf_xrpc_client_set_tls_rng(); an older one will fail to
-# compile rather than quietly build without the TLS randomness fix.
+```sh
 git clone https://github.com/ewanc26/wolfram ../wolfram
+
 cd ../wolfram
 cmake -S . -B build-wiiu \
-   -DCMAKE_TOOLCHAIN_FILE=$PWD/.devdeps/wiiu.cmake \
-   -DWOLFRAM_BUILD_WIIU=ON -DWOLFRAM_BUILD_TESTS=OFF -DWOLFRAM_BUILD_EXAMPLES=OFF
+  -DCMAKE_TOOLCHAIN_FILE=$PWD/.devdeps/wiiu.cmake \
+  -DWOLFRAM_BUILD_WIIU=ON \
+  -DWOLFRAM_BUILD_TESTS=OFF \
+  -DWOLFRAM_BUILD_EXAMPLES=OFF
 cmake --build build-wiiu -j8 --target wolfram
-cd -
 
-# Cobalt
+cd ../cobalt
 make bundle
 ```
 
-`make` picks Wolfram up automatically from `../wolfram/build-wiiu`. Without it
-Cobalt still builds and boots, but every ATProto feature is disabled and the
-diagnostics screen says so.
+Cobalt looks for Wolfram at `../wolfram/build-wiiu` by default. The paths
+can be overridden with `WOLFRAM_ROOT` and `WOLFRAM_BUILD`.
 
-Other targets:
+Without a built Wolfram checkout, Cobalt still builds, but AT Protocol
+functionality is disabled and the diagnostics screen reports that state.
 
-| Target | What it does |
+### Build targets
+
+| Command | Purpose |
 |---|---|
-| `make` | Build `cobalt.wuhb` |
-| `make bundle` | Build, plus a per-installation entropy seed, into `dist/` |
-| `make test` | Host compile sweep and unit tests — see `tests/README.md` |
-| `make cacert` | Re-fetch the bundled TLS trust store |
-| `make clean` | Remove build output |
+| `make` | Build the Wii U application |
+| `make bundle` | Build and create a per-installation entropy seed |
+| `make test` | Run host-side checks |
+| `make cacert` | Refresh the bundled TLS trust store |
+| `make clean` | Remove build and generated output |
+| `make run` | Print the expected installation/push location |
 
-### The TLS trust store
+## Installing
 
-devkitPro's `wiiu-curl` is built against mbedTLS, and the Wii U has no system
-certificate store behind it. Without an explicit CA bundle every HTTPS request
-fails verification, so `make` fetches one into `romfs/cacert.pem` via
-`tools/fetch_cacert.sh` and Cobalt points Wolfram at it.
+For a normal installation, copy `cobalt.wuhb` to:
 
-It is fetched rather than committed, because the Mozilla set expires and a stale
-bundle in git fails on console in a way that reads as a network bug. If sign-in
-starts failing with a connection error some months from now, `make cacert` is
-the first thing to try. An offline build still succeeds — it just cannot reach a
-PDS, and the diagnostics screen reports the trust store as missing.
+```
+sd:/wiiu/apps/
+```
 
-## Authentication
+For a complete installation built with `make bundle`, copy the whole
+`dist/wiiu` tree instead. The bundle includes an entropy seed that is
+required for cryptographic operations on the Wii U.
 
-Cobalt signs in with **app passwords** (`com.atproto.server.createSession`).
+Cobalt can also be loaded in Cemu for development. Cemu is useful for checking
+the application loop and broad UI behaviour, but it is not the hardware
+acceptance target and does not reproduce every GamePad, networking or TLS
+condition of a real console.
 
-The browser-redirect OAuth flow that modern Bluesky clients use is not practical
-here: there is nowhere on a console to host a redirect target, and driving an
-authorization-code flow through the Wii U's browser and keyboard would be worse
-than the thing it replaces. This is a real limitation rather than a temporary
-gap — if you have two-factor authentication enabled on your account, app
-passwords will not work for you and neither will Cobalt.
+## Authentication and storage
 
-Typing happens on Cobalt's own on-screen keyboard rather than the system swkbd
-overlay: touch on the GamePad, or the D-pad and A from a Pro Controller.
+Cobalt currently authenticates with Bluesky app passwords through
+`com.atproto.server.createSession`.
 
-### What is stored, and where
+The session is stored in:
 
 | File | Contents |
 |---|---|
-| `sd:/wiiu/apps/cobalt/session.dat` | Your PDS session, encrypted |
-| `sd:/wiiu/apps/cobalt/device.key` | The key that file is encrypted under |
-| `sd:/wiiu/apps/cobalt/entropy.bin` | Entropy seed — required, see below |
+| `sd:/wiiu/apps/cobalt/session.dat` | Encrypted PDS session |
+| `sd:/wiiu/apps/cobalt/device.key` | Key used to encrypt the session |
+| `sd:/wiiu/apps/cobalt/entropy.bin` | Per-installation entropy seed |
 | `sd:/wiiu/apps/cobalt/cobalt.log` | Debug log |
 
-Signing out overwrites `session.dat` and `device.key` before deleting them, so
-the tokens are not left recoverable in the card's free space.
+Signing out overwrites the session and key files before removing them.
 
-Be clear-eyed about what that encryption is worth: the key sits next to the file
-it protects. It stops your session leaking incidentally — from a log, a
-screenshot of the card, a stray copy of `session.dat` — but anyone holding the
-whole SD card has both halves. The Wii U gives homebrew no keystore and no
-per-title secret to bind a key to, so there is nothing better available. Treat
-the card as you would treat a logged-in device.
+The session encryption is intentionally modest in its threat model. The Wii U
+does not provide a homebrew-accessible keystore, so the key necessarily lives
+alongside the encrypted session. It protects against incidental exposure of
+the session file; it does not protect an attacker who has the entire SD card.
 
-### The entropy seed
+### Entropy
 
-**Cobalt will not connect to anything without one.** This is the part of the
-setup most likely to trip you up, so it is worth understanding why.
+The Wii U does not expose a suitable application-facing cryptographically
+secure random source to homebrew. Cobalt therefore provisions a unique
+64-byte seed when `make bundle` is run and feeds that into Wolfram's
+deterministic random generator.
 
-The Wii U has no application-facing cryptographically secure random number
-generator. devkitPro's mbedTLS does provide `mbedtls_hardware_poll`, but it is
-`srand(OSGetSystemTick())` followed by `rand()`, once per byte — a timer-seeded
-libc PRNG, not an entropy source — and the portlib is built with
-`MBEDTLS_NO_PLATFORM_ENTROPY`, so nothing sits behind it. Everything drawing on
-that pool is a function of how long the console has been switched on.
+The seed is unique to each installation and must not be shared between
+consoles. Cobalt rotates it at boot. A missing seed prevents sign-in rather
+than silently falling back to weaker randomness.
 
-That is not only a signing problem. It also covers the random values in every
-HTTPS handshake, which is why Cobalt supplies its own generator to libcurl
-rather than letting it use mbedTLS's.
+## TLS trust store
 
-`make bundle` generates a 64-byte seed into `dist/wiiu/apps/cobalt/entropy.bin`,
-which Cobalt reads at boot and rotates for the next one. It is **one per
-installation and must not be shared** — the generators are deterministic, so a
-common seed would give every console identical key material and identical
-handshake values. It is git-ignored for the same reason.
+The Wii U build of curl uses mbedTLS, but the console does not provide a
+system certificate store that Cobalt can rely on. The build therefore fetches
+a CA bundle into `romfs/cacert.pem`.
 
-If the seed is missing, Cobalt boots but refuses to sign in and tells you so on
-the Diagnostics screen. That is deliberate. It could connect anyway, and the
-connection would look completely normal to you while being far weaker than it
-appears — so it doesn't.
-
-This is also why copying `cobalt.wuhb` on its own is not enough; copy the whole
-`dist/wiiu` tree.
-
-## Debugging on hardware
-
-Cemu loads `cobalt.wuhb` and runs it to the title loop (checked), but it only
-goes online with console keys and an account (`otp.bin`, `seeprom.bin`,
-`mlc01/usr/save/system/act`) and has no feel for the real GamePad or TLS timing,
-so a console remains the acceptance test. Cobalt logs loudly. The fastest loop
-is UDP:
+The bundle is deliberately generated rather than committed so that an old
+certificate set does not remain in the repository indefinitely. If HTTPS
+connections start failing after a long period, run:
 
 ```sh
-nc -ul 4405
+make cacert
 ```
 
-from any machine on the same network as the console. The same lines also go to
-Cafe OS, Aroma's logging module and `sd:/wiiu/apps/cobalt/cobalt.log`, which
-survives a hang.
+An offline build can still complete without the trust store; network requests
+will simply fail verification on the console.
 
-The **Diagnostics** screen on the console itself reports the things that block
-everything else: which content root the assets were found under, whether the
-network came up and at what address, whether the trust store is present, the
-linked SDL/curl/TLS versions, the ATProto SDK's status, and the current session.
+## Testing
+
+There is no complete Wii U emulator in Cobalt's workflow, so the repository
+keeps the cheap checks on the build machine.
+
+```sh
+make test
+make -C tests sweep
+make -C tests linkcheck
+make -C tests check
+```
+
+The test suite covers:
+
+- host-side syntax checking with warnings treated as errors
+- Cobalt's platform-independent unit tests
+- linking the Wolfram-enabled configuration
+- credential-store round trips and corruption handling
+- service URL normalisation
+- the on-screen keyboard text model
+
+The test harness also provides a live desktop simulator:
+
+```sh
+make -C tests sim
+```
+
+It renders the application in TV and GamePad-sized windows and can exercise
+the UI against a mock PDS. It is useful for layout and interaction work, but
+it does not replace a hardware pass.
 
 ## Layout
 
@@ -236,19 +219,40 @@ linked SDL/curl/TLS versions, the ATProto SDK's status, and the current session.
 src/
 ├── main.c        entry point and frame loop
 ├── app/          screens and application state
-├── ui/           rendering, theme, on-screen keyboard
+├── ui/           rendering, theme and on-screen keyboard
 ├── input/        VPAD and controller input
-├── net/          nn::ac network status
-├── atproto/      Wolfram-backed session and XRPC
+├── net/          Wii U network status
+├── atproto/      Wolfram-backed session and protocol integration
 ├── cache/        credential storage
-└── util/         logging, paths, entropy
-tools/            asset generation, trust store fetch
-tests/            host compile sweep and unit tests
+└── util/         logging, paths and entropy
+tools/            asset generation and trust-store fetching
+tests/            host checks, unit tests and simulator
+romfs/            bundled application data and fonts
 ```
 
-`AGENTS.md` is the full design document — platform constraints, decisions
-already made, and what is deliberately not being done.
+`AGENTS.md` contains the project's deeper architectural notes, platform
+constraints, implementation decisions and working rules.
+
+## Accessibility
+
+Cobalt treats the GamePad as a first-class display rather than a controller
+peripheral. Touch input, readable card layouts and explicit alt-text
+presentation are part of the application itself.
+
+The Wii U homebrew environment does not provide Cobalt with a usable system
+screen reader, so image alt text is surfaced directly in the UI. Images also
+receive an explicit **ALT** marker when alternative text is available.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before making changes. Contributions
+should preserve the existing architecture and platform constraints, and
+changes should include the relevant host-side verification.
 
 ## Licence
 
-See `LICENSE`. The bundled font is a placeholder; see `romfs/FONTS.md`.
+Cobalt is licensed under the GNU General Public License v3.0. See
+[LICENSE](LICENSE).
+
+Bundled fonts and icon assets may carry their own licences; see
+[romfs/FONTS.md](romfs/FONTS.md) for their attribution and licence details.
