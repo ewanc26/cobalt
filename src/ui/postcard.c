@@ -652,15 +652,30 @@ cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
       /* Miiverse separates a post from its reaction row with a hairline. */
       SDL_Rect rule = { text_left, y - m->line_gap / 2, right - text_left, 1 };
       cobalt_fill_rect(r, &rule, COBALT_COLOUR_TILE_EDGE);
-      char footer[COBALT_POST_META_MAX + 40];
-      if (post->meta[0] && post->embed_note[0]) {
-         snprintf(footer, sizeof(footer), "%s   %s", post->meta, post->embed_note);
-      } else {
-         snprintf(footer, sizeof(footer), "%s",
-                  post->meta[0] ? post->meta : post->embed_note);
+      /* Counts are drawn as Miiverse-style pills, one per " · " segment. */
+      int px = text_left;
+      const char *seg = post->meta;
+      while (seg[0]) {
+         const char *end = strstr(seg, " \xC2\xB7 ");
+         const size_t n = end ? (size_t) (end - seg) : strlen(seg);
+         char label[40];
+         snprintf(label, sizeof(label), "%.*s", (int) (n < sizeof(label) - 1 ? n : sizeof(label) - 1), seg);
+         int lw = 0;
+         cobalt_text_size(r, COBALT_FONT_CAPTION, label, &lw, NULL);
+         const int padx = m->pad_tile / 2;
+         if (px + lw + 2 * padx > right) {
+            break;
+         }
+         const SDL_Rect pill = { px, y, lw + 2 * padx, caption_h };
+         SDL_Color fill = { 0xEE, 0xF1, 0xF3, 0xFF };
+         cobalt_fill_rounded_rect(r, &pill, caption_h / 2, fill);
+         cobalt_draw_text(r, COBALT_FONT_CAPTION, label, px + padx, y,
+                          COBALT_COLOUR_TEXT_DIM);
+         px += pill.w + padx / 2 + 2;
+         seg = end ? end + 4 : seg + n;
       }
-      if (footer[0]) {
-         cobalt_draw_text(r, COBALT_FONT_CAPTION, footer, text_left, y,
+      if (post->embed_note[0] && px + 20 < right) {
+         cobalt_draw_text(r, COBALT_FONT_CAPTION, post->embed_note, px + 4, y,
                           COBALT_COLOUR_TEXT_DIM);
       }
 

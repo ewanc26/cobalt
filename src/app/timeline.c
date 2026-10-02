@@ -210,7 +210,7 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
    }
 
    const int top = cobalt_content_top(r);
-   const int bottom = m->height - m->pad_edge - 28;
+   const int bottom = m->height - m->pad_edge - 24;
 
    if (feed->count == 0) {
       draw_empty(r, m, top);
