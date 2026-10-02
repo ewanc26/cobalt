@@ -12,6 +12,9 @@ device.key
 # as a network bug. `make cacert` refreshes it.
 romfs/cacert.pem
 
+# Stamped by `make buildinfo` (commit, build number, date).
+src/util/buildinfo_gen.h
+
 # Build products
 build/
 dist/
