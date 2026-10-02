@@ -123,7 +123,7 @@ SWEEP_SOURCES := $(filter-out \
 
 LINK_SOURCES := $(filter-out $(SRC)/main.c, $(SWEEP_SOURCES))
 
-.PHONY: all check sweep linkcheck e2e snapshot clean
+.PHONY: all check sweep linkcheck e2e snapshot sim clean
 
 all: sweep linkcheck check
 
@@ -201,6 +201,18 @@ snapshot:
 		$(E2E_BUILD)/libwolfram.dylib $(E2E_BUILD)/_deps/cjson-build/libcjson.dylib \
 		$(MHD_LIBS) $(LDLIBS) -Wl,-rpath,$(abspath $(E2E_BUILD)) -Wl,-rpath,$(abspath $(E2E_BUILD))/_deps/cjson-build
 	@./$(SNAP_BIN) $(OUT)/snapshot ../romfs/font.ttf
+
+SIM_BIN := $(OUT)/cobalt-sim
+
+# Live two-window simulator: the real app/renderer on a real SDL video driver.
+# Extra flags go through SIM_ARGS, e.g. `make -C tests sim SIM_ARGS=--live`.
+sim:
+	@mkdir -p $(OUT)
+	@$(CC) $(CFLAGS) -DCOBALT_HAS_WOLFRAM=1 -DCOBALT_E2E_HOST=1 -I$(WOLFRAM_ROOT)/include $(CJSON_CFLAGS) \
+		-o $(SIM_BIN) sim_main.c linkcheck_stubs.c host_stubs.c $(WOLFRAM_ROOT)/test/mock_pds.c $(E2E_SOURCES) \
+		$(E2E_BUILD)/libwolfram.dylib $(E2E_BUILD)/_deps/cjson-build/libcjson.dylib \
+		$(MHD_LIBS) $(LDLIBS) -Wl,-rpath,$(abspath $(E2E_BUILD)) -Wl,-rpath,$(abspath $(E2E_BUILD))/_deps/cjson-build
+	@cd .. && ./tests/$(SIM_BIN) $(SIM_ARGS)
 
 check: $(TEST_BIN)
 	@mkdir -p $(SCRATCH)
