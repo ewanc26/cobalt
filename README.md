@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon.png" alt="Cobalt icon" width="128">
+</p>
+
 # Cobalt
 
 A native AT Protocol / Bluesky client for the Nintendo Wii U, built as Aroma
