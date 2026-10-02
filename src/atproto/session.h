@@ -216,6 +216,14 @@ bool cobalt_session_begin_post(const char *text, const char *parent_uri,
                                const char *root_cid, int reply_gate);
 
 /*
+ * Language tag written to new posts ("" for none) and a step to the next
+ * choice. The choice persists across launches. Callers must not change it while
+ * a job is in flight.
+ */
+const char *cobalt_session_post_lang(void);
+void cobalt_session_cycle_post_lang(void);
+
+/*
  * Publish a new post that quotes another (`quote_uri`/`quote_cid`, both
  * required). It is a top-level post, so `reply_gate` applies as for
  * cobalt_session_begin_post.
