@@ -33,12 +33,25 @@ cobalt_thread_view_reset(cobalt_thread_view *view)
    view->scroll = 0;
    view->last_visible = -1;
    view->centred = false;
+   view->confirm_delete = false;
 }
 
 cobalt_thread_action
 cobalt_thread_view_update(cobalt_thread_view *view, const cobalt_input *in)
 {
    if (!view || !in) {
+      return COBALT_THREAD_VIEW_STAY;
+   }
+
+   if (view->confirm_delete) {
+      if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
+         view->confirm_delete = false;
+         if (!cobalt_session_busy()) {
+            cobalt_session_begin_delete_post(view->delete_uri);
+         }
+      } else if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
+         view->confirm_delete = false;
+      }
       return COBALT_THREAD_VIEW_STAY;
    }
 
@@ -125,6 +138,11 @@ cobalt_thread_view_update(cobalt_thread_view *view, const cobalt_input *in)
             cobalt_thread_view_reset(view);
          } else if (cobalt_input_pressed(in, COBALT_BTN_MENU)) {
             return COBALT_THREAD_VIEW_REPLY;
+         } else if (cobalt_input_pressed(in, COBALT_BTN_ALT_Y) &&
+                    cobalt_post_uri_is_by(post->uri, cobalt_session_did())) {
+            snprintf(view->delete_uri, sizeof(view->delete_uri), "%s",
+                     post->uri);
+            view->confirm_delete = true;
          }
       }
    }
@@ -228,9 +246,18 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
    }
 
    SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   const bool own =
+      view->selected >= 0 && view->selected < thread->count &&
+      cobalt_post_uri_is_by(thread->posts[view->selected].uri,
+                            cobalt_session_did());
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
-                    cobalt_session_busy()
+                    view->confirm_delete
+                       ? "Delete this post for good?   A: delete   B: keep it"
+                    : cobalt_session_busy()
                        ? "Working..."
+                    : own
+                       ? "A: open/reply   Left: like   Right: repost   Y: delete   B: back"
                        : "A: open/reply   +: reply   Left: like   Right: repost   B: back",
-                    m->pad_edge, m->height - m->pad_edge - 20, hint);
+                    m->pad_edge, m->height - m->pad_edge - 20,
+                    view->confirm_delete ? COBALT_COLOUR_TEXT : hint);
 }
