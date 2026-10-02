@@ -974,24 +974,29 @@ draw_home_tv(cobalt_app *app, cobalt_render *r)
    const cobalt_metrics *m = cobalt_render_metrics(r);
    draw_header(r, "AT Protocol for Wii U");
 
-   /* A single row of large tiles, Wii U menu style — few, big, readable from
-    * across a room rather than a dense list. */
-   const int top = m->pad_edge + 130;
-   const int tile_h = 210;
-   const int total_gap = m->gap * (MENU_COUNT - 1);
-   const int tile_w = (m->width - 2 * m->pad_edge - total_gap) / MENU_COUNT;
+   /* Two rows of large tiles, Wii U menu style. Ten in one row left each
+    * about 100px wide, which truncated every label. */
+   const int cols = (MENU_COUNT + 1) / 2;
+   const int rows = (MENU_COUNT + cols - 1) / cols;
+   const int top = m->pad_edge + 110;
+   const int tile_h = 140;
+   const int tile_w = (m->width - 2 * m->pad_edge - m->gap * (cols - 1)) / cols;
 
    for (int i = 0; i < MENU_COUNT; i++) {
-      SDL_Rect tile = { m->pad_edge + i * (tile_w + m->gap), top, tile_w, tile_h };
+      const int col = i % cols;
+      const int row = i / cols;
+      SDL_Rect tile = { m->pad_edge + col * (tile_w + m->gap),
+                        top + row * (tile_h + m->gap), tile_w, tile_h };
       cobalt_draw_tile(r, &tile, app->focus[i]);
 
       SDL_Color label = menu_enabled(i) ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM;
-      cobalt_draw_text_wrapped(r, COBALT_FONT_HEADING, menu_label(i),
+      cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, menu_label(i),
                                tile.x + m->pad_tile, tile.y + m->pad_tile,
                                tile.w - 2 * m->pad_tile, 2, label);
 
       if (!menu_enabled(i)) {
-         cobalt_draw_text(r, COBALT_FONT_CAPTION, "Coming soon",
+         cobalt_draw_text(r, COBALT_FONT_CAPTION,
+                          (signed_in() || MENU[i] == ACTION_ACCOUNT) ? "Unavailable" : "Sign in first",
                           tile.x + m->pad_tile, tile.y + tile.h - m->pad_tile - 24,
                           COBALT_COLOUR_TEXT_DIM);
       }
@@ -999,7 +1004,7 @@ draw_home_tv(cobalt_app *app, cobalt_render *r)
 
    /* Detail strip for the focused tile: the TV has room, so use it rather
     * than cramming the hint into the tile. */
-   const int detail_y = top + tile_h + m->gap * 2;
+   const int detail_y = top + rows * tile_h + (rows - 1) * m->gap + m->gap * 2;
    cobalt_draw_text(r, COBALT_FONT_BODY, menu_hint(app->selected),
                     m->pad_edge, detail_y, COBALT_COLOUR_TILE);
 
