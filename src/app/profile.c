@@ -349,7 +349,7 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
    /* An account with no posts is normal; say so rather than leaving a gap. */
    if (feed->count == 0 && !cobalt_session_busy()) {
       cobalt_draw_text(r, COBALT_FONT_CAPTION, "Nothing to show here.", m->pad_edge,
-                       y + m->gap, COBALT_COLOUR_TILE);
+                       y + m->gap, COBALT_COLOUR_TEXT_DIM);
    }
 
    SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
