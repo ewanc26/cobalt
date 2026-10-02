@@ -243,6 +243,18 @@ main(int argc, char **argv)
    settle(40);
    shoot("lists");
 
+   /* Tapping the header's Back pill on the GamePad leaves the screen. */
+   {
+      uint32_t now = SDL_GetTicks();
+      cobalt_input_begin_frame(&g_in, now);
+      g_in.touch_x = 800; g_in.touch_y = 38; g_in.touch_ended = true;
+      cobalt_input_end_frame(&g_in, now);
+      cobalt_app_update(g_app, &g_in, now);
+      g_in.touch_ended = false;
+      settle(3);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
+   }
+
    wf_mock_pds_free(pds);
    cobalt_app_destroy(g_app);
    cobalt_render_destroy(g_tv);
