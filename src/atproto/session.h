@@ -78,6 +78,7 @@ typedef enum {
    COBALT_JOB_LISTS,
    COBALT_JOB_LIST_MEMBERS,
    COBALT_JOB_DELETE_POST,
+   COBALT_JOB_PROFILE_TAB,
    COBALT_JOB_FOLLOWERS,
    COBALT_JOB_FOLLOWING,
 } cobalt_job_kind;
@@ -242,6 +243,11 @@ bool cobalt_session_begin_profile(const char *actor);
 /* The profile and author feed as last fetched; never NULL. */
 const cobalt_profile *cobalt_session_profile(void);
 const cobalt_feed *cobalt_session_author_feed(void);
+
+/* Switch the loaded profile to another tab (cobalt_profile_tab) and refetch
+ * only its posts. Refuses Likes on anyone else's profile. */
+bool cobalt_session_begin_profile_tab(int tab);
+int cobalt_session_profile_tab(void);
 
 /*
  * Toggle following the loaded profile. Like the post interactions, the
