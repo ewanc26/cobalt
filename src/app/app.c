@@ -115,7 +115,8 @@ static bool s_drc_hit_valid = false;
 
 /* Hit rectangles for the account screen's small menu. */
 typedef enum {
-   ACCOUNT_ROW_MUTED = 0,
+   ACCOUNT_ROW_PROFILE = 0,
+   ACCOUNT_ROW_MUTED,
    ACCOUNT_ROW_BLOCKED,
    ACCOUNT_ROW_LANG,
    ACCOUNT_ROW_SIGN_OUT,
@@ -611,6 +612,17 @@ update_account(cobalt_app *app, const cobalt_input *in)
    }
 
    switch (activated) {
+      case ACCOUNT_ROW_PROFILE: {
+         const char *self = cobalt_session_did();
+         if (self[0]) {
+            cobalt_session_begin_profile(self);
+            cobalt_profile_view_rewind(&app->profile);
+            app->profile_return = COBALT_SCREEN_ACCOUNT;
+            app->screen = COBALT_SCREEN_PROFILE;
+            COBALT_LOGI("account: opened own profile");
+         }
+         break;
+      }
       case ACCOUNT_ROW_MUTED:
          cobalt_graph_view_open(&app->graph, COBALT_GRAPH_MUTED);
          app->screen = COBALT_SCREEN_MUTED_LIST;
@@ -1164,12 +1176,15 @@ draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    const int width = m->width - 2 * m->pad_edge;
 
    SDL_Rect panel = { m->pad_edge, top, width, row_h * 3 };
-   cobalt_draw_tile(r, &panel, 0.0f);
+   cobalt_draw_tile(r, &panel, app->account_selected == ACCOUNT_ROW_PROFILE ? 1.0f : 0.0f);
+   if (surface == COBALT_SURFACE_DRC) {
+      s_account_hit[ACCOUNT_ROW_PROFILE] = panel;
+   }
 
    char lines[3][COBALT_MESSAGE_MAX];
    snprintf(lines[0], sizeof(lines[0]), "%s", cobalt_session_handle());
    snprintf(lines[1], sizeof(lines[1]), "%s", cobalt_session_did());
-   snprintf(lines[2], sizeof(lines[2]), "%s", cobalt_session_service());
+   snprintf(lines[2], sizeof(lines[2]), "%s  -  A: view your profile", cobalt_session_service());
 
    const cobalt_font_id fonts[3] = {
       COBALT_FONT_HEADING, COBALT_FONT_CAPTION, COBALT_FONT_CAPTION
@@ -1188,12 +1203,12 @@ draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    snprintf(lang_label, sizeof(lang_label), "Post language: %s",
             cobalt_session_post_lang()[0] ? cobalt_session_post_lang() : "none");
    const char *ROW_LABEL[ACCOUNT_ROW_COUNT] = {
-      "Muted accounts", "Blocked accounts", lang_label, "Sign out",
+      "", "Muted accounts", "Blocked accounts", lang_label, "Sign out",
    };
    const int label_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
 
    int row_y = panel.y + panel.h + m->gap;
-   for (int i = 0; i < ACCOUNT_ROW_COUNT; i++) {
+   for (int i = ACCOUNT_ROW_MUTED; i < ACCOUNT_ROW_COUNT; i++) {
       SDL_Rect row = { m->pad_edge, row_y, width, row_h };
       const bool focused = (app->account_selected == i);
       cobalt_draw_tile(r, &row, focused ? 1.0f : 0.0f);
