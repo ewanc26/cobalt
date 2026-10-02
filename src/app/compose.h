@@ -87,6 +87,11 @@ typedef struct {
    /* Attached image: full SD path, empty for none. New posts and quotes only. */
    char attach_path[COBALT_ATTACH_PATH_MAX];
 
+   /* Alt text for the attached image, typed right after picking it. */
+   char attach_alt[COBALT_ATTACH_ALT_MAX];
+   bool alt_editing;
+   cobalt_keyboard alt_kb;
+
    /* Image picker, a sub-mode of the confirmation. */
    bool picking;
    int picker_count;
