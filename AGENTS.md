@@ -333,7 +333,7 @@ Both gaps were closed in Wolfram rather than around it (§8: extend the shared S
 
 Still worth fixing in Wolfram:
 
-- **`wf_session_login` swallows the XRPC error envelope.** It returns a bare `wf_status`, so a wrong password, a takendown account and a missing 2FA token are all `WF_ERR_HTTP`. Cobalt's sign-in errors are written to be useful without it, but that is a workaround — the envelope is right there in the response.
+- **`wf_session_login` returns a bare `wf_status`.** Fixed in part: `wf_agent_last_error` now also reports the session client's envelope, and Cobalt prepends it ("Server said: ...") to failed sign-in messages.
 - **`struct wf_agent` is defined twice**, in `agent.c` and `_internal.h`, hand-synced. If they drift, translation units disagree about field offsets with no diagnostic.
 
 ### The feed is flattened once, not walked per frame
