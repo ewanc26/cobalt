@@ -1,3 +1,4 @@
+#include "util/threadprio.h"
 #include "ui/imagecache.h"
 
 #include "net/http.h"
@@ -414,6 +415,7 @@ static int
 loader_main(void *userdata)
 {
    cobalt_imagecache *cache = (cobalt_imagecache *) userdata;
+   cobalt_thread_make_background();
 
    SDL_LockMutex(cache->lock);
    for (;;) {

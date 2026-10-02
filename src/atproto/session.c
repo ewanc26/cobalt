@@ -1,3 +1,4 @@
+#include "util/threadprio.h"
 #include "atproto/session.h"
 #include "atproto/actors.h"
 #include "atproto/feed.h"
@@ -2049,6 +2050,7 @@ static int
 worker_main(void *unused)
 {
    (void) unused;
+   cobalt_thread_make_background();
 
    SDL_LockMutex(s.lock);
    for (;;) {
