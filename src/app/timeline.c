@@ -202,7 +202,7 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
       } else {
          snprintf(subtitle, sizeof(subtitle), "%s", cobalt_session_handle());
       }
-      SDL_Color dim = { 0xEE, 0xFA, 0xDC, 0xFF };
+      SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
       cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
                        m->pad_edge + cobalt_font_line_height(r, COBALT_FONT_TITLE) -
                           m->line_gap,
@@ -259,7 +259,7 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
       view->last_visible = last_fitted;
    }
 
-   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
+   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    const char *footer = cobalt_session_busy()
                            ? "Working..."
                            : "A: thread  Y: profile  X: post  Left: like  Right: repost  +: refresh";

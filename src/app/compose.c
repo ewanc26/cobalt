@@ -369,7 +369,7 @@ draw_header(cobalt_compose *compose, cobalt_render *r)
    }
 
    /* The counter turns red before it is a problem, not after. */
-   SDL_Color colour = { 0xEE, 0xFA, 0xDC, 0xFF };
+   SDL_Color colour = { 0xFF, 0xFF, 0xFF, 0xFF };
    cobalt_draw_text(r, remaining < 0 ? COBALT_FONT_CAPTION : COBALT_FONT_CAPTION,
                     subtitle, m->pad_edge,
                     m->pad_edge + cobalt_font_line_height(r, COBALT_FONT_TITLE) -
@@ -442,7 +442,7 @@ draw_confirming(cobalt_compose *compose, cobalt_render *r,
       cobalt_draw_tile(r, &button, focused ? 1.0f : 0.0f);
 
       SDL_Color colour = (ids[i] == CONFIRM_DISCARD) ? COBALT_COLOUR_ERROR
-                                                : COBALT_COLOUR_ACCENT;
+                                                : COBALT_COLOUR_ACCENT_TEXT;
       const int label_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
       cobalt_draw_text_centred(r, COBALT_FONT_BODY, confirm_label(compose, ids[i]), button.x,
                                button.y + (row_h - label_h) / 2, button.w,
@@ -457,7 +457,7 @@ draw_confirming(cobalt_compose *compose, cobalt_render *r,
       s_confirm_hit_valid = true;
    }
 
-   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
+   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
 
    if (!cobalt_compose_is_reply(compose)) {
       char gate_line[64];
@@ -550,11 +550,11 @@ draw_picker(cobalt_compose *compose, cobalt_render *r, cobalt_surface_id surface
          cobalt_draw_tile(r, &row, focused ? 1.0f : 0.0f);
          cobalt_draw_text(r, COBALT_FONT_BODY, compose->picker_names[first + i],
                           row.x + m->pad_tile, row.y + m->line_gap / 2,
-                          focused ? COBALT_COLOUR_ACCENT : COBALT_COLOUR_TEXT);
+                          focused ? COBALT_COLOUR_ACCENT_TEXT : COBALT_COLOUR_TEXT);
       }
    }
 
-   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
+   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION, "Up/Down: choose    A: attach    B: back",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }
