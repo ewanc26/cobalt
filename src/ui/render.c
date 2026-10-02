@@ -1,7 +1,12 @@
 #include "ui/render.h"
 #include "util/log.h"
 
+#ifdef __WIIU__
+#include <coreinit/memory.h>
+#endif
+
 #include <math.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,6 +44,8 @@ struct cobalt_render {
    SDL_Window *window;
    SDL_Renderer *renderer;
    TTF_Font *fonts[COBALT_FONT_COUNT];
+   /* Same sizes, from a wider-coverage face; NULL when none is available. */
+   TTF_Font *fallbacks[COBALT_FONT_COUNT];
 
    SDL_Texture *gradient;
    SDL_Texture *corner;
@@ -56,6 +63,7 @@ struct cobalt_render {
 };
 
 /* --- helpers --- */
+static void open_fallback_fonts(cobalt_render *r);
 
 static uint32_t
 pack_colour(SDL_Color c)
@@ -217,6 +225,8 @@ cobalt_render_create(cobalt_surface_id surface, const char *font_path, bool prev
       }
    }
 
+   open_fallback_fonts(r);
+
    r->gradient = build_gradient(r->renderer);
    r->corner_radius = r->m->tile_radius;
    r->corner = build_corner(r->renderer, r->corner_radius);
@@ -242,6 +252,9 @@ cobalt_render_destroy(cobalt_render *r)
    for (int i = 0; i < COBALT_FONT_COUNT; i++) {
       if (r->fonts[i]) {
          TTF_CloseFont(r->fonts[i]);
+      }
+      if (r->fallbacks[i]) {
+         TTF_CloseFont(r->fallbacks[i]);
       }
    }
 
@@ -462,12 +475,199 @@ font_of(cobalt_render *r, cobalt_font_id id)
    return r->fonts[id];
 }
 
+
+/*
+ * Glyph fallback. One TTF_Font is one face, so a codepoint the bundled font
+ * lacks draws as a tofu box. Latin-only Lato means every Japanese, Chinese or
+ * Korean post is a row of boxes, so strings are split into runs and each run is
+ * drawn from the first face that provides it.
+ *
+ * The fallback face is the console's own system font on a Wii U (coreinit
+ * shared data, mapped read-only and never freed). The host build takes a path
+ * in COBALT_FALLBACK_FONT so the layout can be checked off-console.
+ */
+static void
+open_fallback_fonts(cobalt_render *r)
+{
+#ifdef __WIIU__
+   void *data = NULL;
+   uint32_t size = 0;
+   if (!OSGetSharedData(OS_SHAREDDATATYPE_FONT_STANDARD, 0, &data, &size) || !data || !size) {
+      COBALT_LOGW("no system font available for glyph fallback");
+      return;
+   }
+   for (int i = 0; i < COBALT_FONT_COUNT; i++) {
+      r->fallbacks[i] = TTF_OpenFontRW(SDL_RWFromConstMem(data, (int) size), 1,
+                                       font_size_for(r->m, (cobalt_font_id) i));
+   }
+#else
+   const char *path = getenv("COBALT_FALLBACK_FONT");
+   if (!path || !path[0]) {
+      return;
+   }
+   for (int i = 0; i < COBALT_FONT_COUNT; i++) {
+      r->fallbacks[i] = TTF_OpenFont(path, font_size_for(r->m, (cobalt_font_id) i));
+   }
+#endif
+}
+
+static uint32_t
+utf8_next(const char **p)
+{
+   const unsigned char *s = (const unsigned char *) *p;
+   uint32_t cp = 0xFFFD;
+   int n = 1;
+   if (s[0] < 0x80) {
+      cp = s[0];
+   } else if ((s[0] & 0xE0) == 0xC0 && (s[1] & 0xC0) == 0x80) {
+      cp = ((s[0] & 0x1Fu) << 6) | (s[1] & 0x3Fu);
+      n = 2;
+   } else if ((s[0] & 0xF0) == 0xE0 && (s[1] & 0xC0) == 0x80 && (s[2] & 0xC0) == 0x80) {
+      cp = ((s[0] & 0x0Fu) << 12) | ((s[1] & 0x3Fu) << 6) | (s[2] & 0x3Fu);
+      n = 3;
+   } else if ((s[0] & 0xF8) == 0xF0 && (s[1] & 0xC0) == 0x80 && (s[2] & 0xC0) == 0x80 &&
+              (s[3] & 0xC0) == 0x80) {
+      cp = ((s[0] & 0x07u) << 18) | ((s[1] & 0x3Fu) << 12) | ((s[2] & 0x3Fu) << 6) | (s[3] & 0x3Fu);
+      n = 4;
+   }
+   *p += n;
+   return cp;
+}
+
+typedef struct {
+   TTF_Font *font;
+   char text[TEXT_KEY_MAX];
+} text_run;
+
+/* Face for one codepoint: primary if it has the glyph, else the fallback. */
+static TTF_Font *
+face_for(TTF_Font *primary, TTF_Font *fallback, uint32_t cp)
+{
+   if (!fallback || cp < 0x80 || TTF_GlyphIsProvided32(primary, cp)) {
+      return primary;
+   }
+   return TTF_GlyphIsProvided32(fallback, cp) ? fallback : primary;
+}
+
+/* True when the whole string can be drawn from the primary face alone. */
+static bool
+single_face(TTF_Font *primary, TTF_Font *fallback, const char *utf8)
+{
+   if (!fallback) {
+      return true;
+   }
+   const char *p = utf8;
+   while (*p) {
+      if (face_for(primary, fallback, utf8_next(&p)) != primary) {
+         return false;
+      }
+   }
+   return true;
+}
+
+/* Split into maximal same-face runs. Returns the run count (bounded). */
+static int
+split_runs(TTF_Font *primary, TTF_Font *fallback, const char *utf8, text_run *runs, int max_runs)
+{
+   int n = 0;
+   const char *p = utf8;
+   while (*p && n < max_runs) {
+      const char *start = p;
+      uint32_t cp = utf8_next(&p);
+      TTF_Font *face = face_for(primary, fallback, cp);
+      while (*p) {
+         const char *save = p;
+         if (face_for(primary, fallback, utf8_next(&p)) != face) {
+            p = save;
+            break;
+         }
+      }
+      size_t len = (size_t) (p - start);
+      if (len >= sizeof(runs[n].text)) {
+         len = sizeof(runs[n].text) - 1;
+      }
+      memcpy(runs[n].text, start, len);
+      runs[n].text[len] = '\0';
+      runs[n].font = face;
+      n++;
+   }
+   return n;
+}
+
+#define MAX_RUNS 32
+
+static int
+measure_text(cobalt_render *r, cobalt_font_id id, const char *utf8, int *out_w, int *out_h)
+{
+   TTF_Font *font = r->fonts[id];
+   TTF_Font *fb = r->fallbacks[id];
+   if (single_face(font, fb, utf8)) {
+      return TTF_SizeUTF8(font, utf8, out_w, out_h);
+   }
+   text_run runs[MAX_RUNS];
+   int n = split_runs(font, fb, utf8, runs, MAX_RUNS);
+   int w = 0, h = 0;
+   for (int i = 0; i < n; i++) {
+      int rw = 0, rh = 0;
+      if (TTF_SizeUTF8(runs[i].font, runs[i].text, &rw, &rh) != 0) {
+         return -1;
+      }
+      w += rw;
+      if (rh > h) h = rh;
+   }
+   if (out_w) *out_w = w;
+   if (out_h) *out_h = h;
+   return 0;
+}
+
+static SDL_Surface *
+render_text_surface(cobalt_render *r, cobalt_font_id id, const char *utf8, SDL_Color colour)
+{
+   TTF_Font *font = r->fonts[id];
+   TTF_Font *fb = r->fallbacks[id];
+   if (single_face(font, fb, utf8)) {
+      return TTF_RenderUTF8_Blended(font, utf8, colour);
+   }
+
+   text_run runs[MAX_RUNS];
+   int n = split_runs(font, fb, utf8, runs, MAX_RUNS);
+   SDL_Surface *parts[MAX_RUNS] = { 0 };
+   int w = 0, h = 0;
+   for (int i = 0; i < n; i++) {
+      parts[i] = TTF_RenderUTF8_Blended(runs[i].font, runs[i].text, colour);
+      if (parts[i]) {
+         w += parts[i]->w;
+         if (parts[i]->h > h) h = parts[i]->h;
+      }
+   }
+
+   SDL_Surface *out = NULL;
+   if (w > 0 && h > 0) {
+      out = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_ARGB8888);
+   }
+   if (out) {
+      SDL_FillRect(out, NULL, 0);
+      int x = 0;
+      for (int i = 0; i < n; i++) {
+         if (!parts[i]) continue;
+         SDL_SetSurfaceBlendMode(parts[i], SDL_BLENDMODE_NONE);
+         SDL_Rect dst = { x, (h - parts[i]->h) / 2, 0, 0 };
+         SDL_BlitSurface(parts[i], NULL, out, &dst);
+         x += parts[i]->w;
+      }
+   }
+   for (int i = 0; i < n; i++) {
+      if (parts[i]) SDL_FreeSurface(parts[i]);
+   }
+   return out;
+}
+
 /* Render straight to a texture, bypassing the cache. Caller destroys it. */
 static SDL_Texture *
-render_uncached(cobalt_render *r, TTF_Font *font, const char *utf8, SDL_Color colour,
+render_uncached(cobalt_render *r, cobalt_font_id font_id, const char *utf8, SDL_Color colour,
                 int *out_w, int *out_h)
 {
-   SDL_Surface *surface = TTF_RenderUTF8_Blended(font, utf8, colour);
+   SDL_Surface *surface = render_text_surface(r, font_id, utf8, colour);
    if (!surface) {
       return NULL;
    }
@@ -533,7 +733,7 @@ cache_lookup(cobalt_render *r, cobalt_font_id font_id, const char *utf8, SDL_Col
    }
 
    int w = 0, h = 0;
-   SDL_Texture *tex = render_uncached(r, font, utf8, colour, &w, &h);
+   SDL_Texture *tex = render_uncached(r, font_id, utf8, colour, &w, &h);
    if (!tex) {
       victim->in_use = false;
       return NULL;
@@ -580,7 +780,7 @@ cobalt_draw_text(cobalt_render *r, cobalt_font_id font_id, const char *utf8,
    }
 
    int w = 0, h = 0;
-   SDL_Texture *tex = render_uncached(r, font, utf8, colour, &w, &h);
+   SDL_Texture *tex = render_uncached(r, font_id, utf8, colour, &w, &h);
    if (!tex) {
       return 0;
    }
@@ -613,7 +813,7 @@ cobalt_text_size(cobalt_render *r, cobalt_font_id font_id, const char *utf8,
    }
 
    int w = 0, h = 0;
-   if (TTF_SizeUTF8(font, utf8, &w, &h) == 0) {
+   if (measure_text(r, font_id, utf8, &w, &h) == 0) {
       if (out_w) *out_w = w;
       if (out_h) *out_h = h;
    }
@@ -675,7 +875,7 @@ cobalt_draw_text_wrapped(cobalt_render *r, cobalt_font_id font_id, const char *u
          }
 
          int w = 0;
-         if (TTF_SizeUTF8(font, line, &w, NULL) == 0 && w > max_width) {
+         if (measure_text(r, font_id, line, &w, NULL) == 0 && w > max_width) {
             overflowed = true;
             break;
          }
@@ -716,7 +916,7 @@ cobalt_draw_text_wrapped(cobalt_render *r, cobalt_font_id font_id, const char *u
             strncat(candidate, ELLIPSIS, sizeof(candidate) - trim - 1);
 
             int w = 0;
-            if (TTF_SizeUTF8(font, candidate, &w, NULL) == 0 && w <= max_width) {
+            if (measure_text(r, font_id, candidate, &w, NULL) == 0 && w <= max_width) {
                memcpy(line, candidate, strlen(candidate) + 1);
                break;
             }
