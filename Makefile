@@ -143,7 +143,9 @@ BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
 #---------------------------------------------------------------------------------
 # use CXX for linking C++ projects, CC for standard C
 #---------------------------------------------------------------------------------
-ifeq ($(strip $(CPPFILES)),)
+# Wolfram is partly C++ (richtext), so linking it needs the C++ driver even
+# though every Cobalt source is C.
+ifeq ($(strip $(CPPFILES))$(strip $(WOLFRAM_LIBS)),)
 	export LD	:=	$(CC)
 else
 	export LD	:=	$(CXX)
