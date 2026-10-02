@@ -1311,6 +1311,15 @@ test_quote_compose(void)
    CHECK(!cobalt_session_begin_quote("hi", "at://x", NULL, 0));
    CHECK(!cobalt_session_begin_quote("", "at://x", "cid", 0));
    CHECK(!cobalt_session_begin_quote(NULL, "at://x", "cid", 0));
+
+   /* The post language starts at none and cycles back round. */
+   const char *first = cobalt_session_post_lang();
+   int steps = 0;
+   do {
+      cobalt_session_cycle_post_lang();
+      steps++;
+   } while (strcmp(cobalt_session_post_lang(), first) != 0 && steps < 32);
+   CHECK(steps > 1 && steps < 32);
 }
 
 static void
