@@ -15,6 +15,7 @@
  */
 
 #include "atproto/feed.h"
+#include "atproto/session.h"
 #include "input/input.h"
 #include "ui/keyboard.h"
 #include "ui/render.h"
@@ -54,6 +55,9 @@ typedef enum {
    COBALT_REPLY_GATE_COUNT,
 } cobalt_reply_gate;
 
+#define COBALT_PICKER_MAX      32
+#define COBALT_PICKER_NAME_MAX 64
+
 typedef struct {
    char text[COBALT_COMPOSE_BYTES];
    cobalt_keyboard kb;
@@ -79,7 +83,28 @@ typedef struct {
 
    /* Only meaningful when this is a new top-level post; ignored on replies. */
    cobalt_reply_gate reply_gate;
+
+   /* Attached image: full SD path, empty for none. New posts and quotes only. */
+   char attach_path[COBALT_ATTACH_PATH_MAX];
+
+   /* Image picker, a sub-mode of the confirmation. */
+   bool picking;
+   int picker_count;
+   int picker_sel;
+   char picker_dir[COBALT_ATTACH_PATH_MAX];
+   char picker_names[COBALT_PICKER_MAX][COBALT_PICKER_NAME_MAX];
 } cobalt_compose;
+
+/*
+ * List postable images (jpg/jpeg/png, non-empty, within the blob limit) in
+ * `dir`, sorted by name, at most `max`. Returns the count; 0 if the directory
+ * is missing.
+ */
+int cobalt_compose_scan_images(const char *dir,
+                               char names[][COBALT_PICKER_NAME_MAX], int max);
+
+/* Open the picker over `dir`. */
+void cobalt_compose_open_picker(cobalt_compose *compose, const char *dir);
 
 /* Start a new top-level post. */
 void cobalt_compose_init(cobalt_compose *compose);

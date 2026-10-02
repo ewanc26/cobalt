@@ -11,6 +11,7 @@
 #ifdef COBALT_HAS_WOLFRAM
 #include <wolfram/actor_typed.h>
 #include <wolfram/agent.h>
+#include <wolfram/embed.h>
 #include <wolfram/feed_typed.h>
 #include <wolfram/graph_typed.h>
 #include <wolfram/list_typed.h>
@@ -26,6 +27,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 /* Bundled by `make cacert` into romfs/. Without it curl cannot verify any
  * certificate on this platform — see tools/fetch_cacert.sh. */
@@ -67,6 +69,9 @@ typedef struct {
 
    /* Composing a quote post: `uri`/`cid` name the quoted post, not a parent. */
    bool quote;
+
+   /* Optional image to attach (SD path); empty for none. */
+   char attach_path[COBALT_ATTACH_PATH_MAX];
 } job_input;
 
 static struct {
@@ -339,6 +344,22 @@ save_post_lang(void)
    }
    fprintf(f, "%s\n", POST_LANGS[s.post_lang]);
    fclose(f);
+}
+
+const char *
+cobalt_attach_mime(const char *path)
+{
+   const char *dot = path ? strrchr(path, '.') : NULL;
+   if (!dot) {
+      return NULL;
+   }
+   if (!strcasecmp(dot, ".jpg") || !strcasecmp(dot, ".jpeg")) {
+      return "image/jpeg";
+   }
+   if (!strcasecmp(dot, ".png")) {
+      return "image/png";
+   }
+   return NULL;
 }
 
 const char *
@@ -982,6 +1003,50 @@ run_delete_post(const job_input *in, cobalt_job_result *r,
    r->ok = true;
 }
 
+/*
+ * Read an image from the SD card, upload it and return an
+ * app.bsky.embed.images object holding it (caller frees), or NULL.
+ */
+static cJSON *
+upload_attachment(const char *path)
+{
+   FILE *f = fopen(path, "rb");
+   if (!f) {
+      COBALT_LOGW("session: cannot open attachment %s", path);
+      return NULL;
+   }
+   unsigned char *buf = malloc(COBALT_ATTACH_MAX_BYTES + 1);
+   if (!buf) {
+      fclose(f);
+      return NULL;
+   }
+   const size_t n = fread(buf, 1, COBALT_ATTACH_MAX_BYTES + 1, f);
+   fclose(f);
+   if (n == 0 || n > COBALT_ATTACH_MAX_BYTES) {
+      COBALT_LOGW("session: attachment %s has bad size %d", path, (int) n);
+      free(buf);
+      return NULL;
+   }
+
+   const char *mime = cobalt_attach_mime(path);
+   wf_uploaded_blob blob;
+   memset(&blob, 0, sizeof(blob));
+   wf_status st = mime ? wf_agent_upload_blob_ex(s.wf, buf, n, mime, &blob)
+                       : WF_ERR_INVALID_ARG;
+   free(buf);
+   if (st != WF_OK) {
+      COBALT_LOGW("session: blob upload failed (%d)", (int) st);
+      return NULL;
+   }
+
+   cJSON *embed = wf_embed_images_new();
+   if (embed && wf_embed_images_add_image(embed, &blob, "") != WF_OK) {
+      cJSON_Delete(embed);
+      embed = NULL;
+   }
+   return embed;
+}
+
 static void
 run_post(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
 {
@@ -993,10 +1058,22 @@ run_post(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
    wf_agent_post_result result;
    memset(&result, 0, sizeof(result));
 
+   cJSON *images = NULL;
+   if (in->attach_path[0] && (in->quote || !in->uri[0])) {
+      images = upload_attachment(in->attach_path);
+      if (!images) {
+         set_message(r, "Could not upload that image. Nothing was posted.");
+         *state = COBALT_AUTH_SIGNED_IN;
+         return;
+      }
+   }
+
    wf_status status;
    if (in->quote) {
       COBALT_LOGI("session: quoting %s", in->uri);
-      status = wf_agent_quote(s.wf, in->text, in->uri, in->cid, &result);
+      status = images ? wf_agent_quote_with_media(s.wf, in->text, in->uri,
+                                                  in->cid, images, &result)
+                      : wf_agent_quote(s.wf, in->text, in->uri, in->cid, &result);
    } else if (in->uri[0]) {
       /*
        * A reply. wf_agent_reply_refs rather than wf_agent_reply, because the
@@ -1006,9 +1083,21 @@ run_post(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
       COBALT_LOGI("session: replying to %s (root %s)", in->uri, in->root_uri);
       status = wf_agent_reply_refs(s.wf, in->text, in->root_uri, in->root_cid,
                                    in->uri, in->cid, &result);
+   } else if (images) {
+      char *embed_json = cJSON_PrintUnformatted(images);
+      cJSON_Delete(images);
+      images = NULL;
+      status = embed_json
+                  ? wf_agent_post_with_embed(s.wf, in->text, embed_json, &result)
+                  : WF_ERR_ALLOC;
+      free(embed_json);
    } else {
       COBALT_LOGI("session: posting %d bytes", (int) strlen(in->text));
       status = wf_agent_post(s.wf, in->text, &result);
+   }
+   /* quote_with_media takes the embed by pointer but not ownership. */
+   if (images) {
+      cJSON_Delete(images);
    }
 
    if (status != WF_OK) {
@@ -2463,7 +2552,8 @@ cobalt_session_begin_delete_post(const char *uri)
 bool
 cobalt_session_begin_post(const char *text, const char *parent_uri,
                           const char *parent_cid, const char *root_uri,
-                          const char *root_cid, int reply_gate)
+                          const char *root_cid, int reply_gate,
+                          const char *attach_path)
 {
    if (!text || !text[0]) {
       return false;
@@ -2472,6 +2562,9 @@ cobalt_session_begin_post(const char *text, const char *parent_uri,
    job_input in;
    memset(&in, 0, sizeof(in));
    snprintf(in.text, sizeof(in.text), "%s", text);
+   if (attach_path) {
+      snprintf(in.attach_path, sizeof(in.attach_path), "%s", attach_path);
+   }
 
    const bool is_reply = parent_uri && parent_uri[0];
    in.reply_gate = is_reply ? 0 : reply_gate;
@@ -2494,7 +2587,8 @@ cobalt_session_begin_post(const char *text, const char *parent_uri,
 
 bool
 cobalt_session_begin_quote(const char *text, const char *quote_uri,
-                           const char *quote_cid, int reply_gate)
+                           const char *quote_cid, int reply_gate,
+                           const char *attach_path)
 {
    if (!text || !text[0] || !quote_uri || !quote_uri[0] || !quote_cid ||
        !quote_cid[0]) {
@@ -2508,6 +2602,9 @@ cobalt_session_begin_quote(const char *text, const char *quote_uri,
    snprintf(in.cid, sizeof(in.cid), "%s", quote_cid);
    in.quote = true;
    in.reply_gate = reply_gate;
+   if (attach_path) {
+      snprintf(in.attach_path, sizeof(in.attach_path), "%s", attach_path);
+   }
 
    return submit(COBALT_JOB_POST, &in);
 }
