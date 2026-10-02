@@ -665,16 +665,35 @@ cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
          const size_t n = end ? (size_t) (end - seg) : strlen(seg);
          char label[40];
          snprintf(label, sizeof(label), "%.*s", (int) (n < sizeof(label) - 1 ? n : sizeof(label) - 1), seg);
-         int lw = 0;
-         cobalt_text_size(r, COBALT_FONT_CAPTION, label, &lw, NULL);
+         const char *icon = strstr(label, "repost") ? COBALT_ICON_REPOST
+                          : strstr(label, "repl") ? COBALT_ICON_REPLY
+                          : strstr(label, "like") ? COBALT_ICON_LIKE : NULL;
+         /* The number is enough once there is an icon to say what it counts. */
+         char num[40];
+         snprintf(num, sizeof num, "%s", label);
+         char *sp = strchr(num, ' ');
+         if (icon && sp) *sp = '\0';
+         const char *shown = icon ? num : label;
+         int lw = 0, iw = 0;
+         cobalt_text_size(r, COBALT_FONT_CAPTION, shown, &lw, NULL);
+         if (icon) cobalt_text_size(r, COBALT_FONT_ICON, icon, &iw, NULL);
          const int padx = m->pad_tile / 2;
-         if (px + lw + 2 * padx > right) {
+         const int inner = lw + (icon ? iw + 6 : 0);
+         if (px + inner + 2 * padx > right) {
             break;
          }
-         const SDL_Rect pill = { px, y, lw + 2 * padx, caption_h };
+         const SDL_Rect pill = { px, y, inner + 2 * padx, caption_h };
          SDL_Color fill = { 0xEE, 0xF1, 0xF3, 0xFF };
          cobalt_fill_rounded_rect(r, &pill, caption_h / 2, fill);
-         cobalt_draw_text(r, COBALT_FONT_CAPTION, label, px + padx, y,
+         int tx = px + padx;
+         if (icon) {
+            const bool on = (strcmp(icon, COBALT_ICON_LIKE) == 0 && post->viewer_like[0]) ||
+                            (strcmp(icon, COBALT_ICON_REPOST) == 0 && post->viewer_repost[0]);
+            cobalt_draw_text(r, on ? COBALT_FONT_ICON_FILL : COBALT_FONT_ICON, icon,
+                             tx, y, on ? COBALT_COLOUR_ACCENT : COBALT_COLOUR_TEXT_DIM);
+            tx += iw + 6;
+         }
+         cobalt_draw_text(r, COBALT_FONT_CAPTION, shown, tx, y,
                           COBALT_COLOUR_TEXT_DIM);
          px += pill.w + padx / 2 + 2;
          seg = end ? end + 4 : seg + n;
