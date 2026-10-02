@@ -103,6 +103,9 @@ static struct {
    cobalt_feed author_feed;
    cobalt_actor_list muted;
    cobalt_actor_list blocked;
+   cobalt_actor_list followers;
+   cobalt_actor_list following;
+   char follow_actor[COBALT_POST_URI_MAX];
    cobalt_actor_list search;
    cobalt_list_summary_list lists;
    cobalt_actor_list list_members;
@@ -1236,7 +1239,7 @@ run_block(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
 static void
 run_actor_list(const job_input *in, cobalt_job_result *r,
                cobalt_auth_state *state, cobalt_actor_list *list,
-               wf_status (*fetch)(wf_agent *, int, const char *,
+               wf_status (*fetch)(wf_agent *, const char *, int, const char *,
                                   wf_agent_actor_list *),
                const char *empty_message)
 {
@@ -1260,7 +1263,8 @@ run_actor_list(const job_input *in, cobalt_job_result *r,
    wf_agent_actor_list wf_list;
    memset(&wf_list, 0, sizeof(wf_list));
 
-   const wf_status status = fetch(s.wf, TIMELINE_PAGE, cursor, &wf_list);
+   const wf_status status =
+      fetch(s.wf, in->uri[0] ? in->uri : NULL, TIMELINE_PAGE, cursor, &wf_list);
    if (status != WF_OK) {
       COBALT_LOGW("session: actor list fetch failed (%d)", (int) status);
       set_message(r, "Could not load the list (wolfram status %d).",
@@ -1294,11 +1298,27 @@ run_actor_list(const job_input *in, cobalt_job_result *r,
    r->ok = true;
 }
 
+static wf_status
+fetch_mutes(wf_agent *agent, const char *actor, int limit, const char *cursor,
+            wf_agent_actor_list *out)
+{
+   (void) actor;
+   return wf_agent_get_mutes_typed(agent, limit, cursor, out);
+}
+
+static wf_status
+fetch_blocks(wf_agent *agent, const char *actor, int limit, const char *cursor,
+             wf_agent_actor_list *out)
+{
+   (void) actor;
+   return wf_agent_get_blocks_typed(agent, limit, cursor, out);
+}
+
 static void
 run_muted_list(const job_input *in, cobalt_job_result *r,
                cobalt_auth_state *state)
 {
-   run_actor_list(in, r, state, &s.muted, wf_agent_get_mutes_typed,
+   run_actor_list(in, r, state, &s.muted, fetch_mutes,
                   "No muted accounts.");
 }
 
@@ -1306,8 +1326,24 @@ static void
 run_blocked_list(const job_input *in, cobalt_job_result *r,
                  cobalt_auth_state *state)
 {
-   run_actor_list(in, r, state, &s.blocked, wf_agent_get_blocks_typed,
+   run_actor_list(in, r, state, &s.blocked, fetch_blocks,
                   "No blocked accounts.");
+}
+
+static void
+run_followers(const job_input *in, cobalt_job_result *r,
+              cobalt_auth_state *state)
+{
+   run_actor_list(in, r, state, &s.followers, wf_agent_get_followers_typed,
+                  "No followers yet.");
+}
+
+static void
+run_following(const job_input *in, cobalt_job_result *r,
+              cobalt_auth_state *state)
+{
+   run_actor_list(in, r, state, &s.following, wf_agent_get_follows_typed,
+                  "Not following anyone.");
 }
 
 /* Not routed through run_actor_list — searchActors takes a query string on
@@ -1538,6 +1574,9 @@ run_logout(cobalt_job_result *r, cobalt_auth_state *state)
    cobalt_feed_reset(&s.author_feed);
    cobalt_actor_list_reset(&s.muted);
    cobalt_actor_list_reset(&s.blocked);
+   cobalt_actor_list_reset(&s.followers);
+   cobalt_actor_list_reset(&s.following);
+   s.follow_actor[0] = '\0';
    cobalt_actor_list_reset(&s.search);
    SDL_UnlockMutex(s.lock);
 
@@ -1580,6 +1619,8 @@ run_job(cobalt_job_kind kind, const job_input *in, cobalt_auth_state *state)
       case COBALT_JOB_BLOCK:    run_block(in, &r, state);     break;
       case COBALT_JOB_MUTED_LIST:   run_muted_list(in, &r, state);   break;
       case COBALT_JOB_BLOCKED_LIST: run_blocked_list(in, &r, state); break;
+      case COBALT_JOB_FOLLOWERS:    run_followers(in, &r, state);    break;
+      case COBALT_JOB_FOLLOWING:    run_following(in, &r, state);    break;
       case COBALT_JOB_SEARCH_ACTORS: run_search_actors(in, &r, state); break;
       case COBALT_JOB_FEED:     run_feed(in, &r, state);      break;
       case COBALT_JOB_LISTS:        run_lists(in, &r, state);        break;
@@ -2006,6 +2047,58 @@ cobalt_session_begin_muted_list(bool paging)
    memset(&in, 0, sizeof(in));
    in.paging = paging;
    return submit(COBALT_JOB_MUTED_LIST, &in);
+}
+
+static bool
+begin_follow_list(cobalt_job_kind kind, cobalt_actor_list *list,
+                  const char *actor, bool paging)
+{
+   if (!actor || actor[0] == '\0') {
+      return false;
+   }
+
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   in.paging = paging;
+   snprintf(in.uri, sizeof(in.uri), "%s", actor);
+
+   if (!paging) {
+      SDL_LockMutex(s.lock);
+      cobalt_actor_list_reset(list);
+      snprintf(s.follow_actor, sizeof(s.follow_actor), "%s", actor);
+      SDL_UnlockMutex(s.lock);
+   }
+   return submit(kind, &in);
+}
+
+bool
+cobalt_session_begin_followers(const char *actor, bool paging)
+{
+   return begin_follow_list(COBALT_JOB_FOLLOWERS, &s.followers, actor, paging);
+}
+
+bool
+cobalt_session_begin_following(const char *actor, bool paging)
+{
+   return begin_follow_list(COBALT_JOB_FOLLOWING, &s.following, actor, paging);
+}
+
+const cobalt_actor_list *
+cobalt_session_followers_list(void)
+{
+   return &s.followers;
+}
+
+const cobalt_actor_list *
+cobalt_session_following_list(void)
+{
+   return &s.following;
+}
+
+const char *
+cobalt_session_follow_list_actor(void)
+{
+   return s.follow_actor;
 }
 
 bool

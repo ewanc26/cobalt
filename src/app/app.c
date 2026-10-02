@@ -79,6 +79,8 @@ struct cobalt_app {
    int feeds_selected;
    /* Where B from the profile screen returns to. */
    cobalt_screen profile_return;
+   /* profile_return as it was when a followers/following list was opened. */
+   cobalt_screen follows_profile_return;
    /* Where to return after composing — the timeline or the thread. */
    cobalt_screen compose_return;
    /* Where B from the thread screen returns to — the timeline or notifications. */
@@ -711,6 +713,18 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                app->thread_return = COBALT_SCREEN_PROFILE;
                app->screen = COBALT_SCREEN_THREAD;
                break;
+            case COBALT_PROFILE_VIEW_OPEN_FOLLOWERS:
+               app->follows_profile_return = app->profile_return;
+               cobalt_graph_view_open_follows(&app->graph, COBALT_GRAPH_FOLLOWERS,
+                                              cobalt_session_profile()->did);
+               app->screen = COBALT_SCREEN_FOLLOWS_LIST;
+               break;
+            case COBALT_PROFILE_VIEW_OPEN_FOLLOWING:
+               app->follows_profile_return = app->profile_return;
+               cobalt_graph_view_open_follows(&app->graph, COBALT_GRAPH_FOLLOWING,
+                                              cobalt_session_profile()->did);
+               app->screen = COBALT_SCREEN_FOLLOWS_LIST;
+               break;
             case COBALT_PROFILE_VIEW_STAY:
             default:
                break;
@@ -818,6 +832,27 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
          switch (cobalt_graph_view_update(&app->graph, in)) {
             case COBALT_GRAPH_VIEW_BACK:
                app->screen = COBALT_SCREEN_ACCOUNT;
+               break;
+            case COBALT_GRAPH_VIEW_STAY:
+            default:
+               break;
+         }
+         break;
+
+      case COBALT_SCREEN_FOLLOWS_LIST:
+         switch (cobalt_graph_view_update(&app->graph, in)) {
+            case COBALT_GRAPH_VIEW_BACK:
+               /* The profile on screen may have been replaced by one opened
+                * from this list, so go back to the one the list belongs to. */
+               cobalt_session_begin_profile(app->graph.actor);
+               cobalt_profile_view_rewind(&app->profile);
+               app->profile_return = app->follows_profile_return;
+               app->screen = COBALT_SCREEN_PROFILE;
+               break;
+            case COBALT_GRAPH_VIEW_OPEN_PROFILE:
+               cobalt_profile_view_rewind(&app->profile);
+               app->profile_return = COBALT_SCREEN_FOLLOWS_LIST;
+               app->screen = COBALT_SCREEN_PROFILE;
                break;
             case COBALT_GRAPH_VIEW_STAY:
             default:
@@ -1290,6 +1325,7 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_MUTED_LIST:
       case COBALT_SCREEN_BLOCKED_LIST:
+      case COBALT_SCREEN_FOLLOWS_LIST:
          cobalt_graph_view_draw(&app->graph, r, surface);
          break;
 

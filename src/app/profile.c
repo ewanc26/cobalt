@@ -102,6 +102,14 @@ cobalt_profile_view_update(cobalt_profile_view *view, const cobalt_input *in)
        * Right), just mapped to follow/mute/block instead of open/like/repost.
        * None apply to your own profile, and the session layer refuses them
        * there too. */
+      if (profile->loaded && profile->did[0]) {
+         if (cobalt_input_pressed(in, COBALT_BTN_ALT_X)) {
+            return COBALT_PROFILE_VIEW_OPEN_FOLLOWERS;
+         }
+         if (cobalt_input_pressed(in, COBALT_BTN_ALT_Y)) {
+            return COBALT_PROFILE_VIEW_OPEN_FOLLOWING;
+         }
+      }
       if (profile->loaded && !profile->is_self) {
          if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
             cobalt_session_begin_follow();
@@ -338,6 +346,6 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     cobalt_session_busy()
                        ? "Working..."
-                       : "A: follow/open   Left: like/mute   Right: repost/block   B: back",
+                       : "A: follow/open   Left: like/mute   Right: repost/block   X: followers   Y: following   B: back",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }

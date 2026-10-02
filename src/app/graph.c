@@ -10,21 +10,62 @@
 static const cobalt_actor_list *
 list_for(cobalt_graph_kind kind)
 {
-   return kind == COBALT_GRAPH_MUTED ? cobalt_session_muted_list()
-                                     : cobalt_session_blocked_list();
+   switch (kind) {
+      case COBALT_GRAPH_MUTED:     return cobalt_session_muted_list();
+      case COBALT_GRAPH_BLOCKED:   return cobalt_session_blocked_list();
+      case COBALT_GRAPH_FOLLOWERS: return cobalt_session_followers_list();
+      case COBALT_GRAPH_FOLLOWING: return cobalt_session_following_list();
+   }
+   return cobalt_session_muted_list();
+}
+
+bool
+cobalt_graph_kind_is_follows(cobalt_graph_kind kind)
+{
+   return kind == COBALT_GRAPH_FOLLOWERS || kind == COBALT_GRAPH_FOLLOWING;
+}
+
+static void
+begin_fetch(cobalt_graph_kind kind, bool paging)
+{
+   switch (kind) {
+      case COBALT_GRAPH_MUTED:
+         cobalt_session_begin_muted_list(paging);
+         break;
+      case COBALT_GRAPH_BLOCKED:
+         cobalt_session_begin_blocked_list(paging);
+         break;
+      case COBALT_GRAPH_FOLLOWERS:
+         cobalt_session_begin_followers(cobalt_session_follow_list_actor(), paging);
+         break;
+      case COBALT_GRAPH_FOLLOWING:
+         cobalt_session_begin_following(cobalt_session_follow_list_actor(), paging);
+         break;
+   }
 }
 
 static const char *
 title_for(cobalt_graph_kind kind)
 {
-   return kind == COBALT_GRAPH_MUTED ? "Muted accounts" : "Blocked accounts";
+   switch (kind) {
+      case COBALT_GRAPH_MUTED:     return "Muted accounts";
+      case COBALT_GRAPH_BLOCKED:   return "Blocked accounts";
+      case COBALT_GRAPH_FOLLOWERS: return "Followers";
+      case COBALT_GRAPH_FOLLOWING: return "Following";
+   }
+   return "";
 }
 
 static const char *
 empty_message_for(cobalt_graph_kind kind)
 {
-   return kind == COBALT_GRAPH_MUTED ? "No muted accounts."
-                                     : "No blocked accounts.";
+   switch (kind) {
+      case COBALT_GRAPH_MUTED:     return "No muted accounts.";
+      case COBALT_GRAPH_BLOCKED:   return "No blocked accounts.";
+      case COBALT_GRAPH_FOLLOWERS: return "No followers yet.";
+      case COBALT_GRAPH_FOLLOWING: return "Not following anyone.";
+   }
+   return "";
 }
 
 void
@@ -52,11 +93,27 @@ cobalt_graph_view_open(cobalt_graph_view *view, cobalt_graph_kind kind)
     * away a scroll position, same rule the timeline/notifications entry
     * points already follow. */
    if (list_for(kind)->count == 0) {
-      if (kind == COBALT_GRAPH_MUTED) {
-         cobalt_session_begin_muted_list(false);
-      } else {
-         cobalt_session_begin_blocked_list(false);
-      }
+      begin_fetch(kind, false);
+   }
+}
+
+void
+cobalt_graph_view_open_follows(cobalt_graph_view *view, cobalt_graph_kind kind,
+                               const char *actor)
+{
+   if (!view || !actor || !cobalt_graph_kind_is_follows(kind)) {
+      return;
+   }
+   view->kind = kind;
+   view->selected = 0;
+   view->scroll = 0;
+   view->last_visible = -1;
+   snprintf(view->actor, sizeof(view->actor), "%s", actor);
+
+   if (kind == COBALT_GRAPH_FOLLOWERS) {
+      cobalt_session_begin_followers(actor, false);
+   } else {
+      cobalt_session_begin_following(actor, false);
    }
 }
 
@@ -109,12 +166,16 @@ cobalt_graph_view_update(cobalt_graph_view *view, const cobalt_input *in)
       view->scroll = 0;
    }
 
-   /* A on a row always undoes — every row here is, by definition, already
-    * muted or blocked. */
+   /* On muted/blocked, A always undoes — every row there is, by definition,
+    * already muted or blocked. On followers/following it opens the profile. */
    if (!busy && view->selected < list->count &&
        cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
       const cobalt_actor *actor = &list->actors[view->selected];
-      if (view->kind == COBALT_GRAPH_MUTED) {
+      if (cobalt_graph_kind_is_follows(view->kind)) {
+         COBALT_LOGI("graph: opening profile %s", actor->did);
+         cobalt_session_begin_profile(actor->did);
+         return COBALT_GRAPH_VIEW_OPEN_PROFILE;
+      } else if (view->kind == COBALT_GRAPH_MUTED) {
          COBALT_LOGI("graph: unmuting %s", actor->did);
          cobalt_session_begin_unmute_actor(actor->did);
       } else {
@@ -125,11 +186,7 @@ cobalt_graph_view_update(cobalt_graph_view *view, const cobalt_input *in)
 
    if (!busy && cobalt_actor_list_can_page(list) &&
        view->selected >= list->count - 1) {
-      if (view->kind == COBALT_GRAPH_MUTED) {
-         cobalt_session_begin_muted_list(true);
-      } else {
-         cobalt_session_begin_blocked_list(true);
-      }
+      begin_fetch(view->kind, true);
    }
 
    return COBALT_GRAPH_VIEW_STAY;
@@ -242,7 +299,9 @@ cobalt_graph_view_draw(cobalt_graph_view *view, cobalt_render *r,
    }
 
    SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
-   const char *action = view->kind == COBALT_GRAPH_MUTED ? "unmute" : "unblock";
+   const char *action = cobalt_graph_kind_is_follows(view->kind) ? "open profile"
+                        : view->kind == COBALT_GRAPH_MUTED      ? "unmute"
+                                                                : "unblock";
    char hint_text[64];
    snprintf(hint_text, sizeof(hint_text), "A: %s   B: back", action);
    cobalt_draw_text(r, COBALT_FONT_CAPTION,

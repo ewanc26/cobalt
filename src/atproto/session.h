@@ -78,6 +78,8 @@ typedef enum {
    COBALT_JOB_LISTS,
    COBALT_JOB_LIST_MEMBERS,
    COBALT_JOB_DELETE_POST,
+   COBALT_JOB_FOLLOWERS,
+   COBALT_JOB_FOLLOWING,
 } cobalt_job_kind;
 
 typedef struct {
@@ -269,6 +271,17 @@ bool cobalt_session_begin_unblock_actor(const char *record_uri, const char *did)
 
 const cobalt_actor_list *cobalt_session_muted_list(void);
 const cobalt_actor_list *cobalt_session_blocked_list(void);
+
+/*
+ * Who follows `actor` / who `actor` follows (DID or handle). A fresh call
+ * empties the held list first, so a different account's list is never shown
+ * while the new one loads; paging appends to the list for the same actor.
+ */
+bool cobalt_session_begin_followers(const char *actor, bool paging);
+bool cobalt_session_begin_following(const char *actor, bool paging);
+const cobalt_actor_list *cobalt_session_followers_list(void);
+const cobalt_actor_list *cobalt_session_following_list(void);
+const char *cobalt_session_follow_list_actor(void);
 
 /*
  * Actor search (app.bsky.actor.searchActors). `query` is a handle/display-name
