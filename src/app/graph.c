@@ -298,13 +298,10 @@ cobalt_graph_view_draw(cobalt_graph_view *view, cobalt_render *r,
       view->last_visible = last_fitted;
    }
 
-   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    const char *action = cobalt_graph_kind_is_follows(view->kind) ? "open profile"
                         : view->kind == COBALT_GRAPH_MUTED      ? "unmute"
                                                                 : "unblock";
    char hint_text[64];
    snprintf(hint_text, sizeof(hint_text), "A: %s   B: back", action);
-   cobalt_draw_text(r, COBALT_FONT_CAPTION,
-                    cobalt_session_busy() ? "Working..." : hint_text,
-                    m->pad_edge, m->height - m->pad_edge - 20, hint);
+   cobalt_draw_hints(r, cobalt_session_busy() ? "Working..." : hint_text);
 }

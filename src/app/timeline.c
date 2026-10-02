@@ -265,10 +265,8 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
                             m->pad_edge + 22 };
    cobalt_fill_rect(r, &strip, COBALT_COLOUR_BG_BOTTOM);
 
-   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    const char *footer = cobalt_session_busy()
                            ? "Working..."
                            : "A: thread  Y: profile  X: post  Left: like  Right: repost  +: refresh";
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, footer, m->pad_edge,
-                    m->height - m->pad_edge - 20, hint);
+   cobalt_draw_hints(r, footer);
 }
