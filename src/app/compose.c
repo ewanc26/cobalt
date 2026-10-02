@@ -362,7 +362,7 @@ draw_header(cobalt_compose *compose, cobalt_render *r)
    }
 
    /* The counter turns red before it is a problem, not after. */
-   SDL_Color colour = { 0xD8, 0xE6, 0xF4, 0xFF };
+   SDL_Color colour = { 0xEE, 0xFA, 0xDC, 0xFF };
    cobalt_draw_text(r, remaining < 0 ? COBALT_FONT_CAPTION : COBALT_FONT_CAPTION,
                     subtitle, m->pad_edge,
                     m->pad_edge + cobalt_font_line_height(r, COBALT_FONT_TITLE) -
@@ -374,7 +374,7 @@ static void
 draw_editing(cobalt_compose *compose, cobalt_render *r, cobalt_surface_id surface)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
 
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
    const int lines = 3;
@@ -406,7 +406,7 @@ draw_confirming(cobalt_compose *compose, cobalt_render *r,
                 cobalt_surface_id surface)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
 
    /* Show the whole post here, not a two-line preview — this is the last
@@ -450,7 +450,7 @@ draw_confirming(cobalt_compose *compose, cobalt_render *r,
       s_confirm_hit_valid = true;
    }
 
-   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
 
    if (!cobalt_compose_is_reply(compose)) {
       char gate_line[64];
@@ -485,7 +485,7 @@ draw_alt_editing(cobalt_compose *compose, cobalt_render *r,
                  cobalt_surface_id surface)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
    const int lines = 2;
    const int box_h = m->pad_tile * 2 + lines * (body_h + m->line_gap);
@@ -508,8 +508,9 @@ draw_alt_editing(cobalt_compose *compose, cobalt_render *r,
 static void
 draw_picker(cobalt_compose *compose, cobalt_render *r, cobalt_surface_id surface)
 {
+   (void) surface;
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
    const int row_h = cobalt_font_line_height(r, COBALT_FONT_BODY) + m->line_gap;
    const int visible = 6;
 
@@ -538,7 +539,7 @@ draw_picker(cobalt_compose *compose, cobalt_render *r, cobalt_surface_id surface
       }
    }
 
-   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION, "Up/Down: choose    A: attach    B: back",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }

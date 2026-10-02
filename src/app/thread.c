@@ -177,7 +177,7 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
       } else {
          snprintf(subtitle, sizeof(subtitle), "Nothing to show");
       }
-      SDL_Color dim = { 0xD8, 0xE6, 0xF4, 0xFF };
+      SDL_Color dim = { 0xEE, 0xFA, 0xDC, 0xFF };
       cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
                        m->pad_edge +
                           cobalt_font_line_height(r, COBALT_FONT_TITLE) -
@@ -185,7 +185,7 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
                        dim);
    }
 
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
    const int bottom = m->height - m->pad_edge - 28;
 
    if (touchable) {
@@ -247,7 +247,7 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
       view->last_visible = last_fitted;
    }
 
-   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
    const bool own =
       view->selected >= 0 && view->selected < thread->count &&
       cobalt_post_uri_is_by(thread->posts[view->selected].uri,

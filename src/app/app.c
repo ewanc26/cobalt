@@ -259,6 +259,12 @@ cobalt_app_create(void)
    return app;
 }
 
+int
+cobalt_app_home_selection(const cobalt_app *app)
+{
+   return app ? app->selected : 0;
+}
+
 void
 cobalt_app_destroy(cobalt_app *app)
 {
@@ -941,7 +947,7 @@ draw_header(cobalt_render *r, const char *subtitle)
                     COBALT_COLOUR_TILE_FOCUS);
 
    int title_h = cobalt_font_line_height(r, COBALT_FONT_TITLE);
-   SDL_Color dim = { 0xD8, 0xE6, 0xF4, 0xFF };
+   SDL_Color dim = { 0xEE, 0xFA, 0xDC, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
                     m->pad_edge + title_h - m->line_gap, dim);
 }
@@ -990,8 +996,11 @@ draw_home_tv(cobalt_app *app, cobalt_render *r)
       cobalt_draw_tile(r, &tile, app->focus[i]);
 
       SDL_Color label = menu_enabled(i) ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM;
-      cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, menu_label(i),
-                               tile.x + m->pad_tile, tile.y + m->pad_tile,
+      int label_w = 0;
+      cobalt_text_size(r, COBALT_FONT_BODY, menu_label(i), &label_w, NULL);
+      cobalt_draw_text_wrapped(r, label_w > tile.w - 2 * m->pad_tile ? COBALT_FONT_CAPTION
+                                                                      : COBALT_FONT_BODY,
+                               menu_label(i), tile.x + m->pad_tile, tile.y + m->pad_tile,
                                tile.w - 2 * m->pad_tile, 2, label);
 
       if (!menu_enabled(i)) {
@@ -1010,7 +1019,7 @@ draw_home_tv(cobalt_app *app, cobalt_render *r)
 
    draw_notice(app, r, detail_y + m->font_body + m->gap, m->width - 2 * m->pad_edge);
 
-   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     "A / touch: select     B: back     D-pad or stick: move",
                     m->pad_edge, m->height - m->pad_edge - 24, hint);
@@ -1024,7 +1033,7 @@ draw_home_drc(cobalt_app *app, cobalt_render *r)
 
    /* A vertical list: denser than the TV row, and every row is a touch target
     * comfortably larger than a fingertip. */
-   const int top = m->pad_edge + 62;
+   const int top = cobalt_content_top(r);
    const int row_h = 44;
    const int pitch = row_h + m->gap / 2;
    const int list_w = m->width - 2 * m->pad_edge;
@@ -1077,7 +1086,7 @@ draw_home_drc(cobalt_app *app, cobalt_render *r)
    const int list_bottom = top + visible * pitch;
    draw_notice(app, r, list_bottom + 4, list_w);
 
-   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     app->display == COBALT_DISPLAY_DUAL ? "TV + GamePad" : "GamePad only",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
@@ -1095,7 +1104,7 @@ draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    const cobalt_metrics *m = cobalt_render_metrics(r);
    draw_header(r, "Account");
 
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
    const int row_h = m->font_body * 2;
    const int width = m->width - 2 * m->pad_edge;
 
@@ -1149,7 +1158,7 @@ draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
    draw_notice(app, r, row_y + m->gap / 2, width);
 
-   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION, "A / touch: open     B: back",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }
@@ -1160,7 +1169,7 @@ draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    const cobalt_metrics *m = cobalt_render_metrics(r);
    draw_header(r, "Feeds");
 
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
    const int row_h = m->font_body * 2;
    const int width = m->width - 2 * m->pad_edge;
    const int label_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
@@ -1185,7 +1194,7 @@ draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
    draw_notice(app, r, row_y + m->gap / 2, width);
 
-   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION, "A / touch: open     B: back",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }
@@ -1290,12 +1299,17 @@ draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    const cobalt_font_id font = (surface == COBALT_SURFACE_DRC) ? COBALT_FONT_CAPTION
                                                                : COBALT_FONT_BODY;
 
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
    SDL_Rect panel = { m->pad_edge, top, m->width - 2 * m->pad_edge,
                       m->height - top - m->pad_edge - 40 };
    cobalt_draw_tile(r, &panel, 0.0f);
 
-   const int line_h = cobalt_font_line_height(r, font) + m->line_gap;
+   /* Squeeze the pitch so every line fits the panel instead of spilling. */
+   int line_h = cobalt_font_line_height(r, font) + m->line_gap;
+   const int fit = (panel.h - 2 * m->pad_tile) / (count > 0 ? count : 1);
+   if (fit < line_h) {
+      line_h = fit;
+   }
    for (int i = 0; i < count; i++) {
       bool bad = (strstr(lines[i], "NOT FOUND") != NULL) ||
                  (strstr(lines[i], "MISSING") != NULL) ||
@@ -1309,7 +1323,7 @@ draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
                                bad ? COBALT_COLOUR_ERROR : COBALT_COLOUR_TEXT);
    }
 
-   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION, "B: back",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }
