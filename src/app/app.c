@@ -438,7 +438,9 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
       case COBALT_JOB_POST:
          if (result->ok) {
             set_notice(app, cobalt_compose_is_reply(&app->compose)
-                               ? "Reply posted." : "Posted.", false);
+                               ? "Reply posted."
+                            : cobalt_compose_is_quote(&app->compose)
+                               ? "Quote posted." : "Posted.", false);
             /* Back to where composing started, and refresh so the new post is
              * actually visible rather than only claimed. */
             app->screen = app->compose_return;
@@ -762,6 +764,18 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
             case COBALT_THREAD_VIEW_BACK:
                app->screen = app->thread_return;
                break;
+            case COBALT_THREAD_VIEW_QUOTE: {
+               const cobalt_thread *conv = cobalt_session_thread();
+               if (app->thread.selected < conv->count) {
+                  cobalt_compose_quote(&app->compose,
+                                       &conv->posts[app->thread.selected]);
+                  if (cobalt_compose_is_quote(&app->compose)) {
+                     app->compose_return = COBALT_SCREEN_THREAD;
+                     app->screen = COBALT_SCREEN_COMPOSE;
+                  }
+               }
+               break;
+            }
             case COBALT_THREAD_VIEW_REPLY: {
                const cobalt_thread *conv = cobalt_session_thread();
                if (app->thread.selected < conv->count) {
@@ -800,12 +814,16 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                app->screen = app->compose_return;
                break;
             case COBALT_COMPOSE_SUBMIT:
-               if (!cobalt_session_begin_post(app->compose.text,
-                                              app->compose.parent_uri,
-                                              app->compose.parent_cid,
-                                              app->compose.root_uri,
-                                              app->compose.root_cid,
-                                              (int) app->compose.reply_gate)) {
+               if (!(cobalt_compose_is_quote(&app->compose)
+                        ? cobalt_session_begin_quote(
+                             app->compose.text, app->compose.quote_uri,
+                             app->compose.quote_cid,
+                             (int) app->compose.reply_gate)
+                        : cobalt_session_begin_post(
+                             app->compose.text, app->compose.parent_uri,
+                             app->compose.parent_cid, app->compose.root_uri,
+                             app->compose.root_cid,
+                             (int) app->compose.reply_gate))) {
                   set_notice(app, "Could not start that post.", true);
                }
                break;

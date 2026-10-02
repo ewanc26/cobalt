@@ -26,6 +26,7 @@ typedef enum {
    COBALT_THREAD_VIEW_STAY = 0,
    COBALT_THREAD_VIEW_BACK,
    COBALT_THREAD_VIEW_REPLY,
+   COBALT_THREAD_VIEW_QUOTE,
 } cobalt_thread_action;
 
 typedef struct {

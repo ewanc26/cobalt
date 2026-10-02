@@ -1281,6 +1281,39 @@ test_quote_helpers(void)
 }
 
 static void
+test_quote_compose(void)
+{
+   begin("quote compose");
+
+   cobalt_post post;
+   memset(&post, 0, sizeof(post));
+   snprintf(post.uri, sizeof(post.uri), "at://did:plc:abc/app.bsky.feed.post/1");
+   snprintf(post.cid, sizeof(post.cid), "bafycid");
+   snprintf(post.handle, sizeof(post.handle), "@alice.test");
+
+   static cobalt_compose c;
+   cobalt_compose_quote(&c, &post);
+   CHECK(cobalt_compose_is_quote(&c));
+   CHECK(!cobalt_compose_is_reply(&c));
+   CHECK(strcmp(c.quote_uri, post.uri) == 0);
+   CHECK(strcmp(c.quote_cid, "bafycid") == 0);
+   CHECK(strcmp(c.quote_handle, "@alice.test") == 0);
+
+   /* A placeholder with no refs cannot be quoted. */
+   post.cid[0] = '\0';
+   cobalt_compose_quote(&c, &post);
+   CHECK(!cobalt_compose_is_quote(&c));
+
+   cobalt_compose_init(&c);
+   CHECK(!cobalt_compose_is_quote(&c));
+
+   CHECK(!cobalt_session_begin_quote("hi", NULL, "cid", 0));
+   CHECK(!cobalt_session_begin_quote("hi", "at://x", NULL, 0));
+   CHECK(!cobalt_session_begin_quote("", "at://x", "cid", 0));
+   CHECK(!cobalt_session_begin_quote(NULL, "at://x", "cid", 0));
+}
+
+static void
 test_delete_post_helpers(void)
 {
    begin("own-post detection and local removal");
@@ -1692,6 +1725,7 @@ main(int argc, char **argv)
    test_quote_helpers();
    test_follow_lists();
    test_profile_tabs();
+   test_quote_compose();
    test_compose();
    test_post_refuses_partial_refs();
    test_notification_wording();
