@@ -100,6 +100,14 @@ static void
 open_home_item(int idx)
 {
    go_home();
+   {
+      /* TV grid: Down jumps a row of 5 and Up comes back; wraps like the list. */
+      const int start = cobalt_app_home_selection(g_app);
+      frame(COBALT_BTN_DOWN); settle(2);
+      CHECK(cobalt_app_home_selection(g_app) == (start + 5) % 10);
+      frame(COBALT_BTN_UP); settle(2);
+      CHECK(cobalt_app_home_selection(g_app) == start);
+   }
    for (int n = (idx - cobalt_app_home_selection(g_app) + 10) % 10; n > 0; n--) {
       frame(COBALT_BTN_RIGHT);
       settle(2);
