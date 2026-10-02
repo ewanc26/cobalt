@@ -135,12 +135,22 @@ update_members(cobalt_lists_view *view, const cobalt_input *in)
       view->selected--;
    }
 
+   bool tapped = false;
    if (view->hit_valid && in->touch_ended) {
       for (int i = 0; i < view->hit_count; i++) {
          if (cobalt_input_tapped(in, &view->hit[i])) {
             view->selected = view->hit_index[i];
+            tapped = true;
             break;
          }
+      }
+   }
+
+   if (tapped || cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
+      const cobalt_actor *actor = &members->actors[view->selected];
+      if (actor->did[0]) {
+         cobalt_session_begin_profile(actor->did);
+         return COBALT_LISTS_VIEW_OPEN_PROFILE;
       }
    }
 
@@ -160,11 +170,6 @@ update_members(cobalt_lists_view *view, const cobalt_input *in)
        view->selected >= members->count - 1) {
       cobalt_session_begin_list_members(view->open_uri, true);
    }
-
-   /* Members are read-only (see atproto/lists.h) — no A action here, unlike
-    * graph.c's undo or search.c's open-profile. A future "open profile from
-    * a list member" needs the same DID-forwarding search.c already does;
-    * left out for now since nothing else forwards a DID out of this view. */
 
    return COBALT_LISTS_VIEW_STAY;
 }
@@ -316,7 +321,8 @@ draw_list_of_lists(cobalt_lists_view *view, cobalt_render *r,
    SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     cobalt_session_busy() ? "Working..."
-                                          : "A / touch: open list   B: back",
+                                          : view->browsing_members ? "A / touch: open profile   B: back"
+                                                                   : "A / touch: open list   B: back",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
 }
 
