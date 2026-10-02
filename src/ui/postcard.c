@@ -293,6 +293,10 @@ cobalt_avatar_draw(cobalt_render *r, const char *url, const char *name,
 
    const SDL_Rect box = { x, y, side, side };
 
+   /* A thin ring, like the frame round a Mii icon on Miiverse. */
+   const SDL_Rect ring = { x - 2, y - 2, side + 4, side + 4 };
+   cobalt_fill_rounded_rect(r, &ring, (side + 4) / 2, COBALT_COLOUR_TILE_EDGE);
+
    cobalt_imagecache *images = cobalt_render_images(r);
    SDL_Texture *texture = NULL;
    if (images && url && url[0]) {
@@ -631,6 +635,9 @@ cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
    viewer_marker(post, marker, sizeof(marker));
 
    if (post->meta[0] || post->embed_note[0] || marker[0]) {
+      /* Miiverse separates a post from its reaction row with a hairline. */
+      SDL_Rect rule = { text_left, y - m->line_gap / 2, right - text_left, 1 };
+      cobalt_fill_rect(r, &rule, COBALT_COLOUR_TILE_EDGE);
       char footer[COBALT_POST_META_MAX + 40];
       if (post->meta[0] && post->embed_note[0]) {
          snprintf(footer, sizeof(footer), "%s   %s", post->meta, post->embed_note);
