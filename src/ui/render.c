@@ -340,7 +340,7 @@ build_band(cobalt_render *r, int h)
    return tex;
 }
 
-/* Miiverse-style green header behind every screen's title and subtitle. */
+/* Miiverse-style blue header behind every screen's title and subtitle. */
 static void
 draw_header_band(cobalt_render *r)
 {
