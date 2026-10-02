@@ -291,6 +291,14 @@ fetch_network(const char *url, size_t max_bytes, cobalt_http_response *out)
    const CURLcode rc = curl_easy_perform(curl);
    long status = 0;
    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+   double t_dns = 0, t_conn = 0, t_tls = 0, t_total = 0;
+   curl_easy_getinfo(curl, CURLINFO_NAMELOOKUP_TIME, &t_dns);
+   curl_easy_getinfo(curl, CURLINFO_CONNECT_TIME, &t_conn);
+   curl_easy_getinfo(curl, CURLINFO_APPCONNECT_TIME, &t_tls);
+   curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &t_total);
+   COBALT_LOGI("http: dns %.0f conn %.0f tls %.0f total %.0f ms, %u bytes (%.48s)",
+               t_dns * 1000, t_conn * 1000, t_tls * 1000, t_total * 1000,
+               (unsigned) buf.size, url);
    curl_easy_cleanup(curl);
 
    if (rc != CURLE_OK) {
