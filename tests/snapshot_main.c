@@ -85,14 +85,27 @@ shoot(const char *scene)
    }
 }
 
-static int g_home_sel;
+/* Back is a no-op on home, so spamming it reaches home from anywhere. */
+static void
+go_home(void)
+{
+   for (int i = 0; i < 8; i++) {
+      frame(COBALT_BTN_BACK);
+      settle(4);
+   }
+}
 
 /* Home selection is linear and wraps; the app remembers it across screens. */
 static void
 open_home_item(int idx)
 {
-   for (int n = (idx - g_home_sel + 10) % 10; n > 0; n--) { frame(COBALT_BTN_RIGHT); settle(2); }
-   g_home_sel = idx;
+   go_home();
+   for (int n = (idx - cobalt_app_home_selection(g_app) + 10) % 10; n > 0; n--) {
+      frame(COBALT_BTN_RIGHT);
+      settle(2);
+   }
+   if (cobalt_app_home_selection(g_app) != idx) printf("nav: wanted %d got %d\n", idx, cobalt_app_home_selection(g_app));
+   CHECK(cobalt_app_home_selection(g_app) == idx);
    settle(3);
    frame(COBALT_BTN_CONFIRM);
 }
@@ -239,9 +252,16 @@ main(int argc, char **argv)
    settle(10);
    shoot("compose");
 
-   frame(COBALT_BTN_BACK);
-   settle(5);
-   frame(COBALT_BTN_BACK);
+   /* B is backspace on the keyboard, so leave through its Cancel key: the
+    * focus starts on row 2, so two Downs reach the function row and Left
+    * wraps from column 0 to Cancel. */
+   for (int k = 0; k < 2; k++) {
+      frame(COBALT_BTN_DOWN);
+      settle(2);
+   }
+   frame(COBALT_BTN_LEFT);
+   settle(2);
+   frame(COBALT_BTN_CONFIRM);
    settle(5);
    open_home_item(6);
    settle(10);

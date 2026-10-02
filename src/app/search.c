@@ -188,7 +188,7 @@ draw_editing(cobalt_search_view *view, cobalt_render *r,
             cobalt_surface_id surface)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
 
    SDL_Rect box = { m->pad_edge, top, m->width - 2 * m->pad_edge,
                     m->pad_tile * 2 + cobalt_font_line_height(r, COBALT_FONT_BODY) };
@@ -217,7 +217,7 @@ draw_browsing(cobalt_search_view *view, cobalt_render *r,
    const cobalt_actor_list *results = cobalt_session_search_results();
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
    const int bottom = m->height - m->pad_edge - 28;
 
    if (touchable) {
@@ -281,7 +281,7 @@ cobalt_search_view_draw(cobalt_search_view *view, cobalt_render *r,
 
    if (view->browsing) {
       draw_browsing(view, r, surface);
-      SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+      SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
       cobalt_draw_text(r, COBALT_FONT_CAPTION,
                        cobalt_session_busy() ? "Searching..."
                                              : "B: new search",

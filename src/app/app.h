@@ -58,6 +58,9 @@ typedef struct cobalt_app cobalt_app;
 cobalt_app *cobalt_app_create(void);
 void cobalt_app_destroy(cobalt_app *app);
 
+/* Index of the highlighted home entry; lets tests navigate without guessing. */
+int cobalt_app_home_selection(const cobalt_app *app);
+
 void cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms);
 void cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface);
 

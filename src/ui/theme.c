@@ -1,13 +1,17 @@
 #include "ui/theme.h"
 
-const SDL_Color COBALT_COLOUR_BG_TOP     = { 0x1C, 0x5A, 0xA8, 0xFF };
-const SDL_Color COBALT_COLOUR_BG_BOTTOM  = { 0x0B, 0x2E, 0x5C, 0xFF };
-const SDL_Color COBALT_COLOUR_TILE       = { 0xF4, 0xF8, 0xFC, 0xFF };
+/* Wii U menu / Miiverse: light grey-white ground, white cards, a bright green
+ * header band, and soft grey text. */
+const SDL_Color COBALT_COLOUR_BG_TOP     = { 0xF2, 0xF5, 0xF6, 0xFF };
+const SDL_Color COBALT_COLOUR_BG_BOTTOM  = { 0xDC, 0xE3, 0xE7, 0xFF };
+const SDL_Color COBALT_COLOUR_BAND_TOP   = { 0x86, 0xCF, 0x2F, 0xFF };
+const SDL_Color COBALT_COLOUR_BAND_BOTTOM = { 0x5F, 0xB3, 0x18, 0xFF };
+const SDL_Color COBALT_COLOUR_TILE       = { 0xFF, 0xFF, 0xFF, 0xFF };
 const SDL_Color COBALT_COLOUR_TILE_FOCUS = { 0xFF, 0xFF, 0xFF, 0xFF };
-const SDL_Color COBALT_COLOUR_TILE_EDGE  = { 0xB8, 0xCC, 0xE0, 0xFF };
-const SDL_Color COBALT_COLOUR_TEXT       = { 0x18, 0x28, 0x38, 0xFF };
-const SDL_Color COBALT_COLOUR_TEXT_DIM   = { 0x5A, 0x6C, 0x7E, 0xFF };
-const SDL_Color COBALT_COLOUR_ACCENT     = { 0x3E, 0x8E, 0xDE, 0xFF };
+const SDL_Color COBALT_COLOUR_TILE_EDGE  = { 0xCF, 0xD8, 0xDC, 0xFF };
+const SDL_Color COBALT_COLOUR_TEXT       = { 0x33, 0x3B, 0x40, 0xFF };
+const SDL_Color COBALT_COLOUR_TEXT_DIM   = { 0x7A, 0x86, 0x8E, 0xFF };
+const SDL_Color COBALT_COLOUR_ACCENT     = { 0x4F, 0xB0, 0x14, 0xFF };
 const SDL_Color COBALT_COLOUR_ERROR      = { 0xD9, 0x4B, 0x4B, 0xFF };
 
 /*
@@ -37,7 +41,7 @@ static const cobalt_metrics TV_METRICS = {
 static const cobalt_metrics DRC_METRICS = {
    .width        = COBALT_DRC_WIDTH,
    .height       = COBALT_DRC_HEIGHT,
-   .font_title   = 34,
+   .font_title   = 30,
    .font_heading = 26,
    .font_body    = 21,
    .font_caption = 17,
