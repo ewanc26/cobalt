@@ -37,7 +37,9 @@ typedef enum {
 typedef struct {
    char query[COBALT_SEARCH_QUERY_MAX];
    cobalt_keyboard kb;
-   bool posts;      /* Y toggles People/Posts while typing */
+   bool posts;      /* Y or tapping the selector toggles People/Posts */
+   SDL_Rect mode_hit[2];   /* People, Posts; valid after a GamePad draw */
+   bool mode_hit_valid;
    bool browsing;   /* false: editing the query; true: viewing results */
 
    int selected;
