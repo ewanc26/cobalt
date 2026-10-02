@@ -293,6 +293,11 @@ cobalt_avatar_draw(cobalt_render *r, const char *url, const char *name,
 
    const SDL_Rect box = { x, y, side, side };
 
+   /* Soft shadow under the icon, as Miiverse gives every Mii. */
+   const SDL_Rect icon_shadow = { x - 1, y + 2, side + 2, side + 2 };
+   cobalt_fill_rounded_rect(r, &icon_shadow, (side + 2) / 2,
+                            (SDL_Color) { 0x30, 0x40, 0x50, 0x38 });
+
    /* A thin ring, like the frame round a Mii icon on Miiverse. */
    const SDL_Rect ring = { x - 2, y - 2, side + 4, side + 4 };
    cobalt_fill_rounded_rect(r, &ring, (side + 4) / 2, COBALT_COLOUR_TILE_EDGE);
@@ -544,6 +549,15 @@ cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
    }
 
    const cobalt_metrics *m = cobalt_render_metrics(r);
+
+   /* A post you have liked or reposted keeps an accent glow under it, the way
+    * a Yeah'd post does on Miiverse, so it reads at a glance while scrolling. */
+   if (!focused && (post->viewer_like[0] || post->viewer_repost[0])) {
+      SDL_Color glow = COBALT_COLOUR_ACCENT;
+      glow.a = 70;
+      const SDL_Rect g = { rect->x + 1, rect->y + 3, rect->w, rect->h };
+      cobalt_fill_rounded_rect(r, &g, m->tile_radius, glow);
+   }
    cobalt_draw_tile(r, rect, focused ? 1.0f : 0.0f);
 
    const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
