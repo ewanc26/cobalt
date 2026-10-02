@@ -72,6 +72,7 @@ typedef struct {
 
    /* Optional image to attach (SD path); empty for none. */
    char attach_path[COBALT_ATTACH_PATH_MAX];
+   char attach_alt[COBALT_ATTACH_ALT_MAX];
 } job_input;
 
 static struct {
@@ -1008,7 +1009,7 @@ run_delete_post(const job_input *in, cobalt_job_result *r,
  * app.bsky.embed.images object holding it (caller frees), or NULL.
  */
 static cJSON *
-upload_attachment(const char *path)
+upload_attachment(const char *path, const char *alt)
 {
    FILE *f = fopen(path, "rb");
    if (!f) {
@@ -1040,7 +1041,7 @@ upload_attachment(const char *path)
    }
 
    cJSON *embed = wf_embed_images_new();
-   if (embed && wf_embed_images_add_image(embed, &blob, "") != WF_OK) {
+   if (embed && wf_embed_images_add_image(embed, &blob, alt ? alt : "") != WF_OK) {
       cJSON_Delete(embed);
       embed = NULL;
    }
@@ -1060,7 +1061,7 @@ run_post(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
 
    cJSON *images = NULL;
    if (in->attach_path[0] && (in->quote || !in->uri[0])) {
-      images = upload_attachment(in->attach_path);
+      images = upload_attachment(in->attach_path, in->attach_alt);
       if (!images) {
          set_message(r, "Could not upload that image. Nothing was posted.");
          *state = COBALT_AUTH_SIGNED_IN;
@@ -2553,7 +2554,7 @@ bool
 cobalt_session_begin_post(const char *text, const char *parent_uri,
                           const char *parent_cid, const char *root_uri,
                           const char *root_cid, int reply_gate,
-                          const char *attach_path)
+                          const char *attach_path, const char *attach_alt)
 {
    if (!text || !text[0]) {
       return false;
@@ -2564,6 +2565,9 @@ cobalt_session_begin_post(const char *text, const char *parent_uri,
    snprintf(in.text, sizeof(in.text), "%s", text);
    if (attach_path) {
       snprintf(in.attach_path, sizeof(in.attach_path), "%s", attach_path);
+   }
+   if (attach_alt) {
+      snprintf(in.attach_alt, sizeof(in.attach_alt), "%s", attach_alt);
    }
 
    const bool is_reply = parent_uri && parent_uri[0];
@@ -2588,7 +2592,7 @@ cobalt_session_begin_post(const char *text, const char *parent_uri,
 bool
 cobalt_session_begin_quote(const char *text, const char *quote_uri,
                            const char *quote_cid, int reply_gate,
-                           const char *attach_path)
+                           const char *attach_path, const char *attach_alt)
 {
    if (!text || !text[0] || !quote_uri || !quote_uri[0] || !quote_cid ||
        !quote_cid[0]) {
@@ -2604,6 +2608,9 @@ cobalt_session_begin_quote(const char *text, const char *quote_uri,
    in.reply_gate = reply_gate;
    if (attach_path) {
       snprintf(in.attach_path, sizeof(in.attach_path), "%s", attach_path);
+   }
+   if (attach_alt) {
+      snprintf(in.attach_alt, sizeof(in.attach_alt), "%s", attach_alt);
    }
 
    return submit(COBALT_JOB_POST, &in);

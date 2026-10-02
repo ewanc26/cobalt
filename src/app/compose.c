@@ -228,6 +228,15 @@ cobalt_compose_update(cobalt_compose *compose, const cobalt_input *in)
       return COBALT_COMPOSE_STAY;
    }
 
+   if (compose->alt_editing) {
+      /* Accept or cancel both end the step; cancel just leaves the text as
+       * typed so far. Alt text is optional. */
+      if (cobalt_keyboard_update(&compose->alt_kb, in) != COBALT_KB_IDLE) {
+         compose->alt_editing = false;
+      }
+      return COBALT_COMPOSE_STAY;
+   }
+
    if (compose->picking) {
       if (cobalt_input_pressed(in, COBALT_BTN_UP) && compose->picker_sel > 0) {
          compose->picker_sel--;
@@ -243,6 +252,10 @@ cobalt_compose_update(cobalt_compose *compose, const cobalt_input *in)
          snprintf(compose->attach_path, sizeof(compose->attach_path), "%s/%s",
                   compose->picker_dir, compose->picker_names[compose->picker_sel]);
          compose->picking = false;
+         compose->attach_alt[0] = '\0';
+         cobalt_keyboard_open(&compose->alt_kb, compose->attach_alt,
+                              sizeof(compose->attach_alt), false);
+         compose->alt_editing = true;
       }
       return COBALT_COMPOSE_STAY;
    }
@@ -305,6 +318,7 @@ cobalt_compose_update(cobalt_compose *compose, const cobalt_input *in)
       case CONFIRM_IMAGE:
          if (compose->attach_path[0]) {
             compose->attach_path[0] = '\0';
+            compose->attach_alt[0] = '\0';
          } else {
             char dir[COBALT_ATTACH_PATH_MAX];
             if (cobalt_data_path(dir, sizeof(dir), "images")) {
@@ -467,6 +481,31 @@ draw_confirming(cobalt_compose *compose, cobalt_render *r,
 }
 
 static void
+draw_alt_editing(cobalt_compose *compose, cobalt_render *r,
+                 cobalt_surface_id surface)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
+   const int lines = 2;
+   const int box_h = m->pad_tile * 2 + lines * (body_h + m->line_gap);
+
+   SDL_Rect box = { m->pad_edge, top, m->width - 2 * m->pad_edge, box_h };
+   cobalt_draw_tile(r, &box, 1.0f);
+   cobalt_draw_text_wrapped(r, COBALT_FONT_BODY,
+                            compose->attach_alt[0] ? compose->attach_alt
+                                                   : "Describe the image (optional)",
+                            box.x + m->pad_tile, box.y + m->pad_tile,
+                            box.w - 2 * m->pad_tile, lines,
+                            compose->attach_alt[0] ? COBALT_COLOUR_TEXT
+                                                   : COBALT_COLOUR_TEXT_DIM);
+
+   SDL_Rect keys = { m->pad_edge, box.y + box_h + m->gap,
+                     m->width - 2 * m->pad_edge, cobalt_keyboard_height(surface) };
+   cobalt_keyboard_draw(&compose->alt_kb, r, surface, &keys);
+}
+
+static void
 draw_picker(cobalt_compose *compose, cobalt_render *r, cobalt_surface_id surface)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
@@ -514,7 +553,9 @@ cobalt_compose_draw(cobalt_compose *compose, cobalt_render *r,
 
    draw_header(compose, r);
 
-   if (compose->confirming && compose->picking) {
+   if (compose->confirming && compose->alt_editing) {
+      draw_alt_editing(compose, r, surface);
+   } else if (compose->confirming && compose->picking) {
       draw_picker(compose, r, surface);
    } else if (compose->confirming) {
       draw_confirming(compose, r, surface);
