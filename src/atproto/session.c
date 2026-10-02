@@ -1823,28 +1823,59 @@ run_saved_feeds(const job_input *in, cobalt_job_result *r, cobalt_auth_state *st
       return;
    }
 
-   wf_actor_preferences prefs;
-   memset(&prefs, 0, sizeof(prefs));
-   wf_status status = wf_agent_get_actor_prefs_typed(s.wf, &prefs);
-   if (status != WF_OK) {
+   /* Read the raw preferences rather than the strict typed parse: a single
+    * preference type the parser rejects (status 5 on a real account) must not
+    * take the whole feed picker down with it. */
+   char *prefs_json = NULL;
+   const wf_status status = wf_agent_get_preferences(s.wf, &prefs_json);
+   if (status != WF_OK || !prefs_json) {
       COBALT_LOGW("session: getPreferences failed (%d)", (int) status);
       set_message(r, "Could not load your saved feeds (wolfram status %d).", (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   cJSON *prefs = cJSON_Parse(prefs_json);
+   free(prefs_json);
+   if (!cJSON_IsArray(prefs)) {
+      COBALT_LOGW("session: getPreferences returned something other than an array");
+      cJSON_Delete(prefs);
+      set_message(r, "Could not read your saved feeds.");
       *state = COBALT_AUTH_SIGNED_IN;
       return;
    }
 
    const char *uris[COBALT_SAVED_FEEDS_MAX];
    int n = 0;
-   for (size_t i = 0; i < prefs.saved_feeds_v2.item_count && n < COBALT_SAVED_FEEDS_MAX; i++) {
-      const wf_actor_pref_saved_feed *it = &prefs.saved_feeds_v2.items[i];
-      if (it->type && it->value && strcmp(it->type, "feed") == 0 && it->value[0]) {
-         uris[n++] = it->value;
+   const cJSON *pref = NULL;
+   cJSON_ArrayForEach(pref, prefs) {
+      const cJSON *type = cJSON_GetObjectItemCaseSensitive(pref, "$type");
+      if (!cJSON_IsString(type) || !strstr(type->valuestring, "savedFeedsPrefV2")) {
+         continue;
+      }
+      const cJSON *items = cJSON_GetObjectItemCaseSensitive(pref, "items");
+      const cJSON *it = NULL;
+      cJSON_ArrayForEach(it, items) {
+         const cJSON *kind = cJSON_GetObjectItemCaseSensitive(it, "type");
+         const cJSON *value = cJSON_GetObjectItemCaseSensitive(it, "value");
+         if (n < COBALT_SAVED_FEEDS_MAX && cJSON_IsString(kind) && cJSON_IsString(value) &&
+             strcmp(kind->valuestring, "feed") == 0 && value->valuestring[0]) {
+            uris[n++] = value->valuestring;
+         }
       }
    }
    if (n == 0) {
-      for (size_t i = 0; i < prefs.saved_feeds.saved_count && n < COBALT_SAVED_FEEDS_MAX; i++) {
-         if (prefs.saved_feeds.saved[i] && prefs.saved_feeds.saved[i][0]) {
-            uris[n++] = prefs.saved_feeds.saved[i];
+      /* Older accounts only have the V1 list. */
+      cJSON_ArrayForEach(pref, prefs) {
+         const cJSON *type = cJSON_GetObjectItemCaseSensitive(pref, "$type");
+         if (!cJSON_IsString(type) || !strstr(type->valuestring, "savedFeedsPref")) {
+            continue;
+         }
+         const cJSON *saved = cJSON_GetObjectItemCaseSensitive(pref, "saved");
+         const cJSON *it = NULL;
+         cJSON_ArrayForEach(it, saved) {
+            if (n < COBALT_SAVED_FEEDS_MAX && cJSON_IsString(it) && it->valuestring[0]) {
+               uris[n++] = it->valuestring;
+            }
          }
       }
    }
@@ -1878,7 +1909,7 @@ run_saved_feeds(const job_input *in, cobalt_job_result *r, cobalt_auth_state *st
    SDL_UnlockMutex(s.lock);
 
    wf_feedgen_generator_list_free(&gens);
-   wf_actor_preferences_free(&prefs);
+   cJSON_Delete(prefs);
    COBALT_LOGI("session: %d saved feeds", total);
 
    *state = COBALT_AUTH_SIGNED_IN;
