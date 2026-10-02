@@ -414,7 +414,9 @@ describe_failure(cobalt_job_result *r, wf_status status, cobalt_job_kind kind)
                            "and app password — an account password will not work "
                            "if two-factor is on.");
          } else {
-            set_message(r, "The saved session is no longer valid. Sign in again.");
+            set_message(r, "The server refused that request. The post may be gone, or the "
+                           "session may have expired - try again, then sign in "
+                           "again if it keeps happening.");
          }
          break;
 
