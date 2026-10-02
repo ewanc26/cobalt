@@ -1204,6 +1204,45 @@ test_selection_survives_a_shrinking_list(void)
    cobalt_list_clamp(&selected, NULL, 10);
 }
 
+/* --- deleting your own post --- */
+
+static void
+test_delete_post_helpers(void)
+{
+   begin("own-post detection and local removal");
+
+   CHECK(cobalt_post_uri_is_by("at://did:plc:abc/app.bsky.feed.post/1",
+                               "did:plc:abc"));
+   /* A DID that merely starts the same way is someone else. */
+   CHECK(!cobalt_post_uri_is_by("at://did:plc:abcd/app.bsky.feed.post/1",
+                                "did:plc:abc"));
+   CHECK(!cobalt_post_uri_is_by("at://did:plc:abc/app.bsky.feed.post/1", ""));
+   CHECK(!cobalt_post_uri_is_by("at://did:plc:abc/app.bsky.feed.post/1", NULL));
+   CHECK(!cobalt_post_uri_is_by(NULL, "did:plc:abc"));
+   CHECK(!cobalt_post_uri_is_by("https://did:plc:abc/x", "did:plc:abc"));
+
+   static cobalt_feed feed;
+   memset(&feed, 0, sizeof(feed));
+   snprintf(feed.posts[0].uri, sizeof(feed.posts[0].uri), "at://a/p/1");
+   snprintf(feed.posts[1].uri, sizeof(feed.posts[1].uri), "at://a/p/2");
+   snprintf(feed.posts[2].uri, sizeof(feed.posts[2].uri), "at://a/p/1");
+   snprintf(feed.posts[3].uri, sizeof(feed.posts[3].uri), "at://a/p/3");
+   feed.count = 4;
+
+   /* The same post as an original and as a repost leaves both places. */
+   CHECK(cobalt_feed_remove_post(&feed, "at://a/p/1") == 2);
+   CHECK(feed.count == 2);
+   CHECK(strcmp(feed.posts[0].uri, "at://a/p/2") == 0);
+   CHECK(strcmp(feed.posts[1].uri, "at://a/p/3") == 0);
+   CHECK(cobalt_feed_remove_post(&feed, "at://a/p/9") == 0);
+   CHECK(cobalt_feed_remove_post(&feed, "") == 0);
+   CHECK(cobalt_feed_remove_post(NULL, "at://a/p/2") == 0);
+
+   /* Not signed in, or someone else's post: nothing is submitted. */
+   CHECK(!cobalt_session_begin_delete_post(NULL));
+   CHECK(!cobalt_session_begin_delete_post("at://did:plc:other/p/1"));
+}
+
 /* --- the async request handshake --- */
 
 /*
@@ -1575,6 +1614,7 @@ main(int argc, char **argv)
    test_feed_link_domain();
    test_actor_list_remove();
    test_interactions();
+   test_delete_post_helpers();
    test_compose();
    test_post_refuses_partial_refs();
    test_notification_wording();

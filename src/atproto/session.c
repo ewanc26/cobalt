@@ -855,6 +855,44 @@ run_interaction(const job_input *in, cobalt_job_result *r,
 
 
 static void
+run_delete_post(const job_input *in, cobalt_job_result *r,
+                cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in first.");
+      return;
+   }
+
+   COBALT_LOGI("session: deleting %s", in->uri);
+   wf_status status = wf_agent_delete_post(s.wf, in->uri);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: delete failed (%d)", (int) status);
+      set_message(r, "Could not delete that post (wolfram status %d). It is "
+                     "still there.", (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(s.lock);
+   cobalt_feed_remove_post(&s.feed, in->uri);
+   cobalt_feed_remove_post(&s.author_feed, in->uri);
+   for (int i = 0; i < s.conversation.count; i++) {
+      if (strcmp(s.conversation.posts[i].uri, in->uri) == 0) {
+         /* The tree's indents and focus no longer line up once a row is gone;
+          * the screen returns to where it came from rather than drawing it. */
+         cobalt_thread_reset(&s.conversation);
+         break;
+      }
+   }
+   SDL_UnlockMutex(s.lock);
+
+   publish_session();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+static void
 run_post(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
 {
    if (!s.wf) {
@@ -1532,6 +1570,7 @@ run_job(cobalt_job_kind kind, const job_input *in, cobalt_auth_state *state)
       case COBALT_JOB_LIKE:     run_interaction(in, &r, state, true);  break;
       case COBALT_JOB_REPOST:   run_interaction(in, &r, state, false); break;
       case COBALT_JOB_POST:     run_post(in, &r, state);      break;
+      case COBALT_JOB_DELETE_POST: run_delete_post(in, &r, state); break;
       case COBALT_JOB_NOTIFICATIONS:
          run_notifications(in, &r, state);
          break;
@@ -2136,6 +2175,19 @@ begin_interaction(cobalt_job_kind kind, const char *uri, const char *cid,
    SDL_UnlockMutex(s.lock);
 
    return submit(kind, &in);
+}
+
+bool
+cobalt_session_begin_delete_post(const char *uri)
+{
+   if (!uri || !cobalt_post_uri_is_by(uri, s.did)) {
+      return false;
+   }
+
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", uri);
+   return submit(COBALT_JOB_DELETE_POST, &in);
 }
 
 bool
