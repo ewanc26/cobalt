@@ -1,5 +1,4 @@
-Copyright 2010-2011 Lukasz Dziedzic (dziedzic@typoland.com), with Reserved
-Font Name "Lato". All Rights Reserved. Lato is a trademark of Lukasz Dziedzic.
+Copyright 2016 The M+ FONTS Project Authors (https://github.com/coz-m/MPLUS_FONTS)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

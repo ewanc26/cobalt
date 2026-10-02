@@ -187,7 +187,7 @@ draw_header(cobalt_render *r, const char *title, const char *subtitle)
                     COBALT_COLOUR_TILE_FOCUS);
 
    const int title_h = cobalt_font_line_height(r, COBALT_FONT_TITLE);
-   SDL_Color dim = { 0xD8, 0xE6, 0xF4, 0xFF };
+   SDL_Color dim = { 0xEE, 0xFA, 0xDC, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
                     m->pad_edge + title_h - m->line_gap, dim);
 }
@@ -250,7 +250,7 @@ draw_editing(cobalt_signin *s, cobalt_render *r, cobalt_surface_id surface)
                   ? "App password, not your account password"
                   : "A / touch: type     B: backspace");
 
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
    const int value_h = m->font_body * 2;
 
    SDL_Rect value_rect = { m->pad_edge, top, m->width - 2 * m->pad_edge, value_h };
@@ -279,7 +279,7 @@ draw_fields(cobalt_signin *s, cobalt_render *r, cobalt_surface_id surface)
 
    draw_header(r, "Sign in", "App password — never your account password");
 
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
    const int row_w = m->width - 2 * m->pad_edge;
    const int row_gap = m->gap;
 

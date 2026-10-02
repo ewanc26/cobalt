@@ -276,7 +276,7 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Profile", m->pad_edge, m->pad_edge,
                     COBALT_COLOUR_TILE_FOCUS);
    {
-      SDL_Color dim = { 0xD8, 0xE6, 0xF4, 0xFF };
+      SDL_Color dim = { 0xEE, 0xFA, 0xDC, 0xFF };
       cobalt_draw_text(r, COBALT_FONT_CAPTION,
                        cobalt_session_busy() ? "Loading..." : profile->handle,
                        m->pad_edge,
@@ -286,7 +286,7 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
                        dim);
    }
 
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
    const int bottom = m->height - m->pad_edge - 28;
 
    if (touchable) {
@@ -352,7 +352,7 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
                        y + m->gap, COBALT_COLOUR_TILE);
    }
 
-   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
    char hint_text[160];
    snprintf(hint_text, sizeof(hint_text), "[%s]  +: tab   X: followers   Y: following   A/Left/Right: act   B: back",
             cobalt_profile_tab_name(cobalt_session_profile_tab()));

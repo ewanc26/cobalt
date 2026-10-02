@@ -249,7 +249,7 @@ cobalt_graph_view_draw(cobalt_graph_view *view, cobalt_render *r,
    cobalt_draw_text(r, COBALT_FONT_TITLE, title_for(view->kind), m->pad_edge,
                     m->pad_edge, COBALT_COLOUR_TILE_FOCUS);
 
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
    const int bottom = m->height - m->pad_edge - 28;
 
    if (touchable) {
@@ -298,7 +298,7 @@ cobalt_graph_view_draw(cobalt_graph_view *view, cobalt_render *r,
       view->last_visible = last_fitted;
    }
 
-   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
    const char *action = cobalt_graph_kind_is_follows(view->kind) ? "open profile"
                         : view->kind == COBALT_GRAPH_MUTED      ? "unmute"
                                                                 : "unblock";

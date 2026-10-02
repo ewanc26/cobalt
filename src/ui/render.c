@@ -1,11 +1,8 @@
 #include "ui/render.h"
 #include "util/log.h"
 
-#ifdef __WIIU__
-#include <coreinit/memory.h>
-#endif
-
 #include <math.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -63,7 +60,7 @@ struct cobalt_render {
 };
 
 /* --- helpers --- */
-static void open_fallback_fonts(cobalt_render *r);
+static void open_fallback_fonts(cobalt_render *r, const char *font_path);
 
 static uint32_t
 pack_colour(SDL_Color c)
@@ -225,7 +222,7 @@ cobalt_render_create(cobalt_surface_id surface, const char *font_path, bool prev
       }
    }
 
-   open_fallback_fonts(r);
+   open_fallback_fonts(r, font_path);
 
    r->gradient = build_gradient(r->renderer);
    r->corner_radius = r->m->tile_radius;
@@ -284,6 +281,47 @@ cobalt_render_sdl_renderer(cobalt_render *r)
 }
 #endif
 
+int
+cobalt_header_height(cobalt_render *r)
+{
+   if (!r || !r->fonts[COBALT_FONT_TITLE] || !r->fonts[COBALT_FONT_CAPTION]) {
+      return 0;
+   }
+   const cobalt_metrics *m = r->m;
+   return m->pad_edge + TTF_FontLineSkip(r->fonts[COBALT_FONT_TITLE]) - m->line_gap +
+          TTF_FontLineSkip(r->fonts[COBALT_FONT_CAPTION]) + m->gap / 2;
+}
+
+int
+cobalt_content_top(cobalt_render *r)
+{
+   return cobalt_header_height(r) + r->m->gap;
+}
+
+/* Miiverse-style green header behind every screen's title and subtitle. */
+static void
+draw_header_band(cobalt_render *r)
+{
+   const cobalt_metrics *m = r->m;
+   const int h = cobalt_header_height(r) ? cobalt_header_height(r) : m->pad_edge * 3;
+   for (int y = 0; y < h; y++) {
+      float t = (float) y / (float) h;
+      SDL_Color c = {
+         (Uint8) (COBALT_COLOUR_BAND_TOP.r + t * (COBALT_COLOUR_BAND_BOTTOM.r - COBALT_COLOUR_BAND_TOP.r)),
+         (Uint8) (COBALT_COLOUR_BAND_TOP.g + t * (COBALT_COLOUR_BAND_BOTTOM.g - COBALT_COLOUR_BAND_TOP.g)),
+         (Uint8) (COBALT_COLOUR_BAND_TOP.b + t * (COBALT_COLOUR_BAND_BOTTOM.b - COBALT_COLOUR_BAND_TOP.b)),
+         0xFF };
+      set_draw_colour(r, c);
+      SDL_RenderDrawLine(r->renderer, 0, y, m->width, y);
+   }
+   SDL_Color edge = { 0x4A, 0x96, 0x10, 0xFF };
+   set_draw_colour(r, edge);
+   SDL_RenderDrawLine(r->renderer, 0, h, m->width, h);
+   SDL_Color shade = { 0x00, 0x00, 0x00, 0x14 };
+   set_draw_colour(r, shade);
+   SDL_RenderDrawLine(r->renderer, 0, h + 1, m->width, h + 1);
+}
+
 void
 cobalt_render_begin(cobalt_render *r)
 {
@@ -296,6 +334,7 @@ cobalt_render_begin(cobalt_render *r)
    if (r->gradient) {
       SDL_Rect dst = { 0, 0, r->m->width, r->m->height };
       SDL_RenderCopy(r->renderer, r->gradient, NULL, &dst);
+      draw_header_band(r);
    } else {
       set_draw_colour(r, COBALT_COLOUR_BG_BOTTOM);
       SDL_RenderClear(r->renderer);
@@ -381,7 +420,7 @@ cobalt_draw_tile(cobalt_render *r, const SDL_Rect *rect, float focus)
 
    /* Drop shadow: a single offset rounded rect rather than a real blur. At
     * these sizes the difference is not visible on a TV and it costs one draw. */
-   SDL_Color shadow = { 0x00, 0x10, 0x20, (Uint8) (48 + 40 * focus) };
+   SDL_Color shadow = { 0x30, 0x40, 0x50, (Uint8) (26 + 26 * focus) };
    SDL_Rect shadow_rect = { rect->x + 2, rect->y + 3 + (int) (2 * focus),
                             rect->w, rect->h };
    cobalt_fill_rounded_rect(r, &shadow_rect, radius, shadow);
@@ -482,33 +521,30 @@ font_of(cobalt_render *r, cobalt_font_id id)
  * Korean post is a row of boxes, so strings are split into runs and each run is
  * drawn from the first face that provides it.
  *
- * The fallback face is the console's own system font on a Wii U (coreinit
- * shared data, mapped read-only and never freed). The host build takes a path
- * in COBALT_FALLBACK_FONT so the layout can be checked off-console.
+ * The fallback face is an optional bundled fallback.ttf, never a system font.
  */
 static void
-open_fallback_fonts(cobalt_render *r)
+open_fallback_fonts(cobalt_render *r, const char *font_path)
 {
-#ifdef __WIIU__
-   void *data = NULL;
-   uint32_t size = 0;
-   if (!OSGetSharedData(OS_SHAREDDATATYPE_FONT_STANDARD, 0, &data, &size) || !data || !size) {
-      COBALT_LOGW("no system font available for glyph fallback");
+   /* A second bundled face (e.g. Hangul or Hans) goes next to the primary as
+    * fallback.ttf. COBALT_FALLBACK_FONT overrides it for host experiments. */
+   char path[512];
+   const char *env = getenv("COBALT_FALLBACK_FONT");
+   if (env && env[0]) {
+      snprintf(path, sizeof path, "%s", env);
+   } else {
+      const char *slash = strrchr(font_path, '/');
+      int dir = slash ? (int) (slash - font_path + 1) : 0;
+      snprintf(path, sizeof path, "%.*sfallback.ttf", dir, font_path);
+   }
+   FILE *f = fopen(path, "rb");
+   if (!f) {
       return;
    }
-   for (int i = 0; i < COBALT_FONT_COUNT; i++) {
-      r->fallbacks[i] = TTF_OpenFontRW(SDL_RWFromConstMem(data, (int) size), 1,
-                                       font_size_for(r->m, (cobalt_font_id) i));
-   }
-#else
-   const char *path = getenv("COBALT_FALLBACK_FONT");
-   if (!path || !path[0]) {
-      return;
-   }
+   fclose(f);
    for (int i = 0; i < COBALT_FONT_COUNT; i++) {
       r->fallbacks[i] = TTF_OpenFont(path, font_size_for(r->m, (cobalt_font_id) i));
    }
-#endif
 }
 
 static uint32_t

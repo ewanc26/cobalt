@@ -117,7 +117,7 @@ key_height(const cobalt_metrics *m)
 {
    /* Two lines of body text tall: comfortably above a fingertip on the
     * GamePad's 854x480 panel, and still readable across a room on the TV. */
-   return m->font_body * 2;
+   return m->font_body * 2 - (m->height < 600 ? 6 : 0);
 }
 
 static int

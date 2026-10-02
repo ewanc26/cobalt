@@ -264,7 +264,7 @@ draw_list_of_lists(cobalt_lists_view *view, cobalt_render *r,
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Your lists", m->pad_edge,
                     m->pad_edge, COBALT_COLOUR_TILE_FOCUS);
 
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
    const int bottom = m->height - m->pad_edge - 28;
 
    if (touchable) {
@@ -313,7 +313,7 @@ draw_list_of_lists(cobalt_lists_view *view, cobalt_render *r,
       view->last_visible = last_fitted;
    }
 
-   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     cobalt_session_busy() ? "Working..."
                                           : "A / touch: open list   B: back",
@@ -331,7 +331,7 @@ draw_members(cobalt_lists_view *view, cobalt_render *r,
    cobalt_draw_text(r, COBALT_FONT_TITLE, view->open_name, m->pad_edge,
                     m->pad_edge, COBALT_COLOUR_TILE_FOCUS);
 
-   const int top = m->pad_edge + (surface == COBALT_SURFACE_DRC ? 62 : 130);
+   const int top = cobalt_content_top(r);
    const int bottom = m->height - m->pad_edge - 28;
 
    if (touchable) {
@@ -380,7 +380,7 @@ draw_members(cobalt_lists_view *view, cobalt_render *r,
       view->last_visible = last_fitted;
    }
 
-   SDL_Color hint = { 0xB8, 0xCC, 0xE0, 0xFF };
+   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     cobalt_session_busy() ? "Working..." : "B: back to lists",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);
