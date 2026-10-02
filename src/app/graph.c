@@ -298,7 +298,7 @@ cobalt_graph_view_draw(cobalt_graph_view *view, cobalt_render *r,
       view->last_visible = last_fitted;
    }
 
-   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
+   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    const char *action = cobalt_graph_kind_is_follows(view->kind) ? "open profile"
                         : view->kind == COBALT_GRAPH_MUTED      ? "unmute"
                                                                 : "unblock";
