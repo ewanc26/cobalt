@@ -355,7 +355,7 @@ draw_header_band(cobalt_render *r)
       SDL_Rect dst = { 0, 0, m->width, h };
       SDL_RenderCopy(r->renderer, r->band, NULL, &dst);
    }
-   SDL_Color edge = { 0x4A, 0x96, 0x10, 0xFF };
+   SDL_Color edge = { 0x2F, 0x6D, 0x0B, 0xFF };
    set_draw_colour(r, edge);
    SDL_RenderDrawLine(r->renderer, 0, h, m->width, h);
    SDL_Color shade = { 0x00, 0x00, 0x00, 0x14 };

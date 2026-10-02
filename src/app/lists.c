@@ -318,7 +318,7 @@ draw_list_of_lists(cobalt_lists_view *view, cobalt_render *r,
       view->last_visible = last_fitted;
    }
 
-   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
+   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     cobalt_session_busy() ? "Working..."
                                           : view->browsing_members ? "A / touch: open profile   B: back"
@@ -386,7 +386,7 @@ draw_members(cobalt_lists_view *view, cobalt_render *r,
       view->last_visible = last_fitted;
    }
 
-   SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
+   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION,
                     cobalt_session_busy() ? "Working..." : "B: back to lists",
                     m->pad_edge, m->height - m->pad_edge - 20, hint);

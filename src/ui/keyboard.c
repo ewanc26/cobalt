@@ -356,7 +356,7 @@ cobalt_keyboard_draw(cobalt_keyboard *kb, cobalt_render *r,
          const bool focused = (row == kb->row && col == kb->col);
          cobalt_draw_tile(r, &rect, focused ? 1.0f : 0.0f);
 
-         SDL_Color colour = focused ? COBALT_COLOUR_ACCENT : COBALT_COLOUR_TEXT;
+         SDL_Color colour = focused ? COBALT_COLOUR_ACCENT_TEXT : COBALT_COLOUR_TEXT;
          const int label_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
          cobalt_draw_text_centred(r, COBALT_FONT_BODY, key.label,
                                   rect.x, rect.y + (kh - label_h) / 2, kw, colour);

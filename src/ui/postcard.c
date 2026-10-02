@@ -502,7 +502,7 @@ draw_link_card(cobalt_render *r, const cobalt_post *post, int x, int y,
    cobalt_feed_link_domain(post->link.uri, domain, sizeof(domain));
    if (domain[0]) {
       cobalt_draw_text(r, COBALT_FONT_CAPTION, domain, text_x,
-                       y + height - pad - caption_h, COBALT_COLOUR_ACCENT);
+                       y + height - pad - caption_h, COBALT_COLOUR_ACCENT_TEXT);
    }
 }
 
@@ -668,7 +668,7 @@ cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
          int marker_w = 0;
          cobalt_text_size(r, COBALT_FONT_CAPTION, marker, &marker_w, NULL);
          cobalt_draw_text(r, COBALT_FONT_CAPTION, marker, right - marker_w, y,
-                          COBALT_COLOUR_ACCENT);
+                          COBALT_COLOUR_ACCENT_TEXT);
       }
    }
 }
