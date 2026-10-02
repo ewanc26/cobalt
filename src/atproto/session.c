@@ -1060,7 +1060,7 @@ run_post(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
    memset(&result, 0, sizeof(result));
 
    cJSON *images = NULL;
-   if (in->attach_path[0] && (in->quote || !in->uri[0])) {
+   if (in->attach_path[0]) {
       images = upload_attachment(in->attach_path, in->attach_alt);
       if (!images) {
          set_message(r, "Could not upload that image. Nothing was posted.");
@@ -1082,8 +1082,13 @@ run_post(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
        * a top-level post, and silently wrong for a reply to a reply.
        */
       COBALT_LOGI("session: replying to %s (root %s)", in->uri, in->root_uri);
-      status = wf_agent_reply_refs(s.wf, in->text, in->root_uri, in->root_cid,
-                                   in->uri, in->cid, &result);
+      char *embed_json = images ? cJSON_PrintUnformatted(images) : NULL;
+      status = (images && !embed_json)
+                  ? WF_ERR_ALLOC
+                  : wf_agent_reply_refs_with_embed(
+                       s.wf, in->text, in->root_uri, in->root_cid, in->uri,
+                       in->cid, embed_json, &result);
+      free(embed_json);
    } else if (images) {
       char *embed_json = cJSON_PrintUnformatted(images);
       cJSON_Delete(images);

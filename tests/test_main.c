@@ -1432,7 +1432,7 @@ test_image_attach(const char *root)
    CHECK(cobalt_compose_update(&c, &in) == COBALT_COMPOSE_STAY);
    CHECK(!c.picking && c.attach_path[0] == '\0' && c.confirming);
 
-   /* Replies never offer the image button: RIGHT from Post skips to Edit. */
+   /* Replies offer the image button too: RIGHT from Post lands on it. */
    cobalt_post post;
    memset(&post, 0, sizeof(post));
    snprintf(post.uri, sizeof(post.uri), "at://a/p/1");
@@ -1443,7 +1443,7 @@ test_image_attach(const char *root)
    c.confirm_choice = 0;
    in = tap(COBALT_BTN_RIGHT);
    cobalt_compose_update(&c, &in);
-   CHECK(c.confirm_choice == 1);
+   CHECK(c.confirm_choice == 3);
 
    CHECK(!cobalt_session_begin_quote("hi", "at://x", NULL, 0, "x.png", "alt"));
 }

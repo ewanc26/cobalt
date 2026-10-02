@@ -15,8 +15,7 @@
 #define CONFIRM_IMAGE   3
 #define CONFIRM_COUNT   4
 
-/* Stored in confirm_choice as these ids; the row shows them in this order,
- * minus IMAGE on a reply. */
+/* Stored in confirm_choice as these ids; the row shows them in this order. */
 static const int CONFIRM_ORDER[CONFIRM_COUNT] = {
    CONFIRM_POST, CONFIRM_IMAGE, CONFIRM_EDIT, CONFIRM_DISCARD
 };
@@ -24,11 +23,9 @@ static const int CONFIRM_ORDER[CONFIRM_COUNT] = {
 static int
 confirm_ids(const cobalt_compose *compose, int out[CONFIRM_COUNT])
 {
+   (void) compose;
    int n = 0;
    for (int i = 0; i < CONFIRM_COUNT; i++) {
-      if (CONFIRM_ORDER[i] == CONFIRM_IMAGE && cobalt_compose_is_reply(compose)) {
-         continue;
-      }
       out[n++] = CONFIRM_ORDER[i];
    }
    return n;
@@ -461,7 +458,8 @@ draw_confirming(cobalt_compose *compose, cobalt_render *r,
                REPLY_GATE_LABELS[compose->reply_gate]);
       cobalt_draw_text(r, COBALT_FONT_CAPTION, gate_line, m->pad_edge,
                        row_y + row_h + gap, hint);
-
+   }
+   {
       if (compose->attach_path[0]) {
          const char *name = strrchr(compose->attach_path, '/');
          char img_line[COBALT_PICKER_NAME_MAX + 16];
@@ -469,7 +467,9 @@ draw_confirming(cobalt_compose *compose, cobalt_render *r,
                   name ? name + 1 : compose->attach_path);
          cobalt_draw_text(r, COBALT_FONT_CAPTION, img_line, m->pad_edge,
                           row_y + row_h + gap +
-                             cobalt_font_line_height(r, COBALT_FONT_CAPTION),
+                             (cobalt_compose_is_reply(compose)
+                                 ? 0
+                                 : cobalt_font_line_height(r, COBALT_FONT_CAPTION)),
                           hint);
       }
    }

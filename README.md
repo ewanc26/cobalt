@@ -65,10 +65,9 @@ lists (X/Y on a profile header), and Posts / Replies / Media / Likes profile
 tabs (+ on a profile). Pinned posts show first on a profile, and the account
 screen picks the language tag new posts carry.
 
-New posts and quotes can carry one image: in the post confirmation choose
+Posts, quotes and replies can carry one image: in the post confirmation choose
 **Add image** and pick a `.jpg`/`.png` (under 950 KB) from `images/` in the
-app's data folder on the SD card, then type its alt text (optional). Images on
-replies are not done yet.
+app's data folder on the SD card, then type its alt text (optional).
 
 Some things in the official client are not coming, because the console cannot
 do them rather than because nobody has got to them yet: **video** and **GIFs**

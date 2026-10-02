@@ -213,8 +213,7 @@ bool cobalt_session_begin_repost(const char *uri, const char *cid);
  */
 /*
  * An optional image (`attach_path`, NULL or "" for none, with `attach_alt` text) is uploaded and
- * embedded; it is honoured for new posts and quotes, not replies (Wolfram has
- * no reply-with-embed call). Limits and MIME mapping: cobalt_attach_*.
+ * embedded, on new posts, quotes and replies. Limits and MIME mapping: cobalt_attach_*.
  */
 #define COBALT_ATTACH_PATH_MAX  256
 #define COBALT_ATTACH_ALT_MAX   1001
