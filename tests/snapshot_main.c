@@ -102,10 +102,10 @@ open_home_item(int idx)
 {
    go_home();
    {
-      /* TV grid: Down jumps a row of 5 and Up comes back; wraps like the list. */
+      /* The GamePad list steps one row at a time, TV or not. */
       const int start = cobalt_app_home_selection(g_app);
       frame(COBALT_BTN_DOWN); settle(2);
-      CHECK(cobalt_app_home_selection(g_app) == (start + 5) % 10);
+      CHECK(cobalt_app_home_selection(g_app) == (start + 1) % 10);
       frame(COBALT_BTN_UP); settle(2);
       CHECK(cobalt_app_home_selection(g_app) == start);
    }
