@@ -132,6 +132,9 @@ typedef struct {
    /* Empty unless the post is in the feed because someone reposted it. */
    char reposted_by[COBALT_POST_NAME_MAX];
 
+   /* An author's pinned post, shown first on their profile. */
+   bool pinned;
+
    /*
     * A short note standing in for content Cobalt cannot draw — "[video]",
     * "[quote]", "[quote + media]". Showing a marker is a deliberate choice
@@ -244,6 +247,13 @@ bool cobalt_post_uri_is_by(const char *uri, const char *did);
 int cobalt_feed_remove_post(cobalt_feed *feed, const char *uri);
 
 /*
+ * Put `post` first and mark it pinned, dropping any other row for the same
+ * URI so it is not shown twice. Returns false (and changes nothing) when
+ * `post` has no URI.
+ */
+bool cobalt_feed_prepend_pinned(cobalt_feed *feed, const cobalt_post *post);
+
+/*
  * Bring a list cursor back into range after the list may have shrunk.
  *
  * Every list screen needs this and none of them can derive it from the scroll
@@ -342,6 +352,13 @@ struct wf_agent_feed_list;
 int cobalt_feed_append_from_wolfram(cobalt_feed *feed,
                                     const struct wf_agent_feed_list *list,
                                     int64_t now);
+
+/* Fetch result of getPosts for one pinned post; prepends it via
+ * cobalt_feed_prepend_pinned. Returns whether a post was added. */
+struct wf_agent_post_list;
+bool cobalt_feed_pin_from_wolfram(cobalt_feed *feed,
+                                  const struct wf_agent_post_list *list,
+                                  int64_t now);
 
 /* Flatten a getPostThread tree. Ancestors first, then the requested post
  * (recorded in `focus`), then replies depth-first. */
