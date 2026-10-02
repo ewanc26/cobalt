@@ -77,6 +77,7 @@ struct cobalt_app {
    int account_selected;
    /* Which row is highlighted on the feed-picker screen's small menu. */
    int feeds_selected;
+   int feeds_scroll;
    /* The shared feed window holds a custom feed, not the home timeline. */
    bool viewing_custom_feed;
    /* Where B from the profile screen returns to. */
@@ -341,6 +342,7 @@ activate(cobalt_app *app, int index)
 
       case ACTION_FEEDS:
          app->feeds_selected = 0;
+         app->feeds_scroll = 0;
          if (signed_in()) {
             cobalt_session_begin_saved_feeds();
          }
@@ -633,6 +635,9 @@ update_account(cobalt_app *app, const cobalt_input *in)
 
 static SDL_Rect s_feeds_hit[FEED_MAX];
 static bool s_feeds_hit_valid = false;
+/* Rows the GamePad (the smaller surface) fitted on its last draw; the scroll
+ * window follows it so the selection is never below the fold on either. */
+static int s_feeds_rows = 5;
 
 static void
 update_feeds(cobalt_app *app, const cobalt_input *in)
@@ -653,11 +658,23 @@ update_feeds(cobalt_app *app, const cobalt_input *in)
       app->feeds_selected = (app->feeds_selected + feed_count() - 1) % feed_count();
    }
 
+   {
+      const int rows = s_feeds_rows > 0 ? s_feeds_rows : 1;
+      if (app->feeds_selected < app->feeds_scroll) {
+         app->feeds_scroll = app->feeds_selected;
+      } else if (app->feeds_selected >= app->feeds_scroll + rows) {
+         app->feeds_scroll = app->feeds_selected - rows + 1;
+      }
+      if (app->feeds_scroll < 0) {
+         app->feeds_scroll = 0;
+      }
+   }
+
    int activated = -1;
    if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
       activated = app->feeds_selected;
    } else if (s_feeds_hit_valid && in->touch_ended) {
-      for (int i = 0; i < feed_count(); i++) {
+      for (int i = app->feeds_scroll; i < feed_count() && i < app->feeds_scroll + s_feeds_rows; i++) {
          if (cobalt_input_tapped(in, &s_feeds_hit[i])) {
             app->feeds_selected = i;
             activated = i;
@@ -1212,8 +1229,17 @@ draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    const int width = m->width - 2 * m->pad_edge;
    const int label_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
 
+   const int step = row_h + m->gap / 2;
+   const int bottom = m->height - m->pad_edge - 28;
+   int fit = (bottom - top + m->gap / 2) / step;
+   if (fit < 1) fit = 1;
+   if (surface == COBALT_SURFACE_DRC) {
+      s_feeds_rows = fit;
+   }
+
    int row_y = top;
-   for (int i = 0; i < feed_count(); i++) {
+   int drawn = 0;
+   for (int i = app->feeds_scroll; i < feed_count() && drawn < fit; i++, drawn++) {
       SDL_Rect row = { m->pad_edge, row_y, width, row_h };
       const bool focused = (app->feeds_selected == i);
       cobalt_draw_tile(r, &row, focused ? 1.0f : 0.0f);
@@ -1224,13 +1250,20 @@ draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
       if (surface == COBALT_SURFACE_DRC) {
          s_feeds_hit[i] = row;
       }
-      row_y += row_h + m->gap / 2;
+      row_y += step;
    }
    if (surface == COBALT_SURFACE_DRC) {
       s_feeds_hit_valid = true;
    }
 
-   draw_notice(app, r, row_y + m->gap / 2, width);
+   if (feed_count() > fit) {
+      char pos[32];
+      snprintf(pos, sizeof(pos), "%d of %d", app->feeds_selected + 1, feed_count());
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, pos, m->width - m->pad_edge - 90,
+                       m->height - m->pad_edge - 20, COBALT_COLOUR_TEXT_DIM);
+   }
+
+   draw_notice(app, r, row_y - m->gap / 2 + m->gap / 2, width);
 
    SDL_Color hint = { 0x6B, 0x78, 0x84, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION, "A / touch: open     B: back",
