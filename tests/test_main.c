@@ -1281,6 +1281,45 @@ test_quote_helpers(void)
 }
 
 static void
+test_pinned_prepend(void)
+{
+   begin("pinned post goes first and is not duplicated");
+
+   static cobalt_feed feed;
+   static cobalt_post pin;
+   memset(&feed, 0, sizeof(feed));
+   memset(&pin, 0, sizeof(pin));
+   for (int i = 0; i < 3; i++) {
+      snprintf(feed.posts[i].uri, sizeof(feed.posts[i].uri), "at://a/p/%d", i);
+   }
+   feed.count = 3;
+   snprintf(pin.uri, sizeof(pin.uri), "at://a/p/2");
+   snprintf(pin.reposted_by, sizeof(pin.reposted_by), "someone");
+
+   CHECK(cobalt_feed_prepend_pinned(&feed, &pin));
+   CHECK(feed.count == 3);
+   CHECK(strcmp(feed.posts[0].uri, "at://a/p/2") == 0);
+   CHECK(feed.posts[0].pinned);
+   CHECK(feed.posts[0].reposted_by[0] == '\0');
+   CHECK(strcmp(feed.posts[1].uri, "at://a/p/0") == 0);
+   CHECK(!feed.posts[1].pinned);
+
+   snprintf(pin.uri, sizeof(pin.uri), "at://a/p/new");
+   CHECK(cobalt_feed_prepend_pinned(&feed, &pin));
+   CHECK(feed.count == 4);
+   CHECK(strcmp(feed.posts[0].uri, "at://a/p/new") == 0);
+
+   /* A full window drops the last row rather than overflowing. */
+   feed.count = COBALT_FEED_MAX_POSTS;
+   snprintf(pin.uri, sizeof(pin.uri), "at://a/p/other");
+   CHECK(cobalt_feed_prepend_pinned(&feed, &pin));
+   CHECK(feed.count == COBALT_FEED_MAX_POSTS);
+
+   pin.uri[0] = '\0';
+   CHECK(!cobalt_feed_prepend_pinned(&feed, &pin));
+}
+
+static void
 test_quote_compose(void)
 {
    begin("quote compose");
@@ -1735,6 +1774,7 @@ main(int argc, char **argv)
    test_follow_lists();
    test_profile_tabs();
    test_quote_compose();
+   test_pinned_prepend();
    test_compose();
    test_post_refuses_partial_refs();
    test_notification_wording();
