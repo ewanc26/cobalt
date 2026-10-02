@@ -8,6 +8,7 @@
 #include "app/signin.h"
 #include "app/thread.h"
 #include "audio/sound.h"
+#include "util/buildinfo.h"
 #include "app/timeline.h"
 #include "atproto/atproto.h"
 #include "atproto/session.h"
@@ -1367,9 +1368,11 @@ draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    const char *ca = cobalt_session_ca_path();
    const char *blocker = cobalt_session_blocker();
 
-   char lines[16][160];
+   char lines[20][160];
    int count = 0;
 
+   snprintf(lines[count++], sizeof(lines[0]), "Cobalt: %s",
+            cobalt_build_describe());
    snprintf(lines[count++], sizeof(lines[0]), "Surface: %s (%dx%d) frame %u",
             surface == COBALT_SURFACE_DRC ? "GamePad" : "TV", m->width, m->height,
             (unsigned) app->frames);

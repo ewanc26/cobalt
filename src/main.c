@@ -30,6 +30,7 @@
 #include "ui/postcard.h"
 #include "ui/render.h"
 #include "ui/theme.h"
+#include "util/buildinfo.h"
 #include "util/log.h"
 #include "util/paths.h"
 
@@ -153,6 +154,7 @@ startup(cobalt_context *ctx)
    bool have_content = cobalt_paths_init();
 
    cobalt_log_init();
+   COBALT_LOGI("cobalt %s", cobalt_build_describe());
    cobalt_paths_log();
 
    if (!have_content) {

@@ -203,12 +203,23 @@ export APP_AUTHOR
 #---------------------------------------------------------------------------------
 CACERT	:=	$(TOPDIR)/$(CONTENT)/cacert.pem
 
-.PHONY: $(BUILD) all clean run bundle cacert test
+.PHONY: $(BUILD) all clean run bundle cacert test buildinfo
 
 #---------------------------------------------------------------------------------
 all: $(BUILD)
 
-$(BUILD): $(CACERT)
+# Stamp the commit and build number into a generated header, rewriting it only
+# when it changes so an unchanged tree does not recompile.
+BUILDINFO	:=	$(TOPDIR)/src/util/buildinfo_gen.h
+
+buildinfo:
+	@c=$$(git -C $(TOPDIR) describe --tags --always --dirty 2>/dev/null || echo unknown); \
+	n=$$(git -C $(TOPDIR) rev-list --count HEAD 2>/dev/null || echo 0); \
+	d=$$(date +%Y-%m-%d); \
+	printf '#pragma once\n#define COBALT_BUILD_COMMIT "%s"\n#define COBALT_BUILD_NUMBER %s\n#define COBALT_BUILD_DATE "%s"\n' "$$c" "$$n" "$$d" > $(BUILDINFO).tmp; \
+	if cmp -s $(BUILDINFO).tmp $(BUILDINFO); then rm $(BUILDINFO).tmp; else mv $(BUILDINFO).tmp $(BUILDINFO); echo "buildinfo ... $$n $$c"; fi
+
+$(BUILD): $(CACERT) buildinfo
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
