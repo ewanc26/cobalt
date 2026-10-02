@@ -170,6 +170,9 @@ main(int argc, char **argv)
    frame(COBALT_BTN_CONFIRM);
    settle(30);
    shoot("thread");
+   for (int k = 0; k < 2; k++) { frame(COBALT_BTN_DOWN); settle(5); }
+   shoot("thread-scrolled");
+   for (int k = 0; k < 2; k++) { frame(COBALT_BTN_UP); settle(5); }
 
    frame(COBALT_BTN_BACK);
    settle(10);

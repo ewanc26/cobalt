@@ -34,6 +34,13 @@ typedef struct {
    int scroll;
    int last_visible;
 
+   /* Line scroll inside the selected post's text, for posts longer than the
+    * screen. total and window are measured by the last draw. */
+   int text_scroll;
+   int text_total;
+   int text_window;
+   int text_for;
+
    /* Set once after a fetch so the view can jump to the post that was opened,
     * exactly once, rather than fighting the user's scrolling afterwards. */
    bool centred;
