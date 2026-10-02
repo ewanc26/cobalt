@@ -22,6 +22,7 @@
 
 #include "app/app.h"
 #include "atproto/atproto.h"
+#include "audio/sound.h"
 #include "atproto/session.h"
 #include "input/input.h"
 #include "net/net.h"
@@ -128,6 +129,8 @@ shutdown_all(cobalt_context *ctx)
       ctx->tv = NULL;
    }
 
+   cobalt_sound_shutdown();
+
    if (ctx->ttf_up) {
       TTF_Quit();
       ctx->ttf_up = false;
@@ -191,6 +194,9 @@ startup(cobalt_context *ctx)
    if (!ctx->drc) {
       return false;
    }
+
+   /* Not fatal: the app is fully usable silent. */
+   cobalt_sound_init();
 
    ctx->net_up = cobalt_net_init();
 
