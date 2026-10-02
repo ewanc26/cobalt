@@ -374,7 +374,12 @@ void
 cobalt_render_end(cobalt_render *r)
 {
    if (r) {
+      const uint32_t t0 = SDL_GetTicks();
       SDL_RenderPresent(r->renderer);
+      const uint32_t dt = SDL_GetTicks() - t0;
+      if (dt >= 100) {
+         COBALT_LOGW("render: slow present %u ms", (unsigned) dt);
+      }
    }
 }
 
@@ -662,7 +667,7 @@ split_runs(TTF_Font *primary, TTF_Font *fallback, const char *utf8, text_run *ru
 #define MAX_RUNS 32
 
 static int
-measure_text(cobalt_render *r, cobalt_font_id id, const char *utf8, int *out_w, int *out_h)
+measure_text_impl(cobalt_render *r, cobalt_font_id id, const char *utf8, int *out_w, int *out_h)
 {
    TTF_Font *font = r->fonts[id];
    TTF_Font *fb = r->fallbacks[id];
@@ -686,7 +691,7 @@ measure_text(cobalt_render *r, cobalt_font_id id, const char *utf8, int *out_w, 
 }
 
 static SDL_Surface *
-render_text_surface(cobalt_render *r, cobalt_font_id id, const char *utf8, SDL_Color colour)
+render_text_surface_impl(cobalt_render *r, cobalt_font_id id, const char *utf8, SDL_Color colour)
 {
    TTF_Font *font = r->fonts[id];
    TTF_Font *fb = r->fallbacks[id];
@@ -725,6 +730,34 @@ render_text_surface(cobalt_render *r, cobalt_font_id id, const char *utf8, SDL_C
       if (parts[i]) SDL_FreeSurface(parts[i]);
    }
    return out;
+}
+
+/* Hardware-pass diagnostics: a glyph load that stalls on the SD card shows up
+ * here by name instead of as an anonymous long frame. */
+#define SLOW_MS 100
+
+static int
+measure_text(cobalt_render *r, cobalt_font_id id, const char *utf8, int *out_w, int *out_h)
+{
+   const uint32_t t0 = SDL_GetTicks();
+   const int rc = measure_text_impl(r, id, utf8, out_w, out_h);
+   const uint32_t dt = SDL_GetTicks() - t0;
+   if (dt >= SLOW_MS) {
+      COBALT_LOGW("render: slow measure %u ms (font %d, %.40s)", (unsigned) dt, (int) id, utf8);
+   }
+   return rc;
+}
+
+static SDL_Surface *
+render_text_surface(cobalt_render *r, cobalt_font_id id, const char *utf8, SDL_Color colour)
+{
+   const uint32_t t0 = SDL_GetTicks();
+   SDL_Surface *surface = render_text_surface_impl(r, id, utf8, colour);
+   const uint32_t dt = SDL_GetTicks() - t0;
+   if (dt >= SLOW_MS) {
+      COBALT_LOGW("render: slow glyph render %u ms (font %d, %.40s)", (unsigned) dt, (int) id, utf8);
+   }
+   return surface;
 }
 
 /* Render straight to a texture, bypassing the cache. Caller destroys it. */
