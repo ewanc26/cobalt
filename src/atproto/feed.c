@@ -422,6 +422,59 @@ json_int(const cJSON *object, const char *key)
    return (item && cJSON_IsNumber(item)) ? item->valueint : 0;
 }
 
+void
+cobalt_post_parse_facets(cobalt_post *post, const void *facets_json)
+{
+   post->facet_count = 0;
+   const cJSON *facets = (const cJSON *) facets_json;
+   if (!facets || !cJSON_IsArray(facets)) {
+      return;
+   }
+   const int text_len = (int) strlen(post->text);
+   const cJSON *facet;
+   cJSON_ArrayForEach(facet, facets) {
+      if (post->facet_count >= COBALT_POST_FACETS_MAX) {
+         break;
+      }
+      const cJSON *index = cJSON_GetObjectItemCaseSensitive(facet, "index");
+      const cJSON *features = cJSON_GetObjectItemCaseSensitive(facet, "features");
+      if (!index || !cJSON_IsArray(features)) {
+         continue;
+      }
+      int start = json_int(index, "byteStart");
+      int end = json_int(index, "byteEnd");
+      if (end > text_len) {
+         end = text_len;
+      }
+      if (start < 0 || start >= end) {
+         continue;
+      }
+      /* A facet may carry several features; the first one we know decides. */
+      const cJSON *feature;
+      cJSON_ArrayForEach(feature, features) {
+         const char *type = json_string(feature, "$type");
+         if (!type) {
+            continue;
+         }
+         cobalt_facet_kind kind;
+         if (strstr(type, "richtext.facet#link")) {
+            kind = COBALT_FACET_LINK;
+         } else if (strstr(type, "richtext.facet#mention")) {
+            kind = COBALT_FACET_MENTION;
+         } else if (strstr(type, "richtext.facet#tag")) {
+            kind = COBALT_FACET_TAG;
+         } else {
+            continue;
+         }
+         cobalt_post_facet *f = &post->facets[post->facet_count++];
+         f->kind = kind;
+         f->start = start;
+         f->end = end;
+         break;
+      }
+   }
+}
+
 /* Fill post->images[]/image_count from an app.bsky.embed.images#view. */
 static void
 fill_embed_images(cobalt_post *post, const cJSON *images_view)
@@ -610,6 +663,7 @@ fill_from_view(cobalt_post *post, const wf_agent_post_view *view, int64_t now)
     * an image-only post — so a missing field is not an error. */
    const char *text = json_string(view->record, "text");
    cobalt_feed_copy_text(post->text, sizeof(post->text), text ? text : "");
+   cobalt_post_parse_facets(post, cJSON_GetObjectItemCaseSensitive(view->record, "facets"));
 
    /*
     * Prefer the record's own createdAt over indexedAt: it is when the author
@@ -815,6 +869,7 @@ fill_from_thread_post(cobalt_post *post, const wf_agent_thread_post *view,
 
    const char *text = json_string(view->record, "text");
    cobalt_feed_copy_text(post->text, sizeof(post->text), text ? text : "");
+   cobalt_post_parse_facets(post, cJSON_GetObjectItemCaseSensitive(view->record, "facets"));
 
    const char *created = json_string(view->record, "createdAt");
    if (!created) {

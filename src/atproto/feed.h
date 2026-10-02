@@ -40,7 +40,7 @@ extern "C" {
  */
 #define COBALT_FEED_MAX_POSTS 60
 
-#define COBALT_POST_TEXT_MAX   512
+#define COBALT_POST_TEXT_MAX   1024
 #define COBALT_POST_NAME_MAX    96
 #define COBALT_POST_URI_MAX    192
 #define COBALT_POST_CID_MAX     96
@@ -114,6 +114,21 @@ typedef struct {
    char text[COBALT_POST_QUOTE_TEXT_MAX];
 } cobalt_post_quote;
 
+/* A rich-text facet (app.bsky.richtext.facet): a byte range of the post text
+ * that is a link, a mention or a hashtag. Offsets are UTF-8 bytes into `text`. */
+#define COBALT_POST_FACETS_MAX 16
+typedef enum {
+   COBALT_FACET_LINK,
+   COBALT_FACET_MENTION,
+   COBALT_FACET_TAG,
+} cobalt_facet_kind;
+
+typedef struct {
+   cobalt_facet_kind kind;
+   int start;
+   int end;
+} cobalt_post_facet;
+
 typedef struct {
    char author[COBALT_POST_NAME_MAX];   /* display name, or the handle */
    char handle[COBALT_POST_NAME_MAX];   /* always the handle, with a leading @ */
@@ -126,6 +141,8 @@ typedef struct {
    char avatar[COBALT_POST_AVATAR_MAX];
 
    char text[COBALT_POST_TEXT_MAX];
+   cobalt_post_facet facets[COBALT_POST_FACETS_MAX];
+   int facet_count;
    char age[COBALT_RELATIVE_MAX];       /* "3h" */
    char meta[COBALT_POST_META_MAX];     /* "12 replies · 30 reposts · 88 likes" */
 
@@ -303,6 +320,10 @@ bool cobalt_thread_apply_repost(cobalt_thread *thread, const char *post_uri,
  * ellipsis if it did not fit. Exposed for testing — the truncation rule is the
  * part worth pinning down, since it runs over arbitrary post content.
  */
+/* Fill post->facets from a record's "facets" array (a cJSON array, or NULL).
+ * Facets that fall outside the (possibly truncated) text are dropped. */
+void cobalt_post_parse_facets(cobalt_post *post, const void *facets_json);
+
 void cobalt_feed_copy_text(char *out, size_t out_size, const char *text);
 
 /*

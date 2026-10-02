@@ -633,9 +633,16 @@ cobalt_postcard_draw_scrolled(cobalt_render *r, const cobalt_post *post,
    /* An image-only post has no text at all, which is legitimate — the embed
     * note below is then the only thing describing it. */
    if (post->text[0]) {
-      cobalt_draw_text_wrapped_from(r, COBALT_FONT_BODY, post->text, text_left, y,
-                                    text_width, first_line, text_lines,
-                                    COBALT_COLOUR_TEXT);
+      cobalt_text_span spans[COBALT_POST_FACETS_MAX];
+      for (int i = 0; i < post->facet_count; i++) {
+         spans[i].start = post->facets[i].start;
+         spans[i].end = post->facets[i].end;
+         spans[i].colour = COBALT_COLOUR_ACCENT;
+         spans[i].underline = post->facets[i].kind == COBALT_FACET_LINK;
+      }
+      cobalt_draw_text_wrapped_spans(r, COBALT_FONT_BODY, post->text, text_left, y,
+                                     text_width, first_line, text_lines,
+                                     COBALT_COLOUR_TEXT, spans, post->facet_count);
    }
    y += text_lines * (body_h + m->line_gap);
 

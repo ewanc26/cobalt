@@ -1090,6 +1090,17 @@ draw_header(cobalt_render *r, const char *subtitle)
                     COBALT_COLOUR_TILE_FOCUS);
 
    int title_h = cobalt_font_line_height(r, COBALT_FONT_TITLE);
+   {
+      char ver[24];
+      int title_w = 0;
+      snprintf(ver, sizeof ver, "v%s", cobalt_version());
+      cobalt_text_size(r, COBALT_FONT_TITLE, "Cobalt", &title_w, NULL);
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, ver,
+                       m->pad_edge + title_w + m->pad_tile,
+                       m->pad_edge + title_h -
+                          cobalt_font_line_height(r, COBALT_FONT_CAPTION) * 3 / 2,
+                       (SDL_Color) { 0xFF, 0xFF, 0xFF, 0xB0 });
+   }
    SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
    cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
                     m->pad_edge + title_h - m->line_gap, dim);
