@@ -138,6 +138,8 @@ cobalt_thread_view_update(cobalt_thread_view *view, const cobalt_input *in)
             cobalt_thread_view_reset(view);
          } else if (cobalt_input_pressed(in, COBALT_BTN_MENU)) {
             return COBALT_THREAD_VIEW_REPLY;
+         } else if (cobalt_input_pressed(in, COBALT_BTN_ALT_X)) {
+            return COBALT_THREAD_VIEW_QUOTE;
          } else if (cobalt_input_pressed(in, COBALT_BTN_ALT_Y) &&
                     cobalt_post_uri_is_by(post->uri, cobalt_session_did())) {
             snprintf(view->delete_uri, sizeof(view->delete_uri), "%s",
@@ -256,8 +258,8 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
                     : cobalt_session_busy()
                        ? "Working..."
                     : own
-                       ? "A: open/reply   Left: like   Right: repost   Y: delete   B: back"
-                       : "A: open/reply   +: reply   Left: like   Right: repost   B: back",
+                       ? "A: open/reply   X: quote   Left: like   Right: repost   Y: delete   B: back"
+                       : "A: open/reply   X: quote   +: reply   Left: like   Right: repost   B: back",
                     m->pad_edge, m->height - m->pad_edge - 20,
                     view->confirm_delete ? COBALT_COLOUR_TEXT : hint);
 }

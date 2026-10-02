@@ -216,6 +216,14 @@ bool cobalt_session_begin_post(const char *text, const char *parent_uri,
                                const char *root_cid, int reply_gate);
 
 /*
+ * Publish a new post that quotes another (`quote_uri`/`quote_cid`, both
+ * required). It is a top-level post, so `reply_gate` applies as for
+ * cobalt_session_begin_post.
+ */
+bool cobalt_session_begin_quote(const char *text, const char *quote_uri,
+                                const char *quote_cid, int reply_gate);
+
+/*
  * Delete one of the viewer's own posts. Refused (false) unless `uri` is in the
  * signed-in account's own repository — the server would refuse it anyway, but
  * a button that can only ever fail is worse than one that is absent. On
