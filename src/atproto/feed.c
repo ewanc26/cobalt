@@ -359,6 +359,28 @@ cobalt_feed_link_domain(const char *uri, char *out, size_t out_size)
    out[len] = '\0';
 }
 
+
+void
+cobalt_feed_set_quote(cobalt_post *post, const char *display_name,
+                      const char *handle, const char *text)
+{
+   cobalt_post_quote *q = &post->quote;
+   memset(q, 0, sizeof(*q));
+   if (!handle || handle[0] == '\0') {
+      return;
+   }
+   if (!display_name || display_name[0] == '\0') {
+      display_name = handle;
+   }
+   cobalt_feed_copy_text(q->author, sizeof(q->author), display_name);
+   snprintf(q->handle, sizeof(q->handle), "@%s", handle);
+   cobalt_feed_copy_text(q->text, sizeof(q->text), text ? text : "");
+   q->present = 1;
+   if (strcmp(post->embed_note, "[quote]") == 0) {
+      post->embed_note[0] = '\0';
+   }
+}
+
 #ifdef COBALT_HAS_WOLFRAM
 
 /* Read a string member, returning NULL rather than an empty string when it is
@@ -479,6 +501,38 @@ fill_embed_media(cobalt_post *post, const cJSON *embed)
    }
 }
 
+/*
+ * `record#view` carries { record: viewRecord }, `recordWithMedia#view` nests
+ * that one level deeper under record.record. Only a viewRecord is drawable;
+ * viewNotFound, viewBlocked and viewDetached keep the "[quote]" note.
+ */
+static void
+fill_embed_quote(cobalt_post *post, const cJSON *embed)
+{
+   const cJSON *rec = cJSON_GetObjectItemCaseSensitive(embed, "record");
+   const char *type = json_string(embed, "$type");
+   if (type && strncmp(type, "app.bsky.embed.recordWithMedia",
+                       strlen("app.bsky.embed.recordWithMedia")) == 0) {
+      rec = rec ? cJSON_GetObjectItemCaseSensitive(rec, "record") : NULL;
+   }
+   if (!rec) {
+      return;
+   }
+   const char *rtype = json_string(rec, "$type");
+   if (!rtype || strncmp(rtype, "app.bsky.embed.record#viewRecord",
+                         strlen("app.bsky.embed.record#viewRecord")) != 0) {
+      return;
+   }
+   const cJSON *author = cJSON_GetObjectItemCaseSensitive(rec, "author");
+   const cJSON *value = cJSON_GetObjectItemCaseSensitive(rec, "value");
+   if (!author) {
+      return;
+   }
+   cobalt_feed_set_quote(post, json_string(author, "displayName"),
+                         json_string(author, "handle"),
+                         value ? json_string(value, "text") : NULL);
+}
+
 /* Who reposted this, if the item is in the feed for that reason. */
 static void
 fill_reason(cobalt_post *post, const cJSON *reason)
@@ -571,6 +625,7 @@ fill_from_view(cobalt_post *post, const wf_agent_post_view *view, int64_t now)
       snprintf(post->embed_note, sizeof(post->embed_note), "%s",
                cobalt_feed_embed_note(json_string(view->embed, "$type")));
       fill_embed_media(post, view->embed);
+      fill_embed_quote(post, view->embed);
    }
 
    /* Assume the post is its own root; a reply overwrites this below.
@@ -720,6 +775,7 @@ fill_from_thread_post(cobalt_post *post, const wf_agent_thread_post *view,
       snprintf(post->embed_note, sizeof(post->embed_note), "%s",
                cobalt_feed_embed_note(json_string(view->embed, "$type")));
       fill_embed_media(post, view->embed);
+      fill_embed_quote(post, view->embed);
    }
 
    memcpy(post->root_uri, post->uri, sizeof(post->root_uri));

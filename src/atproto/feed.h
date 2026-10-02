@@ -100,6 +100,20 @@ typedef struct {
    char thumb[COBALT_POST_THUMB_MAX];
 } cobalt_post_link;
 
+#define COBALT_POST_QUOTE_TEXT_MAX 256
+
+/*
+ * The post a quote post embeds, flattened to what a nested card draws. `present`
+ * is false for a blocked, deleted or detached quote, which keeps its "[quote]"
+ * note rather than drawing an empty box.
+ */
+typedef struct {
+   int present;
+   char author[COBALT_POST_NAME_MAX];
+   char handle[COBALT_POST_NAME_MAX];
+   char text[COBALT_POST_QUOTE_TEXT_MAX];
+} cobalt_post_quote;
+
 typedef struct {
    char author[COBALT_POST_NAME_MAX];   /* display name, or the handle */
    char handle[COBALT_POST_NAME_MAX];   /* always the handle, with a leading @ */
@@ -137,6 +151,10 @@ typedef struct {
    /* Populated for an `app.bsky.embed.external` embed, or the external half
     * of a `recordWithMedia` one. link.uri[0] == '\0' otherwise. */
    cobalt_post_link link;
+
+   /* Populated for an `app.bsky.embed.record` or `recordWithMedia` embed whose
+    * record is a viewable post. */
+   cobalt_post_quote quote;
 
    /*
     * Raw counts as well as the formatted line, because an interaction updates
@@ -291,6 +309,14 @@ void cobalt_feed_format_counts(char *out, size_t out_size, int replies,
  * nothing rather than as the wrong thing.
  */
 const char *cobalt_feed_embed_note(const char *type);
+
+/*
+ * Record the quoted post on `post`, truncating long text like any post text, and
+ * drop the "[quote]" note: the drawn card replaces it. Other notes, such as
+ * "[quote + media]", are left alone.
+ */
+void cobalt_feed_set_quote(cobalt_post *post, const char *display_name,
+                           const char *handle, const char *text);
 
 /*
  * A short host to show under a link card — "bsky.app" rather than the full
