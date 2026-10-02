@@ -52,7 +52,7 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
     * someone wants one. */
    if (cobalt_input_pressed(in, COBALT_BTN_MENU) && !busy) {
       COBALT_LOGI("timeline: refresh requested");
-      if (cobalt_session_begin_timeline(false)) {
+      if (cobalt_session_begin_feed_current(false)) {
          cobalt_timeline_rewind(view);
       }
       return COBALT_TIMELINE_STAY;
@@ -144,7 +144,7 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
     */
    if (!busy && cobalt_feed_can_page(feed) && view->selected >= feed->count - 1) {
       COBALT_LOGI("timeline: reached the end, fetching the next page");
-      cobalt_session_begin_timeline(true);
+      cobalt_session_begin_feed_current(true);
    }
 
    return COBALT_TIMELINE_STAY;

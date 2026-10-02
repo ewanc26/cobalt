@@ -353,6 +353,13 @@ int cobalt_feed_append_from_wolfram(cobalt_feed *feed,
                                     const struct wf_agent_feed_list *list,
                                     int64_t now);
 
+/* Flatten a searchPosts page onto `feed`; `next_cursor` is the page's cursor
+ * (NULL or empty means no further page). Returns how many posts were added. */
+struct wf_agent_post_list;
+int cobalt_feed_append_posts_from_wolfram(cobalt_feed *feed,
+                                          const struct wf_agent_post_list *list,
+                                          const char *next_cursor, int64_t now);
+
 /* Fetch result of getPosts for one pinned post; prepends it via
  * cobalt_feed_prepend_pinned. Returns whether a post was added. */
 struct wf_agent_post_list;
