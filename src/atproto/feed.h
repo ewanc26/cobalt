@@ -211,6 +211,21 @@ void cobalt_feed_reset(cobalt_feed *feed);
 void cobalt_thread_reset(cobalt_thread *thread);
 
 /*
+ * Whether `uri` is a record in `did`'s own repository (at://<did>/...). This
+ * is how a post is known to be the viewer's own: the feed view carries no
+ * author DID, but the URI always does.
+ */
+bool cobalt_post_uri_is_by(const char *uri, const char *did);
+
+/*
+ * Drop every row showing `uri` — a timeline can hold the same post more than
+ * once, as an original and as someone's repost of it. Returns how many were
+ * removed. Used after a delete, so the post leaves the screen without a
+ * refetch.
+ */
+int cobalt_feed_remove_post(cobalt_feed *feed, const char *uri);
+
+/*
  * Bring a list cursor back into range after the list may have shrunk.
  *
  * Every list screen needs this and none of them can derive it from the scroll

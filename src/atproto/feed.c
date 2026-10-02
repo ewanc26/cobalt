@@ -24,6 +24,39 @@ cobalt_feed_reset(cobalt_feed *feed)
    }
 }
 
+bool
+cobalt_post_uri_is_by(const char *uri, const char *did)
+{
+   if (!uri || !did || !did[0] || strncmp(uri, "at://", 5) != 0) {
+      return false;
+   }
+   const size_t n = strlen(did);
+   return strncmp(uri + 5, did, n) == 0 && uri[5 + n] == '/';
+}
+
+int
+cobalt_feed_remove_post(cobalt_feed *feed, const char *uri)
+{
+   if (!feed || !uri || !uri[0]) {
+      return 0;
+   }
+
+   int removed = 0;
+   int out = 0;
+   for (int i = 0; i < feed->count; i++) {
+      if (strcmp(feed->posts[i].uri, uri) == 0) {
+         removed++;
+         continue;
+      }
+      if (out != i) {
+         feed->posts[out] = feed->posts[i];
+      }
+      out++;
+   }
+   feed->count = out;
+   return removed;
+}
+
 void
 cobalt_thread_reset(cobalt_thread *thread)
 {

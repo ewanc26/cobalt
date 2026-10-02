@@ -459,6 +459,19 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          }
          break;
 
+      case COBALT_JOB_DELETE_POST:
+         if (result->ok) {
+            set_notice(app, "Post deleted.", false);
+            /* The loaded conversation was cleared if it held the post, so a
+             * thread screen has nothing left to show. */
+            if (app->screen == COBALT_SCREEN_THREAD) {
+               app->screen = app->thread_return;
+            }
+         } else {
+            set_notice(app, result->message, true);
+         }
+         break;
+
       case COBALT_JOB_NOTIFICATIONS:
       case COBALT_JOB_PROFILE:
       case COBALT_JOB_FOLLOW:

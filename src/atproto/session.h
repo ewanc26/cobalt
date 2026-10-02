@@ -77,6 +77,7 @@ typedef enum {
    COBALT_JOB_FEED,
    COBALT_JOB_LISTS,
    COBALT_JOB_LIST_MEMBERS,
+   COBALT_JOB_DELETE_POST,
 } cobalt_job_kind;
 
 typedef struct {
@@ -210,6 +211,14 @@ bool cobalt_session_begin_repost(const char *uri, const char *cid);
 bool cobalt_session_begin_post(const char *text, const char *parent_uri,
                                const char *parent_cid, const char *root_uri,
                                const char *root_cid, int reply_gate);
+
+/*
+ * Delete one of the viewer's own posts. Refused (false) unless `uri` is in the
+ * signed-in account's own repository — the server would refuse it anyway, but
+ * a button that can only ever fail is worse than one that is absent. On
+ * success the post is removed from the loaded feed, author feed and thread.
+ */
+bool cobalt_session_begin_delete_post(const char *uri);
 
 /*
  * Fetch notifications. `paging` appends the next page; false replaces the list.
