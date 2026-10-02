@@ -753,16 +753,10 @@ static void
 draw_back_pill(cobalt_render *r, cobalt_surface_id surface)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   const char *label = "B  Back";
-   int tw = 0, th = 0;
-   cobalt_text_size(r, COBALT_FONT_CAPTION, label, &tw, &th);
-   const int padx = m->pad_tile / 2 + 6;
-   SDL_Rect pill = { m->width - m->pad_edge - tw - 2 * padx, m->pad_edge,
-                     tw + 2 * padx, th + 10 };
-   const SDL_Color fill = { 0xFF, 0xFF, 0xFF, 0x38 };
-   const SDL_Color white = { 0xFF, 0xFF, 0xFF, 0xFF };
-   cobalt_fill_rounded_rect(r, &pill, pill.h / 2, fill);
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, label, pill.x + padx, pill.y + 5, white);
+   const int w = cobalt_pill_width(r, "B", "Back");
+   SDL_Rect pill = { m->width - m->pad_edge - w, m->pad_edge, w,
+                     cobalt_pill_height(r) };
+   cobalt_draw_pill(r, "B", "Back", pill.x, pill.y);
    if (surface == COBALT_SURFACE_DRC) {
       s_back_hit = pill;
       s_back_hit_valid = true;

@@ -97,6 +97,8 @@ font_size_for(const cobalt_metrics *m, cobalt_font_id id)
       case COBALT_FONT_TITLE:   return m->font_title;
       case COBALT_FONT_HEADING: return m->font_heading;
       case COBALT_FONT_CAPTION: return m->font_caption;
+      case COBALT_FONT_ICON:
+      case COBALT_FONT_ICON_FILL: return m->font_caption + 2;
       case COBALT_FONT_BODY:
       default:                  return m->font_body;
    }
@@ -228,10 +230,17 @@ cobalt_render_create(cobalt_surface_id surface, const char *font_path, bool prev
    }
 
    for (int i = 0; i < COBALT_FONT_COUNT; i++) {
-      r->fonts[i] = open_font_cached(font_path, font_size_for(r->m, (cobalt_font_id) i));
+      char path[512];
+      snprintf(path, sizeof path, "%s", font_path);
+      if (i == COBALT_FONT_ICON || i == COBALT_FONT_ICON_FILL) {
+         const char *slash = strrchr(font_path, '/');
+         snprintf(path, sizeof path, "%.*s%s", slash ? (int) (slash - font_path + 1) : 0,
+                  font_path, i == COBALT_FONT_ICON ? "icons.ttf" : "icons-fill.ttf");
+      }
+      r->fonts[i] = open_font_cached(path, font_size_for(r->m, (cobalt_font_id) i));
       if (!r->fonts[i]) {
          /* Not fatal — see the header. Shapes still draw, text is skipped. */
-         COBALT_LOGE("font %s @%dpt failed to open: %s", font_path,
+         COBALT_LOGE("font %s @%dpt failed to open: %s", path,
                      font_size_for(r->m, (cobalt_font_id) i), TTF_GetError());
       }
    }
@@ -407,33 +416,59 @@ cobalt_fill_rect(cobalt_render *r, const SDL_Rect *rect, SDL_Color colour)
    SDL_RenderFillRect(r->renderer, rect);
 }
 
+int
+cobalt_pill_height(cobalt_render *r)
+{
+   return cobalt_font_line_height(r, COBALT_FONT_CAPTION) + 12;
+}
+
+int
+cobalt_pill_width(cobalt_render *r, const char *key, const char *label)
+{
+   const int pill_h = cobalt_pill_height(r);
+   const int padx = pill_h / 3 + 2;
+   int kw = 0, lw = 0;
+   if (key && key[0]) cobalt_text_size(r, COBALT_FONT_CAPTION, key, &kw, NULL);
+   if (label && label[0]) cobalt_text_size(r, COBALT_FONT_CAPTION, label, &lw, NULL);
+   if (key && key[0]) {
+      return padx + (kw + pill_h / 3 + 4) + 6 + lw + padx - 2;
+   }
+   return padx + lw + padx;
+}
+
+/* The one control-prompt pill: every pill on every screen, header and footer,
+ * goes through here so they cannot drift apart. */
+void
+cobalt_draw_pill(cobalt_render *r, const char *key, const char *label, int x, int y)
+{
+   const int line = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+   const int pill_h = line + 12;
+   const int padx = pill_h / 3 + 2;
+   const SDL_Color white = { 0xFF, 0xFF, 0xFF, 0xFF };
+   const SDL_Color body = { 0xFF, 0xFF, 0xFF, 0xE6 };
+   const bool has_key = key && key[0];
+   int kw = 0;
+   if (has_key) cobalt_text_size(r, COBALT_FONT_CAPTION, key, &kw, NULL);
+   const int chip_w = has_key ? kw + pill_h / 3 + 4 : 0;
+   SDL_Rect pill = { x, y, cobalt_pill_width(r, key, label), pill_h };
+   cobalt_fill_rounded_rect(r, &pill, pill_h / 2, body);
+   int tx = x + padx;
+   if (has_key) {
+      SDL_Rect chip = { x + 4, y + 4, chip_w, pill_h - 8 };
+      cobalt_fill_rounded_rect(r, &chip, chip.h / 2, COBALT_COLOUR_ACCENT);
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, key, chip.x + (chip.w - kw) / 2,
+                       y + (pill_h - line) / 2, white);
+      tx = chip.x + chip.w + 6;
+   }
+   cobalt_draw_text(r, COBALT_FONT_CAPTION, label, tx, y + (pill_h - line) / 2,
+                    COBALT_COLOUR_TEXT);
+}
+
 typedef struct {
    char key[32];
    char label[64];
    int kw, lw, w;
 } hint_seg;
-
-static void
-draw_hint_pill(cobalt_render *r, const hint_seg *h, int x, int y, int pill_h,
-               int padx, int line)
-{
-   const SDL_Color white = { 0xFF, 0xFF, 0xFF, 0xFF };
-   const SDL_Color body = { 0xFF, 0xFF, 0xFF, 0xE6 };
-   const int chip_w = h->key[0] ? h->kw + pill_h / 3 + 4 : 0;
-   SDL_Rect pill = { x, y, h->w, pill_h };
-   cobalt_fill_rounded_rect(r, &pill, pill_h / 2, body);
-   int tx = x + padx;
-   if (h->key[0]) {
-      SDL_Rect chip = { x + 4, y + 4, chip_w, pill_h - 8 };
-      cobalt_fill_rounded_rect(r, &chip, chip.h / 2, COBALT_COLOUR_ACCENT);
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, h->key,
-                       chip.x + (chip.w - h->kw) / 2, y + (pill_h - line) / 2,
-                       white);
-      tx = chip.x + chip.w + 6;
-   }
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, h->label, tx, y + (pill_h - line) / 2,
-                    COBALT_COLOUR_TEXT);
-}
 
 void
 cobalt_draw_hints(cobalt_render *r, const char *spec)
@@ -487,6 +522,14 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
    int header_n = 0;
    if (m->width < 1000 && count > 3) {
       header_n = count / 2;
+      /* Keep clear of the title and subtitle on the left. */
+      const int left_limit = 300;
+      for (;;) {
+         int total = 0;
+         for (int i = 0; i < header_n; i++) total += segs[i].w + (i ? gap : 0);
+         if (header_n == 0 || right - total >= left_limit) break;
+         header_n--;
+      }
    }
 
    if (header_n > 0) {
@@ -495,7 +538,7 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
       int x = right - total;
       const int y = 56;
       for (int i = 0; i < header_n; i++) {
-         draw_hint_pill(r, &segs[i], x, y, pill_h, padx, line);
+         cobalt_draw_pill(r, segs[i].key, segs[i].label, x, y);
          x += segs[i].w + gap;
       }
    }
@@ -507,7 +550,7 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
          x = m->pad_edge;
          y -= pill_h + 6;
       }
-      draw_hint_pill(r, &segs[i], x, y, pill_h, padx, line);
+      cobalt_draw_pill(r, segs[i].key, segs[i].label, x, y);
       x += segs[i].w + gap;
    }
 }
@@ -763,7 +806,7 @@ open_fallback_fonts(cobalt_render *r, const char *font_path)
       return;
    }
    fclose(f);
-   for (int i = 0; i < COBALT_FONT_COUNT; i++) {
+   for (int i = 0; i < COBALT_FONT_ICON; i++) {
       r->fallbacks[i] = open_font_cached(path, font_size_for(r->m, (cobalt_font_id) i));
    }
 }

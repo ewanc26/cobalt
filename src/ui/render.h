@@ -29,8 +29,30 @@ typedef enum {
    COBALT_FONT_HEADING,
    COBALT_FONT_BODY,
    COBALT_FONT_CAPTION,
+   COBALT_FONT_ICON,       /* Phosphor Regular subset (icons.ttf) */
+   COBALT_FONT_ICON_FILL,  /* Phosphor Fill subset (icons-fill.ttf) */
    COBALT_FONT_COUNT,
 } cobalt_font_id;
+
+/* Phosphor Icons codepoints (UTF-8), drawn with COBALT_FONT_ICON or
+ * COBALT_FONT_ICON_FILL. */
+#define COBALT_ICON_LIKE "\xEE\x8A\xA8"
+#define COBALT_ICON_REPOST "\xEE\x8F\xB6"
+#define COBALT_ICON_REPLY "\xEE\x85\xA8"
+#define COBALT_ICON_BELL "\xEE\x83\x8E"
+#define COBALT_ICON_SEARCH "\xEE\x8C\x8C"
+#define COBALT_ICON_USER "\xEE\x93\x82"
+#define COBALT_ICON_GEAR "\xEE\x89\xB0"
+#define COBALT_ICON_HOUSE "\xEE\x8B\x82"
+#define COBALT_ICON_LIST "\xEE\x8B\xB0"
+#define COBALT_ICON_PENCIL "\xEE\x8E\xB4"
+#define COBALT_ICON_IMAGE "\xEE\x8B\x8A"
+#define COBALT_ICON_HASH "\xEE\x8A\xA2"
+#define COBALT_ICON_BACK "\xEE\x81\x98"
+#define COBALT_ICON_PIN "\xEE\x8F\xA2"
+#define COBALT_ICON_USERS "\xEE\x93\x96"
+#define COBALT_ICON_OFFLINE "\xEE\x93\xB2"
+#define COBALT_ICON_WARNING "\xEE\x93\xA0"
 
 typedef struct cobalt_render cobalt_render;
 
@@ -76,6 +98,12 @@ void cobalt_fill_rounded_rect(cobalt_render *r, const SDL_Rect *rect, int radius
  * colon is drawn as a plain pill. Rows wrap upward if they run out of width.
  */
 void cobalt_draw_hints(cobalt_render *r, const char *spec);
+
+/* A single control-prompt pill ("key" may be NULL/empty for a plain one), and
+ * its size, for callers that place pills themselves (the header Back pill). */
+int cobalt_pill_height(cobalt_render *r);
+int cobalt_pill_width(cobalt_render *r, const char *key, const char *label);
+void cobalt_draw_pill(cobalt_render *r, const char *key, const char *label, int x, int y);
 
 /*
  * A Wii U menu style tile: rounded, light, with a soft drop shadow and a top
