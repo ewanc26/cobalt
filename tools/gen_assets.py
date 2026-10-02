@@ -162,10 +162,11 @@ def make_icon():
     vertical_gradient(tile, BRIGHT, MID)
     glass_highlight(tile, 0.26)
 
-    radius = size * 0.22
+    # Full-bleed square: the Wii U menu rounds icons itself, so pre-rounded
+    # corners show up as dark wedges.
     for y in range(size):
         for x in range(size):
-            image.put(x, y, tile.pixels[y][x], rounded_rect_mask(size, size, radius, x, y))
+            image.put(x, y, tile.pixels[y][x])
 
     centre = size / 2.0
     # Drop shadow under the mark, then the mark itself.
