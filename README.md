@@ -7,9 +7,9 @@ Cobalt treats the Wii U as the platform it is rather than as a browser target:
 the TV and GamePad are both first-class displays, with support for normal
 two-screen use and Off-TV Play.
 
-Cobalt uses [Wolfram](https://github.com/ewanc26/wolfram), Ewan's C AT Protocol
+Cobalt uses [Wolfram](https://github.com/ewanc26/wolfram), my C AT Protocol
 SDK, for its AT Protocol implementation. The project sits alongside the rest
-of Ewan's mineral and material-named projects and deliberately echoes
+of my mineral and material-named projects and deliberately echoes
 [Channel Blue](https://github.com/ewanc26), the Wii counterpart.
 
 ## Status
