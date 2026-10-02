@@ -51,3 +51,17 @@ and is skipped without one.
 
 None of the three is a substitute for running the build on the console. They
 only rule out the failures that do not need hardware to find.
+
+## Live simulator (`make -C tests sim`)
+
+Opens the real app and renderer in two windows sized like the Wii U outputs
+(TV 1280x720, GamePad 854x480) so UI work does not need Cemu. Needs the same
+Wolfram host build as `e2e`/`snapshot`. It runs against the shared mock PDS
+(`fixtures.h`) and signs in as `alice.test`; `make -C tests sim SIM_ARGS=--live`
+uses the real network and the app's sign-in screen instead. State goes to
+`build/sim`.
+
+Keys: arrows = D-pad, Return/Space = A, Esc/Backspace = B, Tab = +, X, Y.
+Left-click in the GamePad window = touch (drag works). F5 saves `sim-tv.bmp` and
+`sim-drc.bmp`. A game controller also works. Layout metrics and fonts are the
+Wii U ones; only the GPU, SD card and network stack differ.
