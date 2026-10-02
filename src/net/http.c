@@ -2,6 +2,7 @@
 #include "util/log.h"
 #include "util/rng.h"
 
+#include <SDL.h>
 #include <curl/curl.h>
 
 /* Same condition Wolfram uses: the TLS RNG hook only makes sense where libcurl
@@ -14,6 +15,7 @@
 #include <mbedtls/ssl.h>
 #endif
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,12 +24,60 @@
 #define CONNECT_TIMEOUT_SECONDS 10
 #define TOTAL_TIMEOUT_SECONDS   30
 
+/* Downloaded bodies kept for a short while. The TV and GamePad each own an image
+ * cache and ask for the same avatar within a frame of each other; this makes
+ * that one download, not two. */
+#define BODY_CACHE_SLOTS      32
+#define BODY_CACHE_MAX_BYTES  (4u * 1024u * 1024u)
+#define BODY_CACHE_MAX_ENTRY  (512u * 1024u)
+#define BODY_URL_MAX          512
+
+typedef enum { BODY_FREE, BODY_FETCHING, BODY_READY } body_state;
+
+typedef struct {
+   body_state state;
+   char url[BODY_URL_MAX];
+   unsigned char *data;
+   size_t size;
+   uint32_t stamp;
+} body_slot;
+
 static struct {
    bool initialised;
    bool curl_global;
    char ca_path[512];
    bool have_ca;
+
+   /* One connection / TLS-session / DNS cache for every handle on every thread.
+    * A fresh easy handle per request meant a full TLS handshake plus a re-parse
+    * of the CA bundle each time, which is seconds of CPU on this console. */
+   CURLSH *share;
+   SDL_mutex *share_locks[CURL_LOCK_DATA_LAST];
+
+   SDL_mutex *body_lock;
+   SDL_cond *body_cond;
+   body_slot bodies[BODY_CACHE_SLOTS];
+   size_t body_bytes;
+   uint32_t body_clock;
 } s;
+
+static void
+share_lock(CURL *handle, curl_lock_data data, curl_lock_access access, void *user)
+{
+   (void) handle; (void) access; (void) user;
+   if (data < CURL_LOCK_DATA_LAST && s.share_locks[data]) {
+      SDL_LockMutex(s.share_locks[data]);
+   }
+}
+
+static void
+share_unlock(CURL *handle, curl_lock_data data, void *user)
+{
+   (void) handle; (void) user;
+   if (data < CURL_LOCK_DATA_LAST && s.share_locks[data]) {
+      SDL_UnlockMutex(s.share_locks[data]);
+   }
+}
 
 /* --- write callback --- */
 
@@ -130,6 +180,24 @@ cobalt_http_init(const char *ca_path)
       COBALT_LOGW("http: no CA bundle — image loads will fail verification");
    }
 
+   if (!s.share) {
+      for (int i = 0; i < CURL_LOCK_DATA_LAST; i++) {
+         s.share_locks[i] = SDL_CreateMutex();
+      }
+      s.share = curl_share_init();
+      if (s.share) {
+         curl_share_setopt(s.share, CURLSHOPT_LOCKFUNC, share_lock);
+         curl_share_setopt(s.share, CURLSHOPT_UNLOCKFUNC, share_unlock);
+         curl_share_setopt(s.share, CURLSHOPT_SHARE, CURL_LOCK_DATA_CONNECT);
+         curl_share_setopt(s.share, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
+         curl_share_setopt(s.share, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
+      }
+   }
+   if (!s.body_lock) {
+      s.body_lock = SDL_CreateMutex();
+      s.body_cond = SDL_CreateCond();
+   }
+
    s.initialised = true;
    return true;
 }
@@ -137,6 +205,27 @@ cobalt_http_init(const char *ca_path)
 void
 cobalt_http_shutdown(void)
 {
+   if (s.share) {
+      curl_share_cleanup(s.share);
+      s.share = NULL;
+   }
+   for (int i = 0; i < CURL_LOCK_DATA_LAST; i++) {
+      if (s.share_locks[i]) {
+         SDL_DestroyMutex(s.share_locks[i]);
+         s.share_locks[i] = NULL;
+      }
+   }
+   if (s.body_lock) {
+      for (int i = 0; i < BODY_CACHE_SLOTS; i++) {
+         free(s.bodies[i].data);
+      }
+      memset(s.bodies, 0, sizeof(s.bodies));
+      s.body_bytes = 0;
+      SDL_DestroyCond(s.body_cond);
+      SDL_DestroyMutex(s.body_lock);
+      s.body_cond = NULL;
+      s.body_lock = NULL;
+   }
    if (s.curl_global) {
       curl_global_cleanup();
       s.curl_global = false;
@@ -146,8 +235,8 @@ cobalt_http_shutdown(void)
 
 /* --- requests --- */
 
-bool
-cobalt_http_get(const char *url, size_t max_bytes, cobalt_http_response *out)
+static bool
+fetch_network(const char *url, size_t max_bytes, cobalt_http_response *out)
 {
    if (!out) {
       return false;
@@ -177,6 +266,9 @@ cobalt_http_get(const char *url, size_t max_bytes, cobalt_http_response *out)
    curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long) TOTAL_TIMEOUT_SECONDS);
    /* Curl's signal-based timeouts are not safe off the main thread. */
    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+   if (s.share) {
+      curl_easy_setopt(curl, CURLOPT_SHARE, s.share);
+   }
 
    /*
     * Only https. A PDS could hand back an http:// URL — by mistake or not —
@@ -223,6 +315,142 @@ cobalt_http_get(const char *url, size_t max_bytes, cobalt_http_response *out)
    out->size = buf.size;
    out->status = status;
    return true;
+}
+
+/* Caller holds body_lock. */
+static body_slot *
+body_find(const char *url)
+{
+   for (int i = 0; i < BODY_CACHE_SLOTS; i++) {
+      if (s.bodies[i].state != BODY_FREE && strcmp(s.bodies[i].url, url) == 0) {
+         return &s.bodies[i];
+      }
+   }
+   return NULL;
+}
+
+/* Caller holds body_lock. Evicts the oldest READY entries until one slot is
+ * free and `incoming` more bytes fit; returns NULL if everything is in flight. */
+static body_slot *
+body_claim(size_t incoming)
+{
+   for (;;) {
+      body_slot *free_slot = NULL, *oldest = NULL;
+      for (int i = 0; i < BODY_CACHE_SLOTS; i++) {
+         body_slot *b = &s.bodies[i];
+         if (b->state == BODY_FREE) {
+            if (!free_slot) free_slot = b;
+         } else if (b->state == BODY_READY && (!oldest || b->stamp < oldest->stamp)) {
+            oldest = b;
+         }
+      }
+      if (free_slot && s.body_bytes + incoming <= BODY_CACHE_MAX_BYTES) {
+         return free_slot;
+      }
+      if (!oldest) {
+         return free_slot;
+      }
+      s.body_bytes -= oldest->size;
+      free(oldest->data);
+      memset(oldest, 0, sizeof(*oldest));
+   }
+}
+
+static unsigned char *
+copy_body(const unsigned char *data, size_t size)
+{
+   unsigned char *copy = (unsigned char *) malloc(size + 1);
+   if (copy) {
+      memcpy(copy, data, size);
+      copy[size] = '\0';
+   }
+   return copy;
+}
+
+bool
+cobalt_http_get(const char *url, size_t max_bytes, cobalt_http_response *out)
+{
+   if (!out) {
+      return false;
+   }
+   memset(out, 0, sizeof(*out));
+
+   if (!s.initialised || !url || !url[0] || strlen(url) >= BODY_URL_MAX ||
+       max_bytes == 0 || !s.body_lock) {
+      return fetch_network(url, max_bytes, out);
+   }
+
+   SDL_LockMutex(s.body_lock);
+   for (;;) {
+      body_slot *hit = body_find(url);
+      if (!hit) {
+         break;
+      }
+      if (hit->state == BODY_READY && hit->size <= max_bytes) {
+         unsigned char *copy = copy_body(hit->data, hit->size);
+         if (copy) {
+            hit->stamp = ++s.body_clock;
+            out->data = copy;
+            out->size = hit->size;
+            out->status = 200;
+            SDL_UnlockMutex(s.body_lock);
+            return true;
+         }
+         break;
+      }
+      if (hit->state == BODY_FETCHING) {
+         /* Someone else is downloading exactly this; wait for them. */
+         SDL_CondWait(s.body_cond, s.body_lock);
+         continue;
+      }
+      break;
+   }
+
+   body_slot *mine = body_claim(0);
+   if (mine) {
+      memset(mine, 0, sizeof(*mine));
+      mine->state = BODY_FETCHING;
+      snprintf(mine->url, sizeof(mine->url), "%s", url);
+   }
+   SDL_UnlockMutex(s.body_lock);
+
+   const bool ok = fetch_network(url, max_bytes, out);
+
+   if (mine) {
+      SDL_LockMutex(s.body_lock);
+      if (ok && out->size <= BODY_CACHE_MAX_ENTRY) {
+         unsigned char *keep = copy_body(out->data, out->size);
+         if (keep) {
+            /* Make room by evicting READY entries; `mine` is FETCHING so it is
+             * never a victim. */
+            while (s.body_bytes + out->size > BODY_CACHE_MAX_BYTES) {
+               body_slot *oldest = NULL;
+               for (int i = 0; i < BODY_CACHE_SLOTS; i++) {
+                  if (s.bodies[i].state == BODY_READY &&
+                      (!oldest || s.bodies[i].stamp < oldest->stamp)) {
+                     oldest = &s.bodies[i];
+                  }
+               }
+               if (!oldest) break;
+               s.body_bytes -= oldest->size;
+               free(oldest->data);
+               memset(oldest, 0, sizeof(*oldest));
+            }
+            mine->data = keep;
+            mine->size = out->size;
+            mine->stamp = ++s.body_clock;
+            mine->state = BODY_READY;
+            s.body_bytes += out->size;
+         } else {
+            memset(mine, 0, sizeof(*mine));
+         }
+      } else {
+         memset(mine, 0, sizeof(*mine));
+      }
+      SDL_CondBroadcast(s.body_cond);
+      SDL_UnlockMutex(s.body_lock);
+   }
+   return ok;
 }
 
 void
