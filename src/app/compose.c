@@ -481,10 +481,8 @@ draw_confirming(cobalt_compose *compose, cobalt_render *r,
       }
    }
 
-   cobalt_draw_text(r, COBALT_FONT_CAPTION,
-                    cobalt_session_busy() ? "Posting..."
-                                          : "A: choose    B: back to editing",
-                    m->pad_edge, m->height - m->pad_edge - 20, hint);
+   cobalt_draw_hints(r, cobalt_session_busy() ? "Posting..."
+                                          : "A: choose    B: back to editing");
 }
 
 static void
@@ -554,9 +552,7 @@ draw_picker(cobalt_compose *compose, cobalt_render *r, cobalt_surface_id surface
       }
    }
 
-   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, "Up/Down: choose    A: attach    B: back",
-                    m->pad_edge, m->height - m->pad_edge - 20, hint);
+   cobalt_draw_hints(r, "Up/Down: choose    A: attach    B: back");
 }
 
 void

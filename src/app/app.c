@@ -1133,10 +1133,7 @@ draw_home_tv(cobalt_app *app, cobalt_render *r)
 
    draw_notice(app, r, detail_y + m->font_body + m->gap, m->width - 2 * m->pad_edge);
 
-   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
-   cobalt_draw_text(r, COBALT_FONT_CAPTION,
-                    "A / touch: select     B: back     D-pad or stick: move",
-                    m->pad_edge, m->height - m->pad_edge - 24, hint);
+   cobalt_draw_hints(r, "A / touch: select     B: back     D-pad or stick: move");
 }
 
 static void
@@ -1201,9 +1198,7 @@ draw_home_drc(cobalt_app *app, cobalt_render *r)
    draw_notice(app, r, list_bottom + 4, list_w);
 
    SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
-   cobalt_draw_text(r, COBALT_FONT_CAPTION,
-                    app->display == COBALT_DISPLAY_DUAL ? "TV + GamePad" : "GamePad only",
-                    m->pad_edge, m->height - m->pad_edge - 20, hint);
+   cobalt_draw_hints(r, app->display == COBALT_DISPLAY_DUAL ? "TV + GamePad" : "GamePad only");
    if (more[0]) {
       int w = 0;
       cobalt_text_size(r, COBALT_FONT_CAPTION, more, &w, NULL);
@@ -1275,9 +1270,7 @@ draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
    draw_notice(app, r, row_y + m->gap / 2, width);
 
-   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, "A / touch: open     B: back",
-                    m->pad_edge, m->height - m->pad_edge - 20, hint);
+   cobalt_draw_hints(r, "A / touch: open     B: back");
 }
 
 static void
@@ -1327,9 +1320,7 @@ draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
    draw_notice(app, r, row_y - m->gap / 2 + m->gap / 2, width);
 
-   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, "A / touch: open     B: back",
-                    m->pad_edge, m->height - m->pad_edge - 20, hint);
+   cobalt_draw_hints(r, "A / touch: open     B: back");
 }
 
 static void
@@ -1456,9 +1447,7 @@ draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
                                bad ? COBALT_COLOUR_ERROR : COBALT_COLOUR_TEXT);
    }
 
-   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, "B: back",
-                    m->pad_edge, m->height - m->pad_edge - 20, hint);
+   cobalt_draw_hints(r, "B: back");
 }
 
 /* The TV's idle card in Off-TV mode: enough to show the app is alive and

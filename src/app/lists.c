@@ -318,12 +318,9 @@ draw_list_of_lists(cobalt_lists_view *view, cobalt_render *r,
       view->last_visible = last_fitted;
    }
 
-   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
-   cobalt_draw_text(r, COBALT_FONT_CAPTION,
-                    cobalt_session_busy() ? "Working..."
+   cobalt_draw_hints(r, cobalt_session_busy() ? "Working..."
                                           : view->browsing_members ? "A / touch: open profile   B: back"
-                                                                   : "A / touch: open list   B: back",
-                    m->pad_edge, m->height - m->pad_edge - 20, hint);
+                                                                   : "A / touch: open list   B: back");
 }
 
 static void
@@ -386,10 +383,7 @@ draw_members(cobalt_lists_view *view, cobalt_render *r,
       view->last_visible = last_fitted;
    }
 
-   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
-   cobalt_draw_text(r, COBALT_FONT_CAPTION,
-                    cobalt_session_busy() ? "Working..." : "B: back to lists",
-                    m->pad_edge, m->height - m->pad_edge - 20, hint);
+   cobalt_draw_hints(r, cobalt_session_busy() ? "Working..." : "B: back to lists");
 }
 
 void
