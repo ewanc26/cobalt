@@ -263,6 +263,14 @@ cobalt_render_has_font(const cobalt_render *r)
    return r && r->fonts[COBALT_FONT_BODY] != NULL;
 }
 
+#ifdef COBALT_E2E_HOST
+SDL_Renderer *
+cobalt_render_sdl_renderer(cobalt_render *r)
+{
+   return r->renderer;
+}
+#endif
+
 void
 cobalt_render_begin(cobalt_render *r)
 {

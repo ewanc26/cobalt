@@ -54,6 +54,10 @@ void cobalt_render_destroy(cobalt_render *r);
 const cobalt_metrics *cobalt_render_metrics(const cobalt_render *r);
 bool cobalt_render_has_font(const cobalt_render *r);
 
+#ifdef COBALT_E2E_HOST
+SDL_Renderer *cobalt_render_sdl_renderer(cobalt_render *r);
+#endif
+
 /* Clear to the background gradient. */
 void cobalt_render_begin(cobalt_render *r);
 
