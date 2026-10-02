@@ -550,22 +550,34 @@ cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
 
    const cobalt_metrics *m = cobalt_render_metrics(r);
 
+   /* As on Miiverse, the avatar stands outside the card on its left and the
+    * card holds only the words. The text column is the same width as when the
+    * avatar sat inside, so wrapping and embeds are unchanged. */
+   const int shift = indent * INDENT_STEP(m);
+   const int avatar_col = AVATAR_SIDE(m) + AVATAR_GAP(m);
+   const SDL_Rect card = { rect->x + shift + avatar_col, rect->y,
+                           rect->w - shift - avatar_col, rect->h };
+   if (card.w <= 2 * m->pad_tile) {
+      return;
+   }
+
    /* A post you have liked or reposted keeps an accent glow under it, the way
     * a Yeah'd post does on Miiverse, so it reads at a glance while scrolling. */
    if (!focused && (post->viewer_like[0] || post->viewer_repost[0])) {
       SDL_Color glow = COBALT_COLOUR_ACCENT;
       glow.a = 70;
-      const SDL_Rect g = { rect->x + 1, rect->y + 3, rect->w, rect->h };
+      const SDL_Rect g = { card.x + 1, card.y + 3, card.w, card.h };
       cobalt_fill_rounded_rect(r, &g, m->tile_radius, glow);
    }
-   cobalt_draw_tile(r, rect, focused ? 1.0f : 0.0f);
+   cobalt_draw_tile(r, &card, focused ? 1.0f : 0.0f);
+   cobalt_avatar_draw(r, post->avatar, post->author, post->handle,
+                      rect->x + shift, rect->y + m->pad_tile / 2, AVATAR_SIDE(m));
 
    const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
 
-   const int shift = indent * INDENT_STEP(m);
-   const int left = rect->x + m->pad_tile + shift;
-   const int right = rect->x + rect->w - m->pad_tile;
+   const int left = card.x + m->pad_tile;
+   const int right = card.x + card.w - m->pad_tile;
    if (right - left <= 0) {
       return;
    }
@@ -583,14 +595,7 @@ cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
       y += caption_h;
    }
 
-   /*
-    * The avatar sits below the repost banner, not beside it: the banner is
-    * about who put the post in the feed, the avatar about who wrote it, and
-    * running them together would say neither clearly.
-    */
-   cobalt_avatar_draw(r, post->avatar, post->author, post->handle, left, y,
-                      AVATAR_SIDE(m));
-   const int text_left = left + AVATAR_SIDE(m) + AVATAR_GAP(m);
+   const int text_left = left;
    const int text_width = right - text_left;
    if (text_width <= 0) {
       return;
