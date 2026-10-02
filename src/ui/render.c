@@ -466,7 +466,16 @@ cobalt_draw_tile(cobalt_render *r, const SDL_Rect *rect, float focus)
 
    /* Drop shadow: a single offset rounded rect rather than a real blur. At
     * these sizes the difference is not visible on a TV and it costs one draw. */
-   SDL_Color shadow = { 0x30, 0x40, 0x50, (Uint8) (26 + 26 * focus) };
+   /* Focus tints the shadow with the accent, as Miiverse does for a post you
+    * have given a Yeah, rather than only darkening it. */
+   const SDL_Color ink = { 0x30, 0x40, 0x50, 0xFF };
+   const SDL_Color acc = COBALT_COLOUR_ACCENT;
+   SDL_Color shadow = {
+      (Uint8) (ink.r + (acc.r - ink.r) * focus),
+      (Uint8) (ink.g + (acc.g - ink.g) * focus),
+      (Uint8) (ink.b + (acc.b - ink.b) * focus),
+      (Uint8) (26 + 44 * focus),
+   };
    SDL_Rect shadow_rect = { rect->x + 2, rect->y + 3 + (int) (2 * focus),
                             rect->w, rect->h };
    cobalt_fill_rounded_rect(r, &shadow_rect, radius, shadow);
