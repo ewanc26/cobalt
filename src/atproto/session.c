@@ -559,6 +559,12 @@ new_wf_agent(const char *service)
     * come up if this could not work, so a failure here is a real surprise.
     */
    wf_status rng = wf_agent_set_tls_rng(agent, cobalt_rng_mbedtls, NULL);
+#ifdef COBALT_E2E_HOST
+   /* Host end-to-end only (tests/Makefile `e2e`): plain HTTP to a localhost
+    * mock, and a host curl has no mbedTLS hook to install. Never defined in a
+    * Wii U build. */
+   rng = WF_OK;
+#endif
    if (rng != WF_OK) {
       COBALT_LOGE("session: could not install the TLS RNG (%d) — refusing to "
                   "hand the handshake to a tick-seeded generator", (int) rng);
