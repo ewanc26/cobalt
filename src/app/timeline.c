@@ -259,6 +259,12 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
       view->last_visible = last_fitted;
    }
 
+   /* A card taller than the viewport is still drawn whole; the strip keeps the
+    * hint legible instead of printing it across the card. */
+   const SDL_Rect strip = { 0, m->height - m->pad_edge - 22, m->width,
+                            m->pad_edge + 22 };
+   cobalt_fill_rect(r, &strip, COBALT_COLOUR_BG_BOTTOM);
+
    SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    const char *footer = cobalt_session_busy()
                            ? "Working..."
