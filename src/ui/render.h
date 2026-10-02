@@ -142,7 +142,7 @@ int cobalt_draw_text_wrapped(cobalt_render *r, cobalt_font_id font, const char *
                              int x, int y, int max_width, int max_lines,
                              SDL_Color colour);
 
-/* Bottom edge of the green title band, and where screen content may start. */
+/* Bottom edge of the blue title band, and where screen content may start. */
 int cobalt_header_height(cobalt_render *r);
 int cobalt_content_top(cobalt_render *r);
 
