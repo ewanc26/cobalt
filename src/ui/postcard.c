@@ -37,6 +37,7 @@
 /* Budget for the alt-text caption shown under a focused image post — see
  * first_alt() and embed_block_height() below. */
 #define EMBED_ALT_LINES 2
+#define QUOTE_TEXT_LINES 3
 #define EMBED_ALT_GAP(m) EMBED_CELL_GAP(m)
 
 /*
@@ -108,6 +109,51 @@ embed_block_height(const cobalt_metrics *m, int caption_h, int body_h,
    return h;
 }
 
+/* Author row plus up to QUOTE_TEXT_LINES of text, inside the box's padding. */
+static int
+quote_block_height(const cobalt_metrics *m, int caption_h,
+                   const cobalt_post *post)
+{
+   if (!post->quote.present) {
+      return 0;
+   }
+   return 2 * EMBED_GAP(m) + (1 + QUOTE_TEXT_LINES) * caption_h;
+}
+
+static void
+draw_quote_card(cobalt_render *r, const cobalt_post *post, int x, int y,
+                int width, int height)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const SDL_Rect box = { x, y, width, height };
+   cobalt_draw_tile(r, &box, 0.0f);
+
+   const int pad = EMBED_GAP(m);
+   const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+   const int tx = x + pad;
+   const int tw = width - 2 * pad;
+   if (tw <= 0) {
+      return;
+   }
+
+   int ty = y + pad;
+   const int name_w = cobalt_draw_text(r, COBALT_FONT_CAPTION,
+                                       post->quote.author, tx, ty,
+                                       COBALT_COLOUR_TEXT);
+   const int hx = tx + name_w + pad / 2;
+   int hw = 0;
+   cobalt_text_size(r, COBALT_FONT_CAPTION, post->quote.handle, &hw, NULL);
+   if (hx + hw <= tx + tw) {
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, post->quote.handle, hx, ty,
+                       COBALT_COLOUR_TEXT_DIM);
+   }
+   ty += caption_h;
+   if (post->quote.text[0]) {
+      cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, post->quote.text, tx, ty,
+                               tw, QUOTE_TEXT_LINES, COBALT_COLOUR_TEXT_DIM);
+   }
+}
+
 int
 cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines,
                        bool focused)
@@ -126,6 +172,10 @@ cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines
    const int embed_h = embed_block_height(m, caption_h, body_h, post, focused);
    if (embed_h > 0) {
       h += embed_h + EMBED_GAP(m);
+   }
+   const int quote_h = quote_block_height(m, caption_h, post);
+   if (quote_h > 0) {
+      h += quote_h + EMBED_GAP(m);
    }
 
    if (post->meta[0] || post->embed_note[0] || post->viewer_like[0] ||
@@ -566,6 +616,11 @@ cobalt_postcard_draw(cobalt_render *r, const cobalt_post *post,
    if (embed_h > 0) {
       draw_embed_media(r, post, text_left, y, text_width, media_h, focused);
       y += embed_h + EMBED_GAP(m);
+   }
+   const int quote_h = quote_block_height(m, caption_h, post);
+   if (quote_h > 0) {
+      draw_quote_card(r, post, text_left, y, text_width, quote_h);
+      y += quote_h + EMBED_GAP(m);
    }
 
    char marker[48];

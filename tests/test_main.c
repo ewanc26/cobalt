@@ -1207,6 +1207,40 @@ test_selection_survives_a_shrinking_list(void)
 /* --- deleting your own post --- */
 
 static void
+test_quote_helpers(void)
+{
+   begin("quote post flattening");
+
+   cobalt_post post;
+   memset(&post, 0, sizeof(post));
+   snprintf(post.embed_note, sizeof(post.embed_note), "[quote]");
+
+   cobalt_feed_set_quote(&post, "Ada", "ada.test", "hello\nworld");
+   CHECK(post.quote.present);
+   CHECK(strcmp(post.quote.author, "Ada") == 0);
+   CHECK(strcmp(post.quote.handle, "@ada.test") == 0);
+   CHECK(strcmp(post.quote.text, "hello\nworld") == 0);
+   CHECK(post.embed_note[0] == '\0');
+
+   /* No display name falls back to the handle. */
+   cobalt_feed_set_quote(&post, "", "bob.test", NULL);
+   CHECK(strcmp(post.quote.author, "bob.test") == 0);
+   CHECK(post.quote.text[0] == '\0');
+
+   /* No handle means nothing drawable; the note must survive. */
+   memset(&post, 0, sizeof(post));
+   snprintf(post.embed_note, sizeof(post.embed_note), "[quote]");
+   cobalt_feed_set_quote(&post, "Ghost", NULL, "x");
+   CHECK(!post.quote.present);
+   CHECK(strcmp(post.embed_note, "[quote]") == 0);
+
+   /* A "[quote + media]" note is not ours to clear. */
+   snprintf(post.embed_note, sizeof(post.embed_note), "[quote + media]");
+   cobalt_feed_set_quote(&post, "Ada", "ada.test", "hi");
+   CHECK(strcmp(post.embed_note, "[quote + media]") == 0);
+}
+
+static void
 test_delete_post_helpers(void)
 {
    begin("own-post detection and local removal");
@@ -1615,6 +1649,7 @@ main(int argc, char **argv)
    test_actor_list_remove();
    test_interactions();
    test_delete_post_helpers();
+   test_quote_helpers();
    test_compose();
    test_post_refuses_partial_refs();
    test_notification_wording();
