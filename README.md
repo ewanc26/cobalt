@@ -16,13 +16,13 @@ the Wii counterpart.
 
 ## Status
 
-**Early, but usable in shape.**
+**Usable on real hardware.**
 
-The application has a substantial amount of the core Bluesky client surface
-implemented and has been through host-side compilation, unit tests, link
-checks and a live desktop simulator. It has **not yet been run on a real Wii
-U**. Treat the feature list below as implemented and host-tested, not as a
-claim of hardware support.
+Cobalt is installed and running on a Wii U, and the core Bluesky client
+workflow is usable end-to-end. It has also been through host-side compilation,
+unit tests, link checks and the desktop simulator. Hardware remains the final
+place to catch console-specific issues, but Cobalt is no longer a purely
+host-tested project.
 
 ### Implemented
 
@@ -129,9 +129,8 @@ For a complete installation built with `make bundle`, copy the whole
 required for cryptographic operations on the Wii U.
 
 Cobalt can also be loaded in Cemu for development. Cemu is useful for checking
-the application loop and broad UI behaviour, but it is not the hardware
-acceptance target and does not reproduce every GamePad, networking or TLS
-condition of a real console.
+the application loop and broad UI behaviour, but it does not reproduce every
+GamePad, networking or TLS condition of a real console.
 
 ## Authentication and storage
 
@@ -210,8 +209,8 @@ make -C tests sim
 ```
 
 It renders the application in TV and GamePad-sized windows and can exercise
-the UI against a mock PDS. It is useful for layout and interaction work, but
-it does not replace a hardware pass.
+the UI against a mock PDS. It complements the real-console testing rather than
+replacing it.
 
 ## Layout
 
