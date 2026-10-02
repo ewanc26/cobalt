@@ -77,6 +77,24 @@ main(int argc, char **argv)
    snprintf(svc, sizeof svc, "http://127.0.0.1:%d", port);
 
    cobalt_job_result r;
+
+   /* A PDS with no createSession answers with an error envelope; its message
+    * should reach the sign-in screen. */
+   {
+      wf_mock_pds *bad = NULL;
+      int bad_port = 0;
+      char bad_svc[64];
+      CHECK(wf_mock_pds_start(&bad, &bad_port) == WF_OK);
+      snprintf(bad_svc, sizeof bad_svc, "http://127.0.0.1:%d", bad_port);
+      CHECK(cobalt_session_begin_login(bad_svc, "alice.test", "nope"));
+      CHECK(wait_job(&r));
+      CHECK(!r.ok);
+      printf("failed login message: %s\n", r.message);
+      CHECK(strstr(r.message, "Server said:") != NULL);
+      wf_mock_pds_stop(bad);
+      wf_mock_pds_free(bad);
+   }
+
    CHECK(cobalt_session_begin_login(svc, "alice.test", "app-pass"));
    CHECK(wait_job(&r));
    if (!r.ok) printf("login failed: %s\n", r.message);

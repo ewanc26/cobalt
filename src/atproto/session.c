@@ -393,9 +393,9 @@ cobalt_session_cycle_post_lang(void)
 /*
  * Wolfram reports transport and protocol failures as a single wf_status, so the
  * PDS's own XRPC error envelope ("InvalidLogin", "AuthFactorTokenRequired", …)
- * does not reach us from wf_session_login. These messages are therefore written
- * to be useful without it: each names the most likely cause and what to try.
- * Surfacing the real envelope needs a Wolfram-side change — see AGENTS.md §13.
+ * is not part of the wf_status. These messages are written to be useful without
+ * it: each names the most likely cause and what to try. run_login additionally
+ * prepends the server's message via wf_agent_last_error.
  */
 static void
 describe_failure(cobalt_job_result *r, wf_status status, cobalt_job_kind kind)
@@ -604,6 +604,14 @@ run_login(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
    if (status != WF_OK) {
       COBALT_LOGW("session: login failed (%d)", (int) status);
       describe_failure(r, status, COBALT_JOB_LOGIN);
+      /* The PDS's own wording ("Invalid identifier or password", "A sign in
+       * code has been sent to your email") says more than our guess does. */
+      const char *why = wf_agent_last_error(s.wf);
+      if (why && *why) {
+         char hint[COBALT_MESSAGE_MAX];
+         snprintf(hint, sizeof hint, "%s", r->message);
+         set_message(r, "Server said: %.160s\n%s", why, hint);
+      }
       teardown_wf();
       return;
    }
