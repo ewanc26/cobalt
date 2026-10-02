@@ -25,6 +25,7 @@ cobalt_search_view_open(cobalt_search_view *view)
    }
    view->query[0] = '\0';
    view->browsing = false;
+   view->posts = false;
    view->selected = 0;
    view->scroll = 0;
    view->last_visible = -1;
@@ -43,12 +44,20 @@ cobalt_search_view_update(cobalt_search_view *view, const cobalt_input *in)
    }
 
    if (!view->browsing) {
+      if (cobalt_input_pressed(in, COBALT_BTN_ALT_Y)) {
+         view->posts = !view->posts;
+         return COBALT_SEARCH_VIEW_STAY;
+      }
       switch (cobalt_keyboard_update(&view->kb, in)) {
          case COBALT_KB_ACCEPTED:
             if (view->query[0] == '\0') {
                return COBALT_SEARCH_VIEW_STAY;
             }
             COBALT_LOGI("search: querying '%s'", view->query);
+            if (view->posts) {
+               cobalt_session_begin_search_posts(view->query, false);
+               return COBALT_SEARCH_VIEW_OPEN_POSTS;
+            }
             view->browsing = true;
             view->selected = 0;
             view->scroll = 0;
@@ -187,7 +196,9 @@ draw_editing(cobalt_search_view *view, cobalt_render *r,
 
    char display[COBALT_SEARCH_QUERY_MAX + 4];
    cobalt_keyboard_display_text(&view->kb, display, sizeof(display));
-   const char *shown = display[0] ? display : "Search for an account...";
+   const char *shown = display[0] ? display
+                       : view->posts ? "Search posts... (Y: people)"
+                                     : "Search accounts... (Y: posts)";
    cobalt_draw_text(r, COBALT_FONT_BODY, shown, box.x + m->pad_tile,
                     box.y + m->pad_tile,
                     display[0] ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM);

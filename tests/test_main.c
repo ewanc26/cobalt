@@ -8,6 +8,7 @@
  */
 
 #include "app/compose.h"
+#include "app/search.h"
 #include "app/signin.h"
 #include "atproto/actors.h"
 #include "atproto/session.h"
@@ -1363,6 +1364,28 @@ test_quote_compose(void)
 }
 
 static void
+test_search_mode_toggle(void)
+{
+   begin("search people/posts toggle");
+
+   cobalt_search_view v;
+   cobalt_search_view_init(&v);
+   cobalt_search_view_open(&v);
+   CHECK(!v.posts);
+
+   cobalt_input in = tap(COBALT_BTN_ALT_Y);
+   CHECK(cobalt_search_view_update(&v, &in) == COBALT_SEARCH_VIEW_STAY);
+   CHECK(v.posts);
+   CHECK(cobalt_search_view_update(&v, &in) == COBALT_SEARCH_VIEW_STAY);
+   CHECK(!v.posts);
+
+   cobalt_search_view_open(&v);
+   v.posts = true;
+   cobalt_search_view_open(&v);
+   CHECK(!v.posts);
+}
+
+static void
 test_image_attach(const char *root)
 {
    begin("image attach");
@@ -1862,6 +1885,7 @@ main(int argc, char **argv)
    test_profile_tabs();
    test_quote_compose();
    test_image_attach(root);
+   test_search_mode_toggle();
    test_pinned_prepend();
    test_compose();
    test_post_refuses_partial_refs();

@@ -894,6 +894,10 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                app->profile_return = COBALT_SCREEN_SEARCH;
                app->screen = COBALT_SCREEN_PROFILE;
                break;
+            case COBALT_SEARCH_VIEW_OPEN_POSTS:
+               cobalt_timeline_rewind(&app->timeline);
+               app->screen = COBALT_SCREEN_TIMELINE;
+               break;
             case COBALT_SEARCH_VIEW_STAY:
             default:
                break;

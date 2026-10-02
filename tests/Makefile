@@ -95,6 +95,7 @@ UNIT_SOURCES := \
 	$(SRC)/app/profile.c \
 	$(SRC)/atproto/actors.c \
 	$(SRC)/app/graph.c \
+	$(SRC)/app/search.c \
 	$(SRC)/ui/postcard.c \
 	$(SRC)/ui/render.c \
 	$(SRC)/ui/theme.c \

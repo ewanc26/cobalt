@@ -755,6 +755,37 @@ cobalt_feed_append_from_wolfram(cobalt_feed *feed,
 }
 
 
+int
+cobalt_feed_append_posts_from_wolfram(cobalt_feed *feed,
+                                      const struct wf_agent_post_list *list,
+                                      const char *next_cursor, int64_t now)
+{
+   if (!feed || !list) {
+      return 0;
+   }
+
+   const wf_agent_post_list *typed = (const wf_agent_post_list *) list;
+   int added = 0;
+
+   for (size_t i = 0; i < typed->post_count; i++) {
+      if (feed->count >= COBALT_FEED_MAX_POSTS) {
+         break;
+      }
+      fill_from_view(&feed->posts[feed->count], &typed->posts[i], now);
+      feed->count++;
+      added++;
+   }
+
+   if (feed->count >= COBALT_FEED_MAX_POSTS || !next_cursor || !next_cursor[0]) {
+      feed->cursor[0] = '\0';
+      feed->has_more = false;
+   } else {
+      snprintf(feed->cursor, sizeof(feed->cursor), "%s", next_cursor);
+      feed->has_more = true;
+   }
+   return added;
+}
+
 /* --- threads --- */
 
 /*

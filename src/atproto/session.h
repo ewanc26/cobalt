@@ -81,6 +81,7 @@ typedef enum {
    COBALT_JOB_PROFILE_TAB,
    COBALT_JOB_FOLLOWERS,
    COBALT_JOB_FOLLOWING,
+   COBALT_JOB_SEARCH_POSTS,
 } cobalt_job_kind;
 
 typedef struct {
@@ -166,6 +167,14 @@ bool cobalt_session_begin_timeline(bool paging);
  * this feed's posts the same way opening it overwrote the home timeline's.
  */
 bool cobalt_session_begin_feed(const char *feed_uri, bool paging);
+
+/* Post search (app.bsky.feed.searchPosts); results land in the shared feed
+ * window, so the timeline screen shows and pages them. */
+bool cobalt_session_begin_search_posts(const char *query, bool paging);
+
+/* Refresh or page whatever the shared feed window currently holds — home
+ * timeline, a custom feed, or post search — rather than always the home one. */
+bool cobalt_session_begin_feed_current(bool paging);
 
 /*
  * The feed, thread, notifications and profile as last fetched. Never NULL.

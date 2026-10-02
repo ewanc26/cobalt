@@ -125,6 +125,10 @@ static struct {
    cobalt_actor_list followers;
    cobalt_actor_list following;
    char follow_actor[COBALT_POST_URI_MAX];
+   /* What the shared feed window holds, so refresh and paging re-fetch the
+    * same source. Written and read on the UI thread only. */
+   int feed_source;            /* 0 home, 1 custom feed, 2 post search */
+   char feed_arg[COBALT_POST_URI_MAX];
    cobalt_actor_list search;
    cobalt_list_summary_list lists;
    cobalt_actor_list list_members;
@@ -1592,6 +1596,69 @@ run_following(const job_input *in, cobalt_job_result *r,
  * stale result from the previous query left on screen would look like a
  * match for the new one. */
 static void
+run_search_posts(const job_input *in, cobalt_job_result *r,
+                 cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in to search.");
+      return;
+   }
+
+   const char *cursor = NULL;
+   if (in->paging) {
+      SDL_LockMutex(s.lock);
+      cursor = s.feed.cursor[0] ? s.feed.cursor : NULL;
+      SDL_UnlockMutex(s.lock);
+      if (!cursor) {
+         *state = COBALT_AUTH_SIGNED_IN;
+         r->ok = true;
+         return;
+      }
+   }
+
+   wf_agent_post_list list;
+   memset(&list, 0, sizeof(list));
+   char *next = NULL;
+
+   COBALT_LOGI("session: searchPosts '%s' cursor=%s", in->text,
+               cursor ? cursor : "(top)");
+   wf_status status = wf_agent_search_posts_typed(s.wf, in->text, TIMELINE_PAGE,
+                                                  cursor, &list, &next);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: searchPosts failed (%d)", (int) status);
+      describe_failure(r, status, COBALT_JOB_SEARCH_POSTS);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   const int64_t now = cobalt_time_now();
+
+   SDL_LockMutex(s.lock);
+   if (!in->paging) {
+      cobalt_feed_reset(&s.feed);
+   }
+   const int added = cobalt_feed_append_posts_from_wolfram(&s.feed, &list, next, now);
+   if (in->paging && added == 0) {
+      s.feed.has_more = false;
+      s.feed.cursor[0] = '\0';
+   }
+   const int total = s.feed.count;
+   SDL_UnlockMutex(s.lock);
+
+   free(next);
+   wf_agent_post_list_free(&list);
+
+   COBALT_LOGI("session: search +%d posts (%d held)", added, total);
+   if (total == 0) {
+      set_message(r, "No posts matched that search.");
+   }
+
+   publish_session();
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+static void
 run_search_actors(const job_input *in, cobalt_job_result *r,
                   cobalt_auth_state *state)
 {
@@ -1863,6 +1930,7 @@ run_job(cobalt_job_kind kind, const job_input *in, cobalt_auth_state *state)
       case COBALT_JOB_FOLLOWING:    run_following(in, &r, state);    break;
       case COBALT_JOB_SEARCH_ACTORS: run_search_actors(in, &r, state); break;
       case COBALT_JOB_FEED:     run_feed(in, &r, state);      break;
+      case COBALT_JOB_SEARCH_POSTS: run_search_posts(in, &r, state); break;
       case COBALT_JOB_LISTS:        run_lists(in, &r, state);        break;
       case COBALT_JOB_LIST_MEMBERS: run_list_members(in, &r, state); break;
       case COBALT_JOB_NONE:
@@ -2149,6 +2217,10 @@ cobalt_session_begin_timeline(bool paging)
    job_input in;
    memset(&in, 0, sizeof(in));
    in.paging = paging;
+   if (!paging) {
+      s.feed_source = 0;
+      s.feed_arg[0] = '\0';
+   }
    return submit(COBALT_JOB_TIMELINE, &in);
 }
 
@@ -2159,7 +2231,35 @@ cobalt_session_begin_feed(const char *feed_uri, bool paging)
    memset(&in, 0, sizeof(in));
    snprintf(in.uri, sizeof(in.uri), "%s", feed_uri ? feed_uri : "");
    in.paging = paging;
+   if (!paging) {
+      s.feed_source = 1;
+      snprintf(s.feed_arg, sizeof(s.feed_arg), "%s", in.uri);
+   }
    return submit(COBALT_JOB_FEED, &in);
+}
+
+bool
+cobalt_session_begin_search_posts(const char *query, bool paging)
+{
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   in.paging = paging;
+   snprintf(in.text, sizeof(in.text), "%s", query ? query : "");
+   if (!paging) {
+      s.feed_source = 2;
+      snprintf(s.feed_arg, sizeof(s.feed_arg), "%s", in.text);
+   }
+   return submit(COBALT_JOB_SEARCH_POSTS, &in);
+}
+
+bool
+cobalt_session_begin_feed_current(bool paging)
+{
+   switch (s.feed_source) {
+      case 1: return cobalt_session_begin_feed(s.feed_arg, paging);
+      case 2: return cobalt_session_begin_search_posts(s.feed_arg, paging);
+      default: return cobalt_session_begin_timeline(paging);
+   }
 }
 
 const cobalt_feed *
