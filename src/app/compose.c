@@ -33,6 +33,28 @@ cobalt_compose_init(cobalt_compose *compose)
 }
 
 void
+cobalt_compose_quote(cobalt_compose *compose, const cobalt_post *post)
+{
+   if (!compose) {
+      return;
+   }
+   cobalt_compose_init(compose);
+   if (!post || !post->uri[0] || !post->cid[0]) {
+      return;
+   }
+   snprintf(compose->quote_uri, sizeof(compose->quote_uri), "%s", post->uri);
+   snprintf(compose->quote_cid, sizeof(compose->quote_cid), "%s", post->cid);
+   snprintf(compose->quote_handle, sizeof(compose->quote_handle), "%s",
+            post->handle);
+}
+
+bool
+cobalt_compose_is_quote(const cobalt_compose *compose)
+{
+   return compose && compose->quote_uri[0];
+}
+
+void
 cobalt_compose_reply_to(cobalt_compose *compose, const cobalt_post *post)
 {
    if (!compose) {
@@ -189,7 +211,9 @@ draw_header(cobalt_compose *compose, cobalt_render *r)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
 
-   const char *title = cobalt_compose_is_reply(compose) ? "Reply" : "New post";
+   const char *title = cobalt_compose_is_reply(compose)  ? "Reply"
+                       : cobalt_compose_is_quote(compose) ? "Quote post"
+                                                          : "New post";
    cobalt_draw_text(r, COBALT_FONT_TITLE, title, m->pad_edge, m->pad_edge,
                     COBALT_COLOUR_TILE_FOCUS);
 
@@ -198,6 +222,9 @@ draw_header(cobalt_compose *compose, cobalt_render *r)
    if (cobalt_compose_is_reply(compose)) {
       snprintf(subtitle, sizeof(subtitle), "to %s    %d left", compose->reply_to,
                remaining);
+   } else if (cobalt_compose_is_quote(compose)) {
+      snprintf(subtitle, sizeof(subtitle), "quoting %s    %d left",
+               compose->quote_handle, remaining);
    } else {
       snprintf(subtitle, sizeof(subtitle), "%d characters left", remaining);
    }

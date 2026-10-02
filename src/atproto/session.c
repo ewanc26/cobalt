@@ -64,6 +64,9 @@ typedef struct {
 
    /* Profile tab switches: a cobalt_profile_tab. */
    int tab;
+
+   /* Composing a quote post: `uri`/`cid` name the quoted post, not a parent. */
+   bool quote;
 } job_input;
 
 static struct {
@@ -911,7 +914,10 @@ run_post(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
    memset(&result, 0, sizeof(result));
 
    wf_status status;
-   if (in->uri[0]) {
+   if (in->quote) {
+      COBALT_LOGI("session: quoting %s", in->uri);
+      status = wf_agent_quote(s.wf, in->text, in->uri, in->cid, &result);
+   } else if (in->uri[0]) {
       /*
        * A reply. wf_agent_reply_refs rather than wf_agent_reply, because the
        * latter uses the parent as its own root — correct only when replying to
@@ -2377,6 +2383,26 @@ cobalt_session_begin_post(const char *text, const char *parent_uri,
       snprintf(in.root_uri, sizeof(in.root_uri), "%s", root_uri);
       snprintf(in.root_cid, sizeof(in.root_cid), "%s", root_cid);
    }
+
+   return submit(COBALT_JOB_POST, &in);
+}
+
+bool
+cobalt_session_begin_quote(const char *text, const char *quote_uri,
+                           const char *quote_cid, int reply_gate)
+{
+   if (!text || !text[0] || !quote_uri || !quote_uri[0] || !quote_cid ||
+       !quote_cid[0]) {
+      return false;
+   }
+
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.text, sizeof(in.text), "%s", text);
+   snprintf(in.uri, sizeof(in.uri), "%s", quote_uri);
+   snprintf(in.cid, sizeof(in.cid), "%s", quote_cid);
+   in.quote = true;
+   in.reply_gate = reply_gate;
 
    return submit(COBALT_JOB_POST, &in);
 }
