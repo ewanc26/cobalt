@@ -590,7 +590,9 @@ touch + paging behaviour. B from browsing returns to typing rather than
 leaving the screen, so revising a query doesn't mean re-opening search from
 the menu.
 
-**Not done, and worth closing in a later pass:** selecting a result doesn't
+**Update:** selecting a result now opens that account's profile (`COBALT_SEARCH_VIEW_OPEN_PROFILE`). The paragraph below is historical.
+
+**(Historical) Not done:** selecting a result doesn't
 open that account's profile yet. `app/profile.c` has no "open by DID from an
 arbitrary list screen" entry point today — `app.c`'s `profile_return` field
 tracks one fixed origin screen, and adding a second caller without checking
@@ -689,7 +691,9 @@ codebase's standing convention — see §"Language policy" on not forcing shared
 abstractions prematurely). A "Lists" entry sits on the home menu between Feeds
 and Notifications.
 
-**Not done, and worth closing in a later pass:** tapping a member doesn't open
+**Update:** A / tap on a member now opens their profile (`COBALT_LISTS_VIEW_OPEN_PROFILE`).
+
+**(Historical) Not done:** tapping a member doesn't open
 their profile — the same DID-forwarding `search.c` does for its results would
 need the same `COBALT_LISTS_VIEW_OPEN_PROFILE`-style action `search.c` already
 has, just not wired here yet. List creation/editing, described above, is the
