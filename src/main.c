@@ -305,6 +305,11 @@ main(int argc, char **argv)
 
    COBALT_LOGI("cobalt running");
 
+   /* Per-phase frame cost, logged every FRAME_STATS_EVERY frames so a hardware
+    * run can say where the time goes (update, TV draw, GamePad draw+swap). */
+   uint32_t acc_update = 0, acc_tv = 0, acc_drc = 0, max_frame = 0, frames = 0;
+   uint32_t stats_t0 = SDL_GetTicks();
+
    while (ctx.running) {
       const uint32_t now = SDL_GetTicks();
 
@@ -323,6 +328,7 @@ main(int argc, char **argv)
          continue;
       }
 
+      const uint32_t t_update = SDL_GetTicks();
       cobalt_app_update(ctx.app, &ctx.input, now);
 
       if (cobalt_app_should_quit(ctx.app)) {
@@ -340,14 +346,32 @@ main(int argc, char **argv)
       cobalt_imagecache_pump(ctx.tv_thumbs, ctx.tv);
       cobalt_imagecache_pump(ctx.drc_thumbs, ctx.drc);
 
+      const uint32_t t_tv = SDL_GetTicks();
       /* TV first (no swap), GamePad second (swaps both). */
       cobalt_render_begin(ctx.tv);
       cobalt_app_draw(ctx.app, ctx.tv, COBALT_SURFACE_TV);
       cobalt_render_end(ctx.tv);
 
+      const uint32_t t_drc = SDL_GetTicks();
       cobalt_render_begin(ctx.drc);
       cobalt_app_draw(ctx.app, ctx.drc, COBALT_SURFACE_DRC);
       cobalt_render_end(ctx.drc);
+
+      const uint32_t t_end = SDL_GetTicks();
+      acc_update += t_tv - t_update;
+      acc_tv += t_drc - t_tv;
+      acc_drc += t_end - t_drc;
+      if (t_end - now > max_frame) max_frame = t_end - now;
+      if (++frames == 120) {
+         const uint32_t span = t_end - stats_t0;
+         COBALT_LOGI("perf: %u frames in %u ms (%.1f fps) | avg ms update %.1f "
+                     "tv %.1f drc %.1f | worst frame %u ms",
+                     frames, span, span ? 1000.0 * frames / span : 0.0,
+                     (double) acc_update / frames, (double) acc_tv / frames,
+                     (double) acc_drc / frames, max_frame);
+         acc_update = acc_tv = acc_drc = max_frame = frames = 0;
+         stats_t0 = t_end;
+      }
    }
 
    shutdown_all(&ctx);

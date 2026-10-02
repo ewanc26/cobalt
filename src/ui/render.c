@@ -45,6 +45,8 @@ struct cobalt_render {
    TTF_Font *fallbacks[COBALT_FONT_COUNT];
 
    SDL_Texture *gradient;
+   SDL_Texture *band;
+   int band_h;
    SDL_Texture *corner;
    int corner_radius;
 
@@ -245,6 +247,7 @@ cobalt_render_destroy(cobalt_render *r)
 
    if (r->corner)   SDL_DestroyTexture(r->corner);
    if (r->gradient) SDL_DestroyTexture(r->gradient);
+   if (r->band) SDL_DestroyTexture(r->band);
 
    for (int i = 0; i < COBALT_FONT_COUNT; i++) {
       if (r->fonts[i]) {
@@ -298,21 +301,47 @@ cobalt_content_top(cobalt_render *r)
    return cobalt_header_height(r) + r->m->gap;
 }
 
+/* One-pixel-wide ramp baked on first use, so the band is one draw call, not a
+ * line per row (a GX2 draw each, on both screens, every frame). */
+static SDL_Texture *
+build_band(cobalt_render *r, int h)
+{
+   SDL_Texture *tex = SDL_CreateTexture(r->renderer, SDL_PIXELFORMAT_ARGB8888,
+                                        SDL_TEXTUREACCESS_STATIC, 1, h);
+   if (!tex) {
+      return NULL;
+   }
+   uint32_t *px = SDL_malloc(sizeof(uint32_t) * (size_t) h);
+   if (!px) {
+      SDL_DestroyTexture(tex);
+      return NULL;
+   }
+   for (int y = 0; y < h; y++) {
+      float t = (float) y / (float) h;
+      uint8_t rr = (uint8_t) (COBALT_COLOUR_BAND_TOP.r + t * (COBALT_COLOUR_BAND_BOTTOM.r - COBALT_COLOUR_BAND_TOP.r));
+      uint8_t gg = (uint8_t) (COBALT_COLOUR_BAND_TOP.g + t * (COBALT_COLOUR_BAND_BOTTOM.g - COBALT_COLOUR_BAND_TOP.g));
+      uint8_t bb = (uint8_t) (COBALT_COLOUR_BAND_TOP.b + t * (COBALT_COLOUR_BAND_BOTTOM.b - COBALT_COLOUR_BAND_TOP.b));
+      px[y] = 0xFF000000u | ((uint32_t) rr << 16) | ((uint32_t) gg << 8) | bb;
+   }
+   SDL_UpdateTexture(tex, NULL, px, (int) sizeof(uint32_t));
+   SDL_free(px);
+   return tex;
+}
+
 /* Miiverse-style green header behind every screen's title and subtitle. */
 static void
 draw_header_band(cobalt_render *r)
 {
    const cobalt_metrics *m = r->m;
    const int h = cobalt_header_height(r) ? cobalt_header_height(r) : m->pad_edge * 3;
-   for (int y = 0; y < h; y++) {
-      float t = (float) y / (float) h;
-      SDL_Color c = {
-         (Uint8) (COBALT_COLOUR_BAND_TOP.r + t * (COBALT_COLOUR_BAND_BOTTOM.r - COBALT_COLOUR_BAND_TOP.r)),
-         (Uint8) (COBALT_COLOUR_BAND_TOP.g + t * (COBALT_COLOUR_BAND_BOTTOM.g - COBALT_COLOUR_BAND_TOP.g)),
-         (Uint8) (COBALT_COLOUR_BAND_TOP.b + t * (COBALT_COLOUR_BAND_BOTTOM.b - COBALT_COLOUR_BAND_TOP.b)),
-         0xFF };
-      set_draw_colour(r, c);
-      SDL_RenderDrawLine(r->renderer, 0, y, m->width, y);
+   if (!r->band || r->band_h != h) {
+      if (r->band) SDL_DestroyTexture(r->band);
+      r->band = build_band(r, h);
+      r->band_h = h;
+   }
+   if (r->band) {
+      SDL_Rect dst = { 0, 0, m->width, h };
+      SDL_RenderCopy(r->renderer, r->band, NULL, &dst);
    }
    SDL_Color edge = { 0x4A, 0x96, 0x10, 0xFF };
    set_draw_colour(r, edge);

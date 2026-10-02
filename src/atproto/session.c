@@ -2068,7 +2068,10 @@ worker_main(void *unused)
 
       /* The lock is deliberately not held across the network call: the UI
        * thread polls state every frame and must not block behind curl. */
+      const uint32_t job_t0 = SDL_GetTicks();
       cobalt_job_result result = run_job(kind, &in, &state);
+      COBALT_LOGI("session: job %d took %u ms (%s)", (int) kind,
+                  (unsigned) (SDL_GetTicks() - job_t0), result.ok ? "ok" : "failed");
       memset(&in, 0, sizeof(in));
 
       SDL_LockMutex(s.lock);
