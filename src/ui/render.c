@@ -407,6 +407,34 @@ cobalt_fill_rect(cobalt_render *r, const SDL_Rect *rect, SDL_Color colour)
    SDL_RenderFillRect(r->renderer, rect);
 }
 
+typedef struct {
+   char key[32];
+   char label[64];
+   int kw, lw, w;
+} hint_seg;
+
+static void
+draw_hint_pill(cobalt_render *r, const hint_seg *h, int x, int y, int pill_h,
+               int padx, int line)
+{
+   const SDL_Color white = { 0xFF, 0xFF, 0xFF, 0xFF };
+   const SDL_Color body = { 0xFF, 0xFF, 0xFF, 0xE6 };
+   const int chip_w = h->key[0] ? h->kw + pill_h / 3 + 4 : 0;
+   SDL_Rect pill = { x, y, h->w, pill_h };
+   cobalt_fill_rounded_rect(r, &pill, pill_h / 2, body);
+   int tx = x + padx;
+   if (h->key[0]) {
+      SDL_Rect chip = { x + 4, y + 4, chip_w, pill_h - 8 };
+      cobalt_fill_rounded_rect(r, &chip, chip.h / 2, COBALT_COLOUR_ACCENT);
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, h->key,
+                       chip.x + (chip.w - h->kw) / 2, y + (pill_h - line) / 2,
+                       white);
+      tx = chip.x + chip.w + 6;
+   }
+   cobalt_draw_text(r, COBALT_FONT_CAPTION, h->label, tx, y + (pill_h - line) / 2,
+                    COBALT_COLOUR_TEXT);
+}
+
 void
 cobalt_draw_hints(cobalt_render *r, const char *spec)
 {
@@ -419,14 +447,11 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
    const int padx = pill_h / 3 + 2;
    const int gap = 8;
    const int right = m->width - m->pad_edge;
-   const SDL_Color white = { 0xFF, 0xFF, 0xFF, 0xFF };
-   const SDL_Color body = { 0xFF, 0xFF, 0xFF, 0xE6 };
 
-   int x = m->pad_edge;
-   int y = m->height - m->pad_edge / 2 - pill_h;
-
+   hint_seg segs[16];
+   int count = 0;
    const char *p = spec;
-   while (*p) {
+   while (*p && count < 16) {
       while (*p == ' ') p++;
       if (!*p) break;
       const char *end = p;
@@ -439,39 +464,51 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
       seg[n] = '\0';
       p = end;
 
-      char *label = seg;
-      char *key = NULL;
+      hint_seg *h = &segs[count++];
+      memset(h, 0, sizeof *h);
       char *colon = strstr(seg, ": ");
       if (colon) {
          *colon = '\0';
-         key = seg;
-         label = colon + 2;
+         snprintf(h->key, sizeof h->key, "%s", seg);
+         snprintf(h->label, sizeof h->label, "%s", colon + 2);
+         cobalt_text_size(r, COBALT_FONT_CAPTION, h->key, &h->kw, NULL);
+      } else {
+         snprintf(h->label, sizeof h->label, "%s", seg);
       }
+      cobalt_text_size(r, COBALT_FONT_CAPTION, h->label, &h->lw, NULL);
+      const int chip_w = h->key[0] ? h->kw + pill_h / 3 + 4 : 0;
+      h->w = padx + (h->key[0] ? chip_w + 6 : 0) + h->lw + padx -
+             (h->key[0] ? 2 : 0);
+   }
 
-      int kw = 0, lw = 0;
-      if (key) cobalt_text_size(r, COBALT_FONT_CAPTION, key, &kw, NULL);
-      cobalt_text_size(r, COBALT_FONT_CAPTION, label, &lw, NULL);
-      const int chip_w = key ? kw + pill_h / 3 + 4 : 0;
-      const int w = padx + (key ? chip_w + 6 : 0) + lw + padx - (key ? 2 : 0);
+   /* The GamePad is short: with more than three prompts the first half moves
+    * into the header band (right-aligned, under the Back pill) so the bottom
+    * edge is not a crowded strip. */
+   int header_n = 0;
+   if (m->width < 1000 && count > 3) {
+      header_n = count / 2;
+   }
 
-      if (x + w > right && x > m->pad_edge) {
+   if (header_n > 0) {
+      int total = 0;
+      for (int i = 0; i < header_n; i++) total += segs[i].w + (i ? gap : 0);
+      int x = right - total;
+      const int y = 56;
+      for (int i = 0; i < header_n; i++) {
+         draw_hint_pill(r, &segs[i], x, y, pill_h, padx, line);
+         x += segs[i].w + gap;
+      }
+   }
+
+   int x = m->pad_edge;
+   int y = m->height - m->pad_edge / 2 - pill_h;
+   for (int i = header_n; i < count; i++) {
+      if (x + segs[i].w > right && x > m->pad_edge) {
          x = m->pad_edge;
          y -= pill_h + 6;
       }
-
-      SDL_Rect pill = { x, y, w, pill_h };
-      cobalt_fill_rounded_rect(r, &pill, pill_h / 2, body);
-      int tx = x + padx;
-      if (key) {
-         SDL_Rect chip = { x + 4, y + 4, chip_w, pill_h - 8 };
-         cobalt_fill_rounded_rect(r, &chip, chip.h / 2, COBALT_COLOUR_ACCENT);
-         cobalt_draw_text(r, COBALT_FONT_CAPTION, key,
-                          chip.x + (chip.w - kw) / 2, y + (pill_h - line) / 2, white);
-         tx = chip.x + chip.w + 6;
-      }
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, label, tx, y + (pill_h - line) / 2,
-                       COBALT_COLOUR_TEXT);
-      x += w + gap;
+      draw_hint_pill(r, &segs[i], x, y, pill_h, padx, line);
+      x += segs[i].w + gap;
    }
 }
 
