@@ -95,7 +95,11 @@ cobalt_entropy_seed_save(const char *path,
    /* Rename only after the bytes are known to be on the card: an interrupted
     * write then leaves the old seed in place instead of a truncated one. */
    if (!failed && rename(temporary, path) != 0) {
-      failed = true;
+      /* The Wii U's FAT-backed SD mount refuses to rename over an existing
+       * file, so clear the old seed and try once more. */
+      if (remove(path) != 0 || rename(temporary, path) != 0) {
+         failed = true;
+      }
    }
    if (failed) {
       remove(temporary);
