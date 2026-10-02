@@ -197,9 +197,9 @@ SNAP_BIN := $(OUT)/cobalt-snapshot
 snapshot:
 	@mkdir -p $(OUT)/snapshot
 	@$(CC) $(CFLAGS) -DCOBALT_HAS_WOLFRAM=1 -DCOBALT_E2E_HOST=1 -I$(WOLFRAM_ROOT)/include $(CJSON_CFLAGS) \
-		-o $(SNAP_BIN) snapshot_main.c linkcheck_stubs.c host_stubs.c $(E2E_SOURCES) \
+		-o $(SNAP_BIN) snapshot_main.c linkcheck_stubs.c host_stubs.c $(WOLFRAM_ROOT)/test/mock_pds.c $(E2E_SOURCES) \
 		$(E2E_BUILD)/libwolfram.dylib $(E2E_BUILD)/_deps/cjson-build/libcjson.dylib \
-		$(LDLIBS) -Wl,-rpath,$(abspath $(E2E_BUILD)) -Wl,-rpath,$(abspath $(E2E_BUILD))/_deps/cjson-build
+		$(MHD_LIBS) $(LDLIBS) -Wl,-rpath,$(abspath $(E2E_BUILD)) -Wl,-rpath,$(abspath $(E2E_BUILD))/_deps/cjson-build
 	@./$(SNAP_BIN) $(OUT)/snapshot ../romfs/font.ttf
 
 check: $(TEST_BIN)
