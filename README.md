@@ -38,7 +38,10 @@ nothing has been run on a Wii U yet.
 | Actor search | done |
 | Custom feeds, browse-only lists | done |
 | Reply gates (threadgates) on new posts | done |
-| Quote post rendering, delete own post, followers/following lists, profile tabs | not started — issues #20–#23 |
+| Quote post rendering and quote posting | done |
+| Delete own post, followers/following lists, profile tabs, pinned post | done |
+| Post language tag, image attach with alt text (posts, quotes, replies) | done |
+| Post search (Y toggles People/Posts in Search) | done |
 | Video, GIFs, DMs, push notifications | not planned — see below |
 
 **Nothing here has run on a Wii U yet.** It builds, and an extensive host test
@@ -208,8 +211,11 @@ This is also why copying `cobalt.wuhb` on its own is not enough; copy the whole
 
 ## Debugging on hardware
 
-There is no emulator in this project's workflow, so Cobalt logs loudly. The
-fastest loop is UDP:
+Cemu loads `cobalt.wuhb` and runs it to the title loop (checked), but it only
+goes online with console keys and an account (`otp.bin`, `seeprom.bin`,
+`mlc01/usr/save/system/act`) and has no feel for the real GamePad or TLS timing,
+so a console remains the acceptance test. Cobalt logs loudly. The fastest loop
+is UDP:
 
 ```sh
 nc -ul 4405
