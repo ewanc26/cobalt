@@ -77,6 +77,8 @@ struct cobalt_app {
    int account_selected;
    /* Which row is highlighted on the feed-picker screen's small menu. */
    int feeds_selected;
+   /* The shared feed window holds a custom feed, not the home timeline. */
+   bool viewing_custom_feed;
    /* Where B from the profile screen returns to. */
    cobalt_screen profile_return;
    /* profile_return as it was when a followers/following list was opened. */
@@ -123,26 +125,39 @@ static SDL_Rect s_account_hit[ACCOUNT_ROW_COUNT];
 static bool s_account_hit_valid = false;
 
 /*
- * Well-known custom feeds, hardcoded rather than read from the signed-in
- * account's saved-feeds preference (app.bsky.actor.getPreferences). Parsing
- * that preference (and fetching each generator's name/avatar via
- * getFeedGenerators) is real scope beyond this first cut — this list gets a
- * feed-viewing screen shipped now, with "the user's own saved feeds" as a
- * follow-up once this shape is proven out.
+ * The feeds picker lists the account's saved feeds (fetched on entry). When
+ * there are none, or the fetch has not landed yet, Bluesky's official
+ * "What's Hot" stands in so the screen is never empty.
  */
 typedef struct {
    const char *label;
    const char *uri;
-} well_known_feed;
+} feed_entry;
 
-static const well_known_feed FEEDS[] = {
-   {
-      "What's Hot",
-      "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot",
-   },
+static const feed_entry FALLBACK_FEED = {
+   "What's Hot",
+   "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot",
 };
 
-#define FEED_COUNT ((int) (sizeof(FEEDS) / sizeof(FEEDS[0])))
+static int
+feed_count(void)
+{
+   const int n = cobalt_session_saved_feeds()->count;
+   return n > 0 ? n : 1;
+}
+
+static feed_entry
+feed_at(int i)
+{
+   const cobalt_saved_feeds *f = cobalt_session_saved_feeds();
+   if (f->count > 0 && i >= 0 && i < f->count) {
+      feed_entry e = { f->feeds[i].label, f->feeds[i].uri };
+      return e;
+   }
+   return FALLBACK_FEED;
+}
+
+#define FEED_MAX COBALT_SAVED_FEEDS_MAX
 
 /* --- menu description --- */
 
@@ -303,8 +318,10 @@ activate(cobalt_app *app, int index)
          /* Only fetch if there is nothing to show. Re-entering the screen
           * should not throw away a scroll position the user was partway
           * through; refresh is on + and is deliberately explicit. */
-         if (cobalt_session_feed()->count == 0) {
+         if (cobalt_session_feed()->count == 0 || app->viewing_custom_feed) {
+            cobalt_timeline_rewind(&app->timeline);
             cobalt_session_begin_timeline(false);
+            app->viewing_custom_feed = false;
          }
          COBALT_LOGI("menu: opened timeline");
          break;
@@ -324,6 +341,9 @@ activate(cobalt_app *app, int index)
 
       case ACTION_FEEDS:
          app->feeds_selected = 0;
+         if (signed_in()) {
+            cobalt_session_begin_saved_feeds();
+         }
          app->screen = COBALT_SCREEN_FEEDS;
          COBALT_LOGI("menu: opened feeds");
          break;
@@ -394,6 +414,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
             cobalt_timeline_rewind(&app->timeline);
             app->screen = COBALT_SCREEN_TIMELINE;
             cobalt_session_begin_timeline(false);
+            app->viewing_custom_feed = false;
 
             char message[COBALT_MESSAGE_MAX];
             if (result->message[0]) {
@@ -420,6 +441,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
              * opening it is instant rather than a spinner. */
             cobalt_timeline_rewind(&app->timeline);
             cobalt_session_begin_timeline(false);
+            app->viewing_custom_feed = false;
          } else {
             /* A failed resume is not an error the user asked for, so it lands
              * on the home screen as a notice rather than throwing them into
@@ -460,6 +482,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
                cobalt_session_begin_thread(app->compose.parent_uri);
             } else {
                cobalt_session_begin_timeline(false);
+               app->viewing_custom_feed = false;
                cobalt_timeline_rewind(&app->timeline);
             }
             cobalt_compose_init(&app->compose);
@@ -601,7 +624,7 @@ update_account(cobalt_app *app, const cobalt_input *in)
    }
 }
 
-static SDL_Rect s_feeds_hit[FEED_COUNT];
+static SDL_Rect s_feeds_hit[FEED_MAX];
 static bool s_feeds_hit_valid = false;
 
 static void
@@ -617,17 +640,17 @@ update_feeds(cobalt_app *app, const cobalt_input *in)
    }
 
    if (cobalt_input_pressed(in, COBALT_BTN_DOWN)) {
-      app->feeds_selected = (app->feeds_selected + 1) % FEED_COUNT;
+      app->feeds_selected = (app->feeds_selected + 1) % feed_count();
    }
    if (cobalt_input_pressed(in, COBALT_BTN_UP)) {
-      app->feeds_selected = (app->feeds_selected + FEED_COUNT - 1) % FEED_COUNT;
+      app->feeds_selected = (app->feeds_selected + feed_count() - 1) % feed_count();
    }
 
    int activated = -1;
    if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
       activated = app->feeds_selected;
    } else if (s_feeds_hit_valid && in->touch_ended) {
-      for (int i = 0; i < FEED_COUNT; i++) {
+      for (int i = 0; i < feed_count(); i++) {
          if (cobalt_input_tapped(in, &s_feeds_hit[i])) {
             app->feeds_selected = i;
             activated = i;
@@ -636,10 +659,12 @@ update_feeds(cobalt_app *app, const cobalt_input *in)
       }
    }
 
-   if (activated >= 0 && activated < FEED_COUNT) {
-      COBALT_LOGI("feeds: opening %s", FEEDS[activated].label);
+   if (activated >= 0 && activated < feed_count()) {
+      const feed_entry e = feed_at(activated);
+      COBALT_LOGI("feeds: opening %s", e.label);
       cobalt_timeline_rewind(&app->timeline);
-      cobalt_session_begin_feed(FEEDS[activated].uri, false);
+      cobalt_session_begin_feed(e.uri, false);
+      app->viewing_custom_feed = true;
       app->screen = COBALT_SCREEN_TIMELINE;
    }
 }
@@ -746,7 +771,8 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
       case COBALT_SCREEN_TIMELINE:
          switch (cobalt_timeline_update(&app->timeline, in)) {
             case COBALT_TIMELINE_BACK:
-               app->screen = COBALT_SCREEN_HOME;
+               app->screen = app->viewing_custom_feed ? COBALT_SCREEN_FEEDS
+                                                      : COBALT_SCREEN_HOME;
                break;
             case COBALT_TIMELINE_OPEN_THREAD:
                cobalt_thread_view_reset(&app->thread);
@@ -1180,11 +1206,11 @@ draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    const int label_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
 
    int row_y = top;
-   for (int i = 0; i < FEED_COUNT; i++) {
+   for (int i = 0; i < feed_count(); i++) {
       SDL_Rect row = { m->pad_edge, row_y, width, row_h };
       const bool focused = (app->feeds_selected == i);
       cobalt_draw_tile(r, &row, focused ? 1.0f : 0.0f);
-      cobalt_draw_text_centred(r, COBALT_FONT_HEADING, FEEDS[i].label, row.x,
+      cobalt_draw_text_centred(r, COBALT_FONT_HEADING, feed_at(i).label, row.x,
                                row.y + (row_h - label_h) / 2, row.w,
                                COBALT_COLOUR_TEXT);
 
