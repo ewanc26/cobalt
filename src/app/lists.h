@@ -29,6 +29,7 @@ extern "C" {
 typedef enum {
    COBALT_LISTS_VIEW_STAY = 0,
    COBALT_LISTS_VIEW_BACK,
+   COBALT_LISTS_VIEW_OPEN_PROFILE,
 } cobalt_lists_view_action;
 
 typedef struct {

@@ -915,6 +915,11 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
             case COBALT_LISTS_VIEW_BACK:
                app->screen = COBALT_SCREEN_HOME;
                break;
+            case COBALT_LISTS_VIEW_OPEN_PROFILE:
+               cobalt_profile_view_rewind(&app->profile);
+               app->profile_return = COBALT_SCREEN_LISTS;
+               app->screen = COBALT_SCREEN_PROFILE;
+               break;
             case COBALT_LISTS_VIEW_STAY:
             default:
                break;
