@@ -85,6 +85,18 @@ shoot(const char *scene)
    }
 }
 
+static int g_home_sel;
+
+/* Home selection is linear and wraps; the app remembers it across screens. */
+static void
+open_home_item(int idx)
+{
+   for (int n = (idx - g_home_sel + 10) % 10; n > 0; n--) { frame(COBALT_BTN_RIGHT); settle(2); }
+   g_home_sel = idx;
+   settle(3);
+   frame(COBALT_BTN_CONFIRM);
+}
+
 static const char *
 post_json(const char *n, const char *text)
 {
@@ -135,6 +147,23 @@ main(int argc, char **argv)
       post_json("1", "Hello from the Wii U. A longer post that should wrap across several lines on both the television and the GamePad so we can see how the card handles it."),
       post_json("2", "second post"), post_json("3", "third post with unicode: caf\u00e9 \u65e5\u672c\u8a9e"));
    wf_mock_pds_register(pds, "app.bsky.feed.getTimeline", tl);
+   char th[4000];
+   snprintf(th, sizeof th, "{\"thread\":{\"$type\":\"app.bsky.feed.defs#threadViewPost\",\"post\":%s,"
+      "\"replies\":[{\"$type\":\"app.bsky.feed.defs#threadViewPost\",\"post\":%s,\"replies\":[]}]}}",
+      post_json("1", "Hello from the Wii U."), post_json("9", "A reply in the thread."));
+   wf_mock_pds_register(pds, "app.bsky.feed.getPostThread", th);
+   wf_mock_pds_register(pds, "app.bsky.actor.getProfile",
+      "{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\",\"displayName\":\"Alice Example\","
+      "\"description\":\"Poet, developer, Wii U enjoyer.\",\"followersCount\":120,\"followsCount\":80,\"postsCount\":456}");
+   wf_mock_pds_register(pds, "app.bsky.feed.getAuthorFeed", tl);
+   wf_mock_pds_register(pds, "app.bsky.notification.listNotifications",
+      "{\"notifications\":[{\"uri\":\"at://did:plc:abc/app.bsky.feed.like/1\",\"cid\":\"c1\","
+      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\",\"displayName\":\"Alice Example\"},"
+      "\"reason\":\"like\",\"reasonSubject\":\"at://did:plc:abc/app.bsky.feed.post/1\",\"record\":{},"
+      "\"isRead\":false,\"indexedAt\":\"2026-10-01T10:00:00.000Z\"},"
+      "{\"uri\":\"at://did:plc:abc/app.bsky.graph.follow/2\",\"cid\":\"c2\","
+      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"bob.test\",\"displayName\":\"Bob\"},"
+      "\"reason\":\"follow\",\"record\":{},\"isRead\":true,\"indexedAt\":\"2026-10-01T09:00:00.000Z\"}]}");
    char sr[2048];
    snprintf(sr, sizeof sr, "{\"actors\":[{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\",\"displayName\":\"Alice Example\"}]}");
    wf_mock_pds_register(pds, "app.bsky.actor.searchActors", sr);
@@ -156,14 +185,30 @@ main(int argc, char **argv)
    shoot("thread");
 
    frame(COBALT_BTN_BACK);
-   settle(5);
+   settle(10);
+   frame(COBALT_BTN_ALT_Y);
+   settle(40);
+   shoot("profile");
+
+   frame(COBALT_BTN_BACK);
+   settle(10);
    frame(COBALT_BTN_BACK);
    settle(10);
    shoot("home-signedin");
 
-   frame(COBALT_BTN_RIGHT);
-   settle(5);
-   frame(COBALT_BTN_CONFIRM);
+   open_home_item(5);
+   settle(40);
+   shoot("notifications");
+
+   frame(COBALT_BTN_BACK);
+   settle(10);
+   open_home_item(7);
+   settle(10);
+   shoot("diagnostics");
+
+   frame(COBALT_BTN_BACK);
+   settle(10);
+   open_home_item(1);
    settle(10);
    shoot("compose");
 
@@ -171,6 +216,9 @@ main(int argc, char **argv)
    settle(5);
    frame(COBALT_BTN_BACK);
    settle(5);
+   open_home_item(6);
+   settle(10);
+   shoot("account");
 
    wf_mock_pds_free(pds);
    cobalt_app_destroy(g_app);
