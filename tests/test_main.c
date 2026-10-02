@@ -992,23 +992,23 @@ test_post_refuses_partial_refs(void)
    cobalt_session_init();
 
    /* Empty text is nothing to send. */
-   CHECK(!cobalt_session_begin_post("", NULL, NULL, NULL, NULL, 0, NULL));
-   CHECK(!cobalt_session_begin_post(NULL, NULL, NULL, NULL, NULL, 0, NULL));
+   CHECK(!cobalt_session_begin_post("", NULL, NULL, NULL, NULL, 0, NULL, NULL));
+   CHECK(!cobalt_session_begin_post(NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL));
 
    /*
     * A parent without a root, or a root without a cid, must be refused rather
     * than sent. A reply naming the wrong conversation is worse than one that
     * never got posted: it is visible, wrong, and not obviously Cobalt's fault.
     */
-   CHECK(!cobalt_session_begin_post("hi", "at://parent", NULL, NULL, NULL, 0, NULL));
-   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", NULL, NULL, 0, NULL));
-   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", "at://root", NULL, 0, NULL));
-   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", "at://root", "", 0, NULL));
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", NULL, NULL, NULL, 0, NULL, NULL));
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", NULL, NULL, 0, NULL, NULL));
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", "at://root", NULL, 0, NULL, NULL));
+   CHECK(!cobalt_session_begin_post("hi", "at://parent", "cid", "at://root", "", 0, NULL, NULL));
 
    /* A complete set is accepted (and fails later for want of an SDK, which is
     * not what is being checked here). */
    CHECK(cobalt_session_begin_post("hi", "at://parent", "cid", "at://root",
-                                   "rcid", 0, NULL));
+                                   "rcid", 0, NULL, NULL));
 
    cobalt_job_result result;
    for (int i = 0; i < 500 && !cobalt_session_poll(&result); i++) {
@@ -1347,10 +1347,10 @@ test_quote_compose(void)
    cobalt_compose_init(&c);
    CHECK(!cobalt_compose_is_quote(&c));
 
-   CHECK(!cobalt_session_begin_quote("hi", NULL, "cid", 0, NULL));
-   CHECK(!cobalt_session_begin_quote("hi", "at://x", NULL, 0, NULL));
-   CHECK(!cobalt_session_begin_quote("", "at://x", "cid", 0, NULL));
-   CHECK(!cobalt_session_begin_quote(NULL, "at://x", "cid", 0, NULL));
+   CHECK(!cobalt_session_begin_quote("hi", NULL, "cid", 0, NULL, NULL));
+   CHECK(!cobalt_session_begin_quote("hi", "at://x", NULL, 0, NULL, NULL));
+   CHECK(!cobalt_session_begin_quote("", "at://x", "cid", 0, NULL, NULL));
+   CHECK(!cobalt_session_begin_quote(NULL, "at://x", "cid", 0, NULL, NULL));
 
    /* The post language starts at none and cycles back round. */
    const char *first = cobalt_session_post_lang();
@@ -1411,7 +1411,12 @@ test_image_attach(const char *root)
    CHECK(c.picker_sel == 1);
    in = tap(COBALT_BTN_CONFIRM);
    CHECK(cobalt_compose_update(&c, &in) == COBALT_COMPOSE_STAY);
-   CHECK(!c.picking);
+   CHECK(!c.picking && c.alt_editing);
+   /* Alt text is typed next; B there is backspace and keeps the mode open. */
+   in = tap(COBALT_BTN_BACK);
+   cobalt_compose_update(&c, &in);
+   CHECK(c.alt_editing && c.attach_alt[0] == '\0');
+   c.alt_editing = false;
    char want[640];
    snprintf(want, sizeof(want), "%s/b.png", dir);
    CHECK(strcmp(c.attach_path, want) == 0);
@@ -1440,7 +1445,7 @@ test_image_attach(const char *root)
    cobalt_compose_update(&c, &in);
    CHECK(c.confirm_choice == 1);
 
-   CHECK(!cobalt_session_begin_quote("hi", "at://x", NULL, 0, "x.png"));
+   CHECK(!cobalt_session_begin_quote("hi", "at://x", NULL, 0, "x.png", "alt"));
 }
 
 static void
