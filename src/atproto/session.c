@@ -76,6 +76,9 @@ static struct {
    char ca_path[COBALT_PATH_MAX];
    bool have_ca;
 
+   /* The loaded profile's pinned post, so a tab switch can re-add it. */
+   char pinned_uri[COBALT_POST_URI_MAX];
+
    /* Index into POST_LANGS; 0 is "none". Applied to each new agent. */
    int post_lang;
    const char *blocker;
@@ -1131,7 +1134,7 @@ run_notifications(const job_input *in, cobalt_job_result *r,
 /* Replace s.author_feed with the posts for one profile tab. Failure leaves the
  * feed empty rather than showing another tab's posts under the wrong label. */
 static void
-fetch_author_feed(const char *actor, int tab)
+fetch_author_feed(const char *actor, int tab, const char *pinned_uri)
 {
    wf_agent_feed_list list;
    memset(&list, 0, sizeof(list));
@@ -1153,6 +1156,20 @@ fetch_author_feed(const char *actor, int tab)
       cobalt_feed_append_from_wolfram(&s.author_feed, &list, now);
       SDL_UnlockMutex(s.lock);
       wf_agent_feed_list_free(&list);
+
+      /* The Posts tab leads with the pinned post, as the official client does.
+       * Best-effort: a failure here leaves the ordinary feed untouched. */
+      if (pinned_uri && pinned_uri[0] && tab == COBALT_PROFILE_TAB_POSTS) {
+         wf_agent_post_list pins;
+         memset(&pins, 0, sizeof(pins));
+         const char *uris[1] = { pinned_uri };
+         if (wf_agent_get_posts_typed(s.wf, uris, 1, &pins) == WF_OK) {
+            SDL_LockMutex(s.lock);
+            cobalt_feed_pin_from_wolfram(&s.author_feed, &pins, now);
+            SDL_UnlockMutex(s.lock);
+            wf_agent_post_list_free(&pins);
+         }
+      }
    } else {
       COBALT_LOGW("session: author feed (tab %d) failed (%d) — showing the "
                   "profile without posts", tab, (int) status);
@@ -1170,7 +1187,11 @@ run_profile_tab(const job_input *in, cobalt_job_result *r,
       set_message(r, "Sign in first.");
       return;
    }
-   fetch_author_feed(in->uri, in->tab);
+   SDL_LockMutex(s.lock);
+   char pinned[COBALT_POST_URI_MAX];
+   snprintf(pinned, sizeof(pinned), "%s", s.pinned_uri);
+   SDL_UnlockMutex(s.lock);
+   fetch_author_feed(in->uri, in->tab, pinned);
    publish_session();
    *state = COBALT_AUTH_SIGNED_IN;
    r->ok = true;
@@ -1200,6 +1221,12 @@ run_profile(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
    cobalt_profile_from_wolfram(&s.profile, &profile, s.did);
    SDL_UnlockMutex(s.lock);
 
+   char pinned[COBALT_POST_URI_MAX];
+   snprintf(pinned, sizeof(pinned), "%s",
+            profile.pinned_post_uri ? profile.pinned_post_uri : "");
+   SDL_LockMutex(s.lock);
+   snprintf(s.pinned_uri, sizeof(s.pinned_uri), "%s", pinned);
+   SDL_UnlockMutex(s.lock);
    wf_agent_profile_free(&profile);
 
    /*
@@ -1207,7 +1234,7 @@ run_profile(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
     * fatal to the screen: the profile itself already loaded and is worth
     * showing, so the feed is left empty and the header stands on its own.
     */
-   fetch_author_feed(in->uri, in->tab);
+   fetch_author_feed(in->uri, in->tab, pinned);
 
    publish_session();
 
