@@ -20,6 +20,22 @@ post_json(const char *n, const char *text)
    return b;
 }
 
+static const char *
+post_json_facets(const char *n, const char *text, const char *facets)
+{
+   static char buf[2][2400];
+   static int k;
+   char *b = buf[k++ & 1];
+   snprintf(b, 2400,
+      "{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/%s\",\"cid\":\"bafy%s\","
+      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\","
+      "\"displayName\":\"Alice Example\"},\"record\":{\"$type\":\"app.bsky.feed.post\","
+      "\"text\":\"%s\",\"facets\":%s,\"createdAt\":\"2026-10-01T10:00:00.000Z\"},"
+      "\"likeCount\":1,\"repostCount\":0,\"replyCount\":0,"
+      "\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}", n, n, text, facets);
+   return b;
+}
+
 static void
 register_fixtures(wf_mock_pds *pds)
 {
@@ -49,7 +65,7 @@ register_fixtures(wf_mock_pds *pds)
    static char tl[9000];
    snprintf(tl, sizeof tl, "{\"feed\":[{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s}],\"cursor\":\"c1\"}",
       post_json("1", "Hello from the Wii U. A longer post that should wrap across several lines on both the television and the GamePad so we can see how the card handles it."),
-      post_json("2", "second post"), post_json("3", "third post with unicode: caf\u00e9 \u65e5\u672c\u8a9e \\ud83d\\ude00"), longp, imgp, extp);
+      post_json_facets("2", "Hi @bob.test see https://example.com/page and #wiiu rocks", "[{\"index\":{\"byteStart\":3,\"byteEnd\":12},\"features\":[{\"$type\":\"app.bsky.richtext.facet#mention\",\"did\":\"did:plc:bob\"}]},{\"index\":{\"byteStart\":17,\"byteEnd\":41},\"features\":[{\"$type\":\"app.bsky.richtext.facet#link\",\"uri\":\"https://example.com/page\"}]},{\"index\":{\"byteStart\":46,\"byteEnd\":51},\"features\":[{\"$type\":\"app.bsky.richtext.facet#tag\",\"tag\":\"wiiu\"}]}]"), post_json("3", "third post with unicode: caf\u00e9 \u65e5\u672c\u8a9e \\ud83d\\ude00"), longp, imgp, extp);
    wf_mock_pds_register(pds, "app.bsky.feed.getTimeline", tl);
    char th[6000];
    snprintf(th, sizeof th, "{\"thread\":{\"$type\":\"app.bsky.feed.defs#threadViewPost\",\"post\":%s,"
