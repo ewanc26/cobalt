@@ -408,6 +408,74 @@ cobalt_fill_rect(cobalt_render *r, const SDL_Rect *rect, SDL_Color colour)
 }
 
 void
+cobalt_draw_hints(cobalt_render *r, const char *spec)
+{
+   if (!r || !spec) {
+      return;
+   }
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const int line = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+   const int pill_h = line + 12;
+   const int padx = pill_h / 3 + 2;
+   const int gap = 8;
+   const int right = m->width - m->pad_edge;
+   const SDL_Color white = { 0xFF, 0xFF, 0xFF, 0xFF };
+   const SDL_Color body = { 0xFF, 0xFF, 0xFF, 0xE6 };
+
+   int x = m->pad_edge;
+   int y = m->height - m->pad_edge / 2 - pill_h;
+
+   const char *p = spec;
+   while (*p) {
+      while (*p == ' ') p++;
+      if (!*p) break;
+      const char *end = p;
+      while (*end && !(end[0] == ' ' && end[1] == ' ')) end++;
+
+      char seg[96];
+      size_t n = (size_t) (end - p);
+      if (n >= sizeof seg) n = sizeof seg - 1;
+      memcpy(seg, p, n);
+      seg[n] = '\0';
+      p = end;
+
+      char *label = seg;
+      char *key = NULL;
+      char *colon = strstr(seg, ": ");
+      if (colon) {
+         *colon = '\0';
+         key = seg;
+         label = colon + 2;
+      }
+
+      int kw = 0, lw = 0;
+      if (key) cobalt_text_size(r, COBALT_FONT_CAPTION, key, &kw, NULL);
+      cobalt_text_size(r, COBALT_FONT_CAPTION, label, &lw, NULL);
+      const int chip_w = key ? kw + pill_h / 3 + 4 : 0;
+      const int w = padx + (key ? chip_w + 6 : 0) + lw + padx - (key ? 2 : 0);
+
+      if (x + w > right && x > m->pad_edge) {
+         x = m->pad_edge;
+         y -= pill_h + 6;
+      }
+
+      SDL_Rect pill = { x, y, w, pill_h };
+      cobalt_fill_rounded_rect(r, &pill, pill_h / 2, body);
+      int tx = x + padx;
+      if (key) {
+         SDL_Rect chip = { x + 4, y + 4, chip_w, pill_h - 8 };
+         cobalt_fill_rounded_rect(r, &chip, chip.h / 2, COBALT_COLOUR_ACCENT);
+         cobalt_draw_text(r, COBALT_FONT_CAPTION, key,
+                          chip.x + (chip.w - kw) / 2, y + (pill_h - line) / 2, white);
+         tx = chip.x + chip.w + 6;
+      }
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, label, tx, y + (pill_h - line) / 2,
+                       COBALT_COLOUR_TEXT);
+      x += w + gap;
+   }
+}
+
+void
 cobalt_fill_rounded_rect(cobalt_render *r, const SDL_Rect *rect, int radius,
                          SDL_Color colour)
 {

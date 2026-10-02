@@ -247,19 +247,15 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
       view->last_visible = last_fitted;
    }
 
-   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    const bool own =
       view->selected >= 0 && view->selected < thread->count &&
       cobalt_post_uri_is_by(thread->posts[view->selected].uri,
                             cobalt_session_did());
-   cobalt_draw_text(r, COBALT_FONT_CAPTION,
-                    view->confirm_delete
+   cobalt_draw_hints(r, view->confirm_delete
                        ? "Delete this post for good?   A: delete   B: keep it"
                     : cobalt_session_busy()
                        ? "Working..."
                     : own
                        ? "A: open/reply   X: quote   Left: like   Right: repost   Y: delete   B: back"
-                       : "A: open/reply   X: quote   +: reply   Left: like   Right: repost   B: back",
-                    m->pad_edge, m->height - m->pad_edge - 20,
-                    view->confirm_delete ? COBALT_COLOUR_TEXT : hint);
+                       : "A: open/reply   X: quote   +: reply   Left: like   Right: repost   B: back");
 }

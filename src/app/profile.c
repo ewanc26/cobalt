@@ -352,11 +352,8 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
                        y + m->gap, COBALT_COLOUR_TEXT_DIM);
    }
 
-   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
    char hint_text[160];
    snprintf(hint_text, sizeof(hint_text), "[%s]  +: tab   X: followers   Y: following   A/Left/Right: act   B: back",
             cobalt_profile_tab_name(cobalt_session_profile_tab()));
-   cobalt_draw_text(r, COBALT_FONT_CAPTION,
-                    cobalt_session_busy() ? "Working..." : hint_text,
-                    m->pad_edge, m->height - m->pad_edge - 20, hint);
+   cobalt_draw_hints(r, cobalt_session_busy() ? "Working..." : hint_text);
 }
