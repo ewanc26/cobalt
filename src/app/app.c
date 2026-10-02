@@ -541,15 +541,22 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
 static void
 update_home(cobalt_app *app, const cobalt_input *in)
 {
-   /* Both axes move the selection so the same code serves the TV's horizontal
-    * row and the GamePad's vertical list. */
-   if (cobalt_input_pressed(in, COBALT_BTN_DOWN) ||
-       cobalt_input_pressed(in, COBALT_BTN_RIGHT)) {
+   /* GamePad-only: the vertical list, so every direction steps by one. With the
+    * TV showing, the tiles are a two-row grid and Up/Down jump a row. */
+   const int cols = (MENU_COUNT + 1) / 2;
+   const int vstep = (app->display == COBALT_DISPLAY_DUAL) ? cols : 1;
+
+   if (cobalt_input_pressed(in, COBALT_BTN_RIGHT)) {
       app->selected = (app->selected + 1) % MENU_COUNT;
    }
-   if (cobalt_input_pressed(in, COBALT_BTN_UP) ||
-       cobalt_input_pressed(in, COBALT_BTN_LEFT)) {
+   if (cobalt_input_pressed(in, COBALT_BTN_LEFT)) {
       app->selected = (app->selected + MENU_COUNT - 1) % MENU_COUNT;
+   }
+   if (cobalt_input_pressed(in, COBALT_BTN_DOWN)) {
+      app->selected = (app->selected + vstep) % MENU_COUNT;
+   }
+   if (cobalt_input_pressed(in, COBALT_BTN_UP)) {
+      app->selected = (app->selected + MENU_COUNT - vstep) % MENU_COUNT;
    }
 
    if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
