@@ -67,8 +67,8 @@ screen picks the language tag new posts carry.
 
 New posts and quotes can carry one image: in the post confirmation choose
 **Add image** and pick a `.jpg`/`.png` (under 950 KB) from `images/` in the
-app's data folder on the SD card. Alt text and images on replies are not done
-yet.
+app's data folder on the SD card, then type its alt text (optional). Images on
+replies are not done yet.
 
 Some things in the official client are not coming, because the console cannot
 do them rather than because nobody has got to them yet: **video** and **GIFs**
