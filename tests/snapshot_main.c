@@ -201,6 +201,13 @@ main(int argc, char **argv)
    snprintf(sr, sizeof sr, "{\"actors\":[{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\",\"displayName\":\"Alice Example\"}]}");
    wf_mock_pds_register(pds, "app.bsky.actor.searchActors", sr);
 
+   wf_mock_pds_register(pds, "app.bsky.feed.getFeed", tl);
+   wf_mock_pds_register(pds, "app.bsky.graph.getLists",
+      "{\"lists\":[{\"uri\":\"at://did:plc:abc/app.bsky.graph.list/1\",\"cid\":\"l1\","
+      "\"name\":\"Friends\",\"purpose\":\"app.bsky.graph.defs#curatelist\","
+      "\"description\":\"People worth following\",\"listItemCount\":3,"
+      "\"creator\":{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\"}}]}");
+
    char svc[64];
    snprintf(svc, sizeof svc, "http://127.0.0.1:%d", port);
    CHECK(cobalt_session_begin_login(svc, "alice.test", "app-pass"));
@@ -266,6 +273,27 @@ main(int argc, char **argv)
    open_home_item(6);
    settle(10);
    shoot("account");
+
+   frame(COBALT_BTN_BACK);
+   settle(10);
+   open_home_item(2);
+   settle(10);
+   shoot("search");
+
+   for (int k = 0; k < 2; k++) { frame(COBALT_BTN_DOWN); settle(2); }
+   frame(COBALT_BTN_LEFT);
+   settle(2);
+   frame(COBALT_BTN_CONFIRM);
+   settle(5);
+   open_home_item(3);
+   settle(10);
+   shoot("feeds");
+
+   frame(COBALT_BTN_BACK);
+   settle(10);
+   open_home_item(4);
+   settle(40);
+   shoot("lists");
 
    wf_mock_pds_free(pds);
    cobalt_app_destroy(g_app);
