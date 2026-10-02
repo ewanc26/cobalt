@@ -216,6 +216,17 @@ cobalt_render_create(cobalt_surface_id surface, const char *font_path, bool prev
 
    SDL_SetRenderDrawBlendMode(r->renderer, SDL_BLENDMODE_BLEND);
 
+   {
+      int ww = 0, wh = 0, ow = 0, oh = 0;
+      SDL_GetWindowSize(r->window, &ww, &wh);
+      SDL_GetRendererOutputSize(r->renderer, &ow, &oh);
+      SDL_DisplayMode dm;
+      const bool have_dm = SDL_GetDesktopDisplayMode(0, &dm) == 0;
+      COBALT_LOGI("surface %d: window %dx%d, renderer %dx%d, display %dx%d (layout %dx%d)",
+                  (int) surface, ww, wh, ow, oh, have_dm ? dm.w : 0,
+                  have_dm ? dm.h : 0, r->m->width, r->m->height);
+   }
+
    for (int i = 0; i < COBALT_FONT_COUNT; i++) {
       r->fonts[i] = open_font_cached(font_path, font_size_for(r->m, (cobalt_font_id) i));
       if (!r->fonts[i]) {
