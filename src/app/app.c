@@ -1636,7 +1636,6 @@ draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
                                bad ? COBALT_COLOUR_ERROR : COBALT_COLOUR_TEXT);
    }
 
-   cobalt_draw_hints(r, "B: back");
 }
 
 /* The TV's idle card in Off-TV mode: enough to show the app is alive and
