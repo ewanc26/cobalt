@@ -1084,6 +1084,11 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                app->thread_return = COBALT_SCREEN_NOTIFICATIONS;
                app->screen = COBALT_SCREEN_THREAD;
                break;
+            case COBALT_NOTIFY_OPEN_PROFILE:
+               cobalt_profile_view_rewind(&app->profile);
+               app->profile_return = COBALT_SCREEN_NOTIFICATIONS;
+               app->screen = COBALT_SCREEN_PROFILE;
+               break;
             case COBALT_NOTIFY_STAY:
             default:
                break;
