@@ -222,8 +222,13 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
 
    for (int i = view->scroll; i < feed->count; i++) {
       const cobalt_post *post = &feed->posts[i];
-      const int h = cobalt_postcard_height(r, post, TEXT_LINES,
-                                           i == view->selected);
+      int lines = cobalt_postcard_text_total(r, post, m->width - 2 * m->pad_edge, 0);
+      if (lines > TEXT_LINES) {
+         lines = TEXT_LINES;
+      } else if (lines < 1) {
+         lines = 1;
+      }
+      const int h = cobalt_postcard_height(r, post, lines, i == view->selected);
 
       /* Stop before drawing a card that would run off the bottom. Always draw
        * at least one, so a card taller than the viewport is still readable
@@ -233,8 +238,7 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
       }
 
       SDL_Rect rect = { m->pad_edge, y, m->width - 2 * m->pad_edge, h };
-      cobalt_postcard_draw(r, post, &rect, i == view->selected,
-                           TEXT_LINES, 0);
+      cobalt_postcard_draw(r, post, &rect, i == view->selected, lines, 0);
 
       if (touchable && view->hit_count < COBALT_FEED_MAX_POSTS) {
          view->hit[view->hit_count] = rect;
