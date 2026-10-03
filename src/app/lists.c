@@ -383,7 +383,9 @@ draw_members(cobalt_lists_view *view, cobalt_render *r,
       view->last_visible = last_fitted;
    }
 
-   cobalt_draw_hints(r, cobalt_session_busy() ? "Working..." : "B: back to lists");
+   if (cobalt_session_busy()) {
+      cobalt_draw_hints(r, "Working...");
+   }
 }
 
 void

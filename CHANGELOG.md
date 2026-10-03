@@ -7,6 +7,9 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Fixed
+- Removed the duplicate "B: back" footer hint on the diagnostics and list-member screens.
+
 ## [0.3.1] - 2026-10-03
 
 ### Fixed
