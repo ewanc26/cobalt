@@ -107,15 +107,7 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
          cobalt_session_begin_thread(post->uri);
          return COBALT_TIMELINE_OPEN_THREAD;
       } else if (cobalt_input_pressed(in, COBALT_BTN_ALT_Y)) {
-         /* The handle is stored with its leading @, which getProfile will not
-          * accept as an actor. */
-         const char *actor = post->handle[0] == '@' ? post->handle + 1
-                                                    : post->handle;
-         if (actor[0]) {
-            COBALT_LOGI("timeline: opening profile %s", actor);
-            cobalt_session_begin_profile(actor);
-            return COBALT_TIMELINE_OPEN_PROFILE;
-         }
+         return COBALT_TIMELINE_MENU;
       } else if (cobalt_input_pressed(in, COBALT_BTN_ALT_X)) {
          return COBALT_TIMELINE_COMPOSE;
       }
@@ -267,6 +259,6 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
 
    const char *footer = cobalt_session_busy()
                            ? "Working..."
-                           : "A: thread  Y: profile  X: post  Left: like  Right: repost  +: refresh";
+                           : "A: thread  Y: more  Left: like  Right: repost";
    cobalt_draw_hints(r, footer);
 }
