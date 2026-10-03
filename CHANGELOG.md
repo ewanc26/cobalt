@@ -7,6 +7,9 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Changed
+- Image and avatar downloads go through Wolfram's generic GET instead of Cobalt's own libcurl client; https-only, redirect cap, timeout, size ceiling, CA bundle and TLS RNG are now Wolfram client settings. Needs a Wolfram with the fetch-policy setters (`wf_xrpc_client_set_https_only` and friends).
+
 ## [0.3.2] - 2026-10-03
 
 ### Fixed

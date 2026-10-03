@@ -3,16 +3,9 @@
 #include "util/rng.h"
 
 #include <SDL.h>
-#include <curl/curl.h>
 
-/* Same condition Wolfram uses: the TLS RNG hook only makes sense where libcurl
- * is genuinely mbedTLS-backed, which on this project means the console. */
-#if !defined(COBALT_CURL_MBEDTLS) && defined(__WIIU__)
-#define COBALT_CURL_MBEDTLS 1
-#endif
-
-#if defined(COBALT_CURL_MBEDTLS)
-#include <mbedtls/ssl.h>
+#ifdef COBALT_HAS_WOLFRAM
+#include <wolfram/xrpc.h>
 #endif
 
 #include <stdint.h>
@@ -21,8 +14,12 @@
 #include <string.h>
 
 /* Give up rather than hang a screen waiting on an image nobody will see. */
-#define CONNECT_TIMEOUT_SECONDS 10
-#define TOTAL_TIMEOUT_SECONDS   30
+#define TOTAL_TIMEOUT_MS      30000
+#define MAX_REDIRECTS         3
+#define USER_AGENT            "cobalt (Wii U)"
+
+/* Wolfram wants a base URL for every client; a generic GET never uses it. */
+#define PLACEHOLDER_BASE_URL  "https://cobalt.invalid"
 
 /* Downloaded bodies kept for a short while. The TV and GamePad each own an image
  * cache and ask for the same avatar within a frame of each other; this makes
@@ -44,15 +41,17 @@ typedef struct {
 
 static struct {
    bool initialised;
-   bool curl_global;
-   char ca_path[512];
-   bool have_ca;
 
-   /* One connection / TLS-session / DNS cache for every handle on every thread.
-    * A fresh easy handle per request meant a full TLS handshake plus a re-parse
-    * of the CA bundle each time, which is seconds of CPU on this console. */
-   CURLSH *share;
-   SDL_mutex *share_locks[CURL_LOCK_DATA_LAST];
+#ifdef COBALT_HAS_WOLFRAM
+   /*
+    * A client of our own, never the signed-in agent's: it carries no bearer
+    * token, so nothing here can send the account's credentials to whatever host
+    * a PDS-supplied URL points at. Wolfram snapshots its settings per request
+    * and keeps no shared handle, so the image workers (and the session worker)
+    * may use it concurrently without a lock of ours.
+    */
+   wf_xrpc_client *client;
+#endif
 
    SDL_mutex *body_lock;
    SDL_cond *body_cond;
@@ -61,138 +60,54 @@ static struct {
    uint32_t body_clock;
 } s;
 
-static void
-share_lock(CURL *handle, curl_lock_data data, curl_lock_access access, void *user)
-{
-   (void) handle; (void) access; (void) user;
-   if (data < CURL_LOCK_DATA_LAST && s.share_locks[data]) {
-      SDL_LockMutex(s.share_locks[data]);
-   }
-}
-
-static void
-share_unlock(CURL *handle, curl_lock_data data, void *user)
-{
-   (void) handle; (void) user;
-   if (data < CURL_LOCK_DATA_LAST && s.share_locks[data]) {
-      SDL_UnlockMutex(s.share_locks[data]);
-   }
-}
-
-/* --- write callback --- */
-
-typedef struct {
-   unsigned char *data;
-   size_t size;
-   size_t capacity;
-   size_t limit;
-   bool overflowed;
-} buffer;
-
-static size_t
-on_data(char *chunk, size_t size, size_t count, void *userdata)
-{
-   buffer *buf = (buffer *) userdata;
-   const size_t incoming = size * count;
-
-   if (buf->size + incoming > buf->limit) {
-      /* Returning short aborts the transfer, which is the point: the cap has
-       * to stop the download, not just refuse the result afterwards. */
-      buf->overflowed = true;
-      return 0;
-   }
-
-   if (buf->size + incoming + 1 > buf->capacity) {
-      size_t wanted = buf->capacity ? buf->capacity * 2 : 16384;
-      while (wanted < buf->size + incoming + 1) {
-         wanted *= 2;
-      }
-      if (wanted > buf->limit + 1) {
-         wanted = buf->limit + 1;
-      }
-      unsigned char *grown = (unsigned char *) realloc(buf->data, wanted);
-      if (!grown) {
-         return 0;
-      }
-      buf->data = grown;
-      buf->capacity = wanted;
-   }
-
-   memcpy(buf->data + buf->size, chunk, incoming);
-   buf->size += incoming;
-   buf->data[buf->size] = '\0';
-   return incoming;
-}
-
-/* --- TLS --- */
-
-#if defined(COBALT_CURL_MBEDTLS)
-static int
-curl_uses_mbedtls(void)
-{
-   const curl_version_info_data *info = curl_version_info(CURLVERSION_NOW);
-   return info && info->ssl_version &&
-          strncmp(info->ssl_version, "mbedTLS", 7) == 0;
-}
-
-/*
- * curl calls this after its own mbedtls_ssl_conf_rng() and before
- * mbedtls_ssl_setup(), so installing ours here covers the whole handshake —
- * the same mechanism Wolfram uses for its own requests.
- */
-static CURLcode
-tls_ctx_cb(CURL *curl, void *ssl_ctx, void *userdata)
-{
-   (void) curl;
-   (void) userdata;
-   if (ssl_ctx) {
-      mbedtls_ssl_conf_rng((mbedtls_ssl_config *) ssl_ctx, cobalt_rng_mbedtls,
-                           NULL);
-   }
-   return CURLE_OK;
-}
-#endif
-
 /* --- lifecycle --- */
 
 bool
 cobalt_http_init(const char *ca_path)
 {
-   if (!s.curl_global) {
-      /*
-       * Explicit rather than relying on curl_easy_init's implicit
-       * initialisation, which is not thread-safe — and this module is called
-       * from a worker while the session worker may be mid-request.
-       */
-      if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
-         COBALT_LOGE("http: curl_global_init failed");
-         return false;
-      }
-      s.curl_global = true;
+   if (s.initialised) {
+      return true;
    }
 
-   s.have_ca = false;
-   s.ca_path[0] = '\0';
+#ifdef COBALT_HAS_WOLFRAM
+   s.client = wf_xrpc_client_new(PLACEHOLDER_BASE_URL);
+   if (!s.client) {
+      COBALT_LOGE("http: could not create the fetch client");
+      return false;
+   }
+
+   /* The policy lives in Wolfram; these are only this app's values for it. */
+   wf_xrpc_client_set_https_only(s.client, 1);
+   wf_xrpc_client_set_max_redirects(s.client, MAX_REDIRECTS);
+   wf_xrpc_client_set_total_timeout_ms(s.client, TOTAL_TIMEOUT_MS);
+   if (wf_xrpc_client_set_user_agent(s.client, USER_AGENT) != WF_OK) {
+      COBALT_LOGW("http: could not set the user agent");
+   }
+
    if (ca_path && ca_path[0]) {
-      snprintf(s.ca_path, sizeof(s.ca_path), "%s", ca_path);
-      s.have_ca = true;
+      wf_xrpc_client_set_ca_bundle(s.client, ca_path);
    } else {
       COBALT_LOGW("http: no CA bundle — image loads will fail verification");
    }
 
-   if (!s.share) {
-      for (int i = 0; i < CURL_LOCK_DATA_LAST; i++) {
-         s.share_locks[i] = SDL_CreateMutex();
-      }
-      s.share = curl_share_init();
-      if (s.share) {
-         curl_share_setopt(s.share, CURLSHOPT_LOCKFUNC, share_lock);
-         curl_share_setopt(s.share, CURLSHOPT_UNLOCKFUNC, share_unlock);
-         curl_share_setopt(s.share, CURLSHOPT_SHARE, CURL_LOCK_DATA_CONNECT);
-         curl_share_setopt(s.share, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
-         curl_share_setopt(s.share, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
-      }
+   /* The same DRBG the session installs; see util/rng.h. */
+   wf_status rng = wf_xrpc_client_set_tls_rng(s.client, cobalt_rng_mbedtls, NULL);
+#ifdef COBALT_E2E_HOST
+   /* Host end-to-end only: a host libcurl has no mbedTLS hook. Never defined in
+    * a Wii U build. */
+   rng = WF_OK;
+#endif
+   if (rng != WF_OK) {
+      COBALT_LOGE("http: could not install the TLS RNG (%d) — refusing to hand "
+                  "the handshake to a tick-seeded generator", (int) rng);
+      wf_xrpc_client_free(s.client);
+      s.client = NULL;
+      return false;
    }
+#else
+   (void) ca_path;
+#endif
+
    if (!s.body_lock) {
       s.body_lock = SDL_CreateMutex();
       s.body_cond = SDL_CreateCond();
@@ -205,16 +120,12 @@ cobalt_http_init(const char *ca_path)
 void
 cobalt_http_shutdown(void)
 {
-   if (s.share) {
-      curl_share_cleanup(s.share);
-      s.share = NULL;
+#ifdef COBALT_HAS_WOLFRAM
+   if (s.client) {
+      wf_xrpc_client_free(s.client);
+      s.client = NULL;
    }
-   for (int i = 0; i < CURL_LOCK_DATA_LAST; i++) {
-      if (s.share_locks[i]) {
-         SDL_DestroyMutex(s.share_locks[i]);
-         s.share_locks[i] = NULL;
-      }
-   }
+#endif
    if (s.body_lock) {
       for (int i = 0; i < BODY_CACHE_SLOTS; i++) {
          free(s.bodies[i].data);
@@ -225,10 +136,6 @@ cobalt_http_shutdown(void)
       SDL_DestroyMutex(s.body_lock);
       s.body_cond = NULL;
       s.body_lock = NULL;
-   }
-   if (s.curl_global) {
-      curl_global_cleanup();
-      s.curl_global = false;
    }
    s.initialised = false;
 }
@@ -247,82 +154,39 @@ fetch_network(const char *url, size_t max_bytes, cobalt_http_response *out)
       return false;
    }
 
-   CURL *curl = curl_easy_init();
-   if (!curl) {
-      return false;
-   }
-
-   buffer buf;
-   memset(&buf, 0, sizeof(buf));
-   buf.limit = max_bytes;
-
-   curl_easy_setopt(curl, CURLOPT_URL, url);
-   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, on_data);
-   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
-   curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-   curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 3L);
-   curl_easy_setopt(curl, CURLOPT_USERAGENT, "cobalt (Wii U)");
-   curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, (long) CONNECT_TIMEOUT_SECONDS);
-   curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long) TOTAL_TIMEOUT_SECONDS);
-   /* Curl's signal-based timeouts are not safe off the main thread. */
-   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-   if (s.share) {
-      curl_easy_setopt(curl, CURLOPT_SHARE, s.share);
-   }
-
+#ifdef COBALT_HAS_WOLFRAM
    /*
-    * Only https. A PDS could hand back an http:// URL — by mistake or not —
-    * and silently fetching it would leak which posts are being read to anyone
-    * on the path.
+    * Wolfram refuses anything but https (redirects included), follows at most
+    * MAX_REDIRECTS, gives up after TOTAL_TIMEOUT_MS, and aborts the transfer
+    * the moment the body crosses `max_bytes` — the URL comes from a PDS
+    * response, so a hostile one could point at an endless stream.
     */
-   curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, "https");
-   curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "https");
-
-   if (s.have_ca) {
-      curl_easy_setopt(curl, CURLOPT_CAINFO, s.ca_path);
+   wf_response res = {0};
+   const wf_status st = wf_http_get_limited(s.client, url, max_bytes, &res);
+   if (st != WF_OK) {
+      COBALT_LOGW("http: %.48s failed (status %d, http %ld)", url, (int) st,
+                  res.status);
+      wf_response_free(&res);
+      return false;
    }
-
-#if defined(COBALT_CURL_MBEDTLS)
-   if (curl_uses_mbedtls()) {
-      curl_easy_setopt(curl, CURLOPT_SSL_CTX_FUNCTION, tls_ctx_cb);
-   }
-#endif
-
-   const CURLcode rc = curl_easy_perform(curl);
-   long status = 0;
-   curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-   double t_dns = 0, t_conn = 0, t_tls = 0, t_total = 0;
-   curl_easy_getinfo(curl, CURLINFO_NAMELOOKUP_TIME, &t_dns);
-   curl_easy_getinfo(curl, CURLINFO_CONNECT_TIME, &t_conn);
-   curl_easy_getinfo(curl, CURLINFO_APPCONNECT_TIME, &t_tls);
-   curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &t_total);
-   COBALT_LOGI("http: dns %.0f conn %.0f tls %.0f total %.0f ms, %u bytes (%.48s)",
-               t_dns * 1000, t_conn * 1000, t_tls * 1000, t_total * 1000,
-               (unsigned) buf.size, url);
-   curl_easy_cleanup(curl);
-
-   if (rc != CURLE_OK) {
-      if (buf.overflowed) {
-         COBALT_LOGW("http: %s exceeded %u bytes, aborted", url,
-                     (unsigned) max_bytes);
-      } else {
-         COBALT_LOGW("http: %s failed (%s)", url, curl_easy_strerror(rc));
-      }
-      free(buf.data);
+   if (res.body_len == 0) {
+      COBALT_LOGW("http: %.48s returned %ld (0 bytes)", url, res.status);
+      wf_response_free(&res);
       return false;
    }
 
-   if (status < 200 || status >= 300 || buf.size == 0) {
-      COBALT_LOGW("http: %s returned %ld (%u bytes)", url, status,
-                  (unsigned) buf.size);
-      free(buf.data);
-      return false;
-   }
-
-   out->data = buf.data;
-   out->size = buf.size;
-   out->status = status;
+   /* Wolfram's body is heap-owned and NUL-terminated, which is exactly the
+    * contract of cobalt_http_response; take it over rather than copy. */
+   out->data = (unsigned char *) res.body;
+   out->size = res.body_len;
+   out->status = res.status;
+   res.body = NULL;
+   wf_response_free(&res); /* the header captures Wolfram may have made */
    return true;
+#else
+   COBALT_LOGW("http: built without Wolfram, cannot fetch %.48s", url);
+   return false;
+#endif
 }
 
 /* Caller holds body_lock. */
