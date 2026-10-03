@@ -25,5 +25,15 @@ git tag -a "v$new" -m "Cobalt $new"
 git push -q origin "v$new"
 DEVKITPRO=${DEVKITPRO:-/opt/devkitpro} DEVKITPPC=${DEVKITPPC:-/opt/devkitpro/devkitPPC} make bundle
 cp dist/wiiu/apps/cobalt.wuhb "dist/cobalt-$new.wuhb"
+
+# Belt and braces: `make bundle` refuses to run without Wolfram linked, but a
+# release must never ship a build whose whole protocol layer is compiled out.
+# The WUHB compresses the RPX internally, so verify the link output instead:
+# a Wolfram-linked build has libwolfram.a in its linker map, a Wolfram-free
+# one does not.
+if ! grep -q "libwolfram.a" build/cobalt.map; then
+  echo "refusing to publish: libwolfram.a absent from build/cobalt.map — the protocol layer is missing" >&2
+  exit 1
+fi
 gh release create "v$new" "dist/cobalt-$new.wuhb" --title "Cobalt $new" --notes "$notes" --verify-tag
 echo "Published v$new"
