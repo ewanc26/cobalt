@@ -1,24 +1,21 @@
 #pragma once
 
 /*
- * Plain HTTPS GET into memory.
+ * Plain HTTPS GET into memory, for avatars and other PDS-supplied image URLs.
  *
- * This exists alongside the ATProto layer rather than inside it because
- * fetching an avatar is not protocol-shaped work: the PDS hands over an
- * ordinary URL and what comes back is a JPEG. AGENTS.md §8 says protocol logic
- * belongs in Wolfram; this is not that, and routing it through the SDK would
- * mean either exposing its transport or serialising image loads behind the one
- * request the session worker is allowed to have in flight.
+ * This is a thin layer over Wolfram's generic GET (wf_http_get_limited) and
+ * contains no transport code: https-only enforcement, the redirect cap, the
+ * timeout, the user agent, the response size ceiling, the CA bundle and the
+ * handshake RNG are all Wolfram client settings, applied once in
+ * cobalt_http_init(). What lives here is only what is Cobalt's own: the values
+ * for those settings, and a short-lived body cache so the TV and GamePad image
+ * caches share one download (see http.c).
  *
- * It does have to repeat two platform details Wolfram also handles, because
- * they are properties of this console rather than of the SDK:
+ * It uses a Wolfram client of its own with no bearer token, so the signed-in
+ * account's credentials can never be sent to an image host.
  *
- *   - the bundled CA bundle, since there is no system trust store; and
- *   - the application's DRBG for the handshake, since devkitPro's mbedTLS
- *     seeds itself from the tick counter (see util/rng.h).
- *
- * Getting either wrong here would mean image loads are the one unprotected
- * path in an app that is careful everywhere else.
+ * Needs a Wolfram build (COBALT_HAS_WOLFRAM); without one every fetch fails,
+ * and image loads degrade to placeholders.
  */
 
 #include <stdbool.h>
@@ -37,7 +34,8 @@ typedef struct {
 /*
  * `ca_path` may be NULL, in which case requests will fail verification on this
  * platform — the caller is expected to have refused to come up already, but
- * this does not assume it. Safe to call more than once.
+ * this does not assume it. Returns false if the TLS RNG hook cannot be
+ * installed. Safe to call more than once.
  */
 bool cobalt_http_init(const char *ca_path);
 void cobalt_http_shutdown(void);
@@ -47,8 +45,8 @@ void cobalt_http_shutdown(void);
  *
  * The cap is not a nicety. The URL comes from a PDS response, so a hostile or
  * compromised one could point at an endless stream; without a ceiling the
- * console would allocate until it died. The transfer is aborted as soon as the
- * limit is crossed rather than after the fact.
+ * console would allocate until it died. Wolfram aborts the transfer as soon as
+ * the limit is crossed rather than after the fact.
  *
  * Blocking. Call from a worker thread, never from the frame loop.
  * On true, free with cobalt_http_response_free.
