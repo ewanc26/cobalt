@@ -3,6 +3,7 @@
 
 #ifdef COBALT_HAS_WOLFRAM
 #include <wolfram/feed_typed.h>
+#include <wolfram/post_view_typed.h>
 #include <wolfram/thread_typed.h>
 #endif
 
@@ -405,172 +406,74 @@ cobalt_feed_set_quote(cobalt_post *post, const char *display_name,
 
 #ifdef COBALT_HAS_WOLFRAM
 
-/* Read a string member, returning NULL rather than an empty string when it is
- * absent, so callers can tell "not sent" from "sent empty". */
-static const char *
-json_string(const cJSON *object, const char *key)
-{
-   const cJSON *item = cJSON_GetObjectItemCaseSensitive(object, key);
-   return (item && cJSON_IsString(item) && item->valuestring) ? item->valuestring
-                                                              : NULL;
-}
-
-static int
-json_int(const cJSON *object, const char *key)
-{
-   const cJSON *item = cJSON_GetObjectItemCaseSensitive(object, key);
-   return (item && cJSON_IsNumber(item)) ? item->valueint : 0;
-}
-
-void
-cobalt_post_parse_facets(cobalt_post *post, const void *facets_json)
+/* Fill post->facets from a typed record. Facets that fall outside the
+ * (possibly truncated) text are dropped. */
+static void
+apply_facets(cobalt_post *post, const wf_post_record *rec)
 {
    post->facet_count = 0;
-   const cJSON *facets = (const cJSON *) facets_json;
-   if (!facets || !cJSON_IsArray(facets)) {
-      return;
-   }
    const int text_len = (int) strlen(post->text);
-   const cJSON *facet;
-   cJSON_ArrayForEach(facet, facets) {
+   for (size_t i = 0; i < rec->facet_count; i++) {
       if (post->facet_count >= COBALT_POST_FACETS_MAX) {
          break;
       }
-      const cJSON *index = cJSON_GetObjectItemCaseSensitive(facet, "index");
-      const cJSON *features = cJSON_GetObjectItemCaseSensitive(facet, "features");
-      if (!index || !cJSON_IsArray(features)) {
-         continue;
-      }
-      int start = json_int(index, "byteStart");
-      int end = json_int(index, "byteEnd");
+      const wf_post_facet *src = &rec->facets[i];
+      int start = src->byte_start;
+      int end = src->byte_end;
       if (end > text_len) {
          end = text_len;
       }
       if (start < 0 || start >= end) {
          continue;
       }
-      /* A facet may carry several features; the first one we know decides. */
-      const cJSON *feature;
-      cJSON_ArrayForEach(feature, features) {
-         const char *type = json_string(feature, "$type");
-         if (!type) {
-            continue;
-         }
-         cobalt_facet_kind kind;
-         if (strstr(type, "richtext.facet#link")) {
-            kind = COBALT_FACET_LINK;
-         } else if (strstr(type, "richtext.facet#mention")) {
-            kind = COBALT_FACET_MENTION;
-         } else if (strstr(type, "richtext.facet#tag")) {
-            kind = COBALT_FACET_TAG;
-         } else {
-            continue;
-         }
-         cobalt_post_facet *f = &post->facets[post->facet_count++];
-         f->kind = kind;
-         f->start = start;
-         f->end = end;
-         const char *target =
-            kind == COBALT_FACET_LINK ? json_string(feature, "uri")
-            : kind == COBALT_FACET_MENTION ? json_string(feature, "did")
-            : json_string(feature, "tag");
-         cobalt_feed_copy_text(f->target, sizeof(f->target), target ? target : "");
-         break;
-      }
+      cobalt_post_facet *f = &post->facets[post->facet_count++];
+      f->kind = src->kind == WF_POST_FACET_LINK      ? COBALT_FACET_LINK
+                : src->kind == WF_POST_FACET_MENTION ? COBALT_FACET_MENTION
+                                                     : COBALT_FACET_TAG;
+      f->start = start;
+      f->end = end;
+      cobalt_feed_copy_text(f->target, sizeof(f->target),
+                            src->target ? src->target : "");
    }
-}
-
-/* Fill post->images[]/image_count from an app.bsky.embed.images#view. */
-static void
-fill_embed_images(cobalt_post *post, const cJSON *images_view)
-{
-   const cJSON *images = cJSON_GetObjectItemCaseSensitive(images_view, "images");
-   if (!cJSON_IsArray(images)) {
-      return;
-   }
-
-   const cJSON *item;
-   cJSON_ArrayForEach(item, images) {
-      if (post->image_count >= COBALT_POST_IMAGES_MAX) {
-         break;
-      }
-      const char *thumb = json_string(item, "thumb");
-      if (!thumb || !thumb[0]) {
-         continue;
-      }
-
-      cobalt_post_image *img = &post->images[post->image_count];
-      snprintf(img->thumb, sizeof(img->thumb), "%s", thumb);
-
-      const char *alt = json_string(item, "alt");
-      cobalt_feed_copy_text(img->alt, sizeof(img->alt), alt ? alt : "");
-
-      const cJSON *ratio = cJSON_GetObjectItemCaseSensitive(item, "aspectRatio");
-      img->aspect_w = json_int(ratio, "width");
-      img->aspect_h = json_int(ratio, "height");
-
-      post->image_count++;
-   }
-}
-
-/* Fill post->link from an app.bsky.embed.external#view. */
-static void
-fill_embed_external(cobalt_post *post, const cJSON *external_view)
-{
-   const cJSON *external =
-      cJSON_GetObjectItemCaseSensitive(external_view, "external");
-   const char *uri = json_string(external, "uri");
-   if (!uri || !uri[0]) {
-      return;
-   }
-
-   snprintf(post->link.uri, sizeof(post->link.uri), "%s", uri);
-
-   const char *title = json_string(external, "title");
-   cobalt_feed_copy_text(post->link.title, sizeof(post->link.title),
-                         title ? title : "");
-   const char *desc = json_string(external, "description");
-   cobalt_feed_copy_text(post->link.description, sizeof(post->link.description),
-                         desc ? desc : "");
-   const char *thumb = json_string(external, "thumb");
-   snprintf(post->link.thumb, sizeof(post->link.thumb), "%s", thumb ? thumb : "");
 }
 
 /*
- * Populate the drawable media (images, link card) from a post's embed.
+ * Populate the drawable media (images, link card) and the quote from a typed
+ * embed. The bracket note is derived from the embed's own $type.
  *
- * `recordWithMedia` carries its media under a nested "media" object rather
- * than at the embed's own top level, so the $type driving the switch below is
- * read from there instead when that's the shape in hand. A pure quote or a
- * video embed leaves both post->image_count and post->link.uri empty — the
- * bracket note cobalt_feed_embed_note produced is the only thing shown for
- * those, same as before this function existed.
+ * A pure quote or a video embed leaves both post->image_count and
+ * post->link.uri empty, so the bracket note is the only thing shown for those.
  */
 static void
-fill_embed_media(cobalt_post *post, const cJSON *embed)
+apply_embed(cobalt_post *post, const wf_post_embed *embed)
 {
-   if (!embed) {
-      return;
+   snprintf(post->embed_note, sizeof(post->embed_note), "%s",
+            cobalt_feed_embed_note(embed->type));
+
+   for (size_t i = 0; i < embed->image_count; i++) {
+      if (post->image_count >= COBALT_POST_IMAGES_MAX) {
+         break;
+      }
+      const wf_post_embed_image *src = &embed->images[i];
+      cobalt_post_image *img = &post->images[post->image_count];
+      snprintf(img->thumb, sizeof(img->thumb), "%s", src->thumb);
+      cobalt_feed_copy_text(img->alt, sizeof(img->alt), src->alt ? src->alt : "");
+      img->aspect_w = src->width;
+      img->aspect_h = src->height;
+      post->image_count++;
    }
 
-   const char *type = json_string(embed, "$type");
-   const cJSON *media = embed;
-
-   if (type && strncmp(type, "app.bsky.embed.recordWithMedia",
-                       strlen("app.bsky.embed.recordWithMedia")) == 0) {
-      media = cJSON_GetObjectItemCaseSensitive(embed, "media");
-      type = json_string(media, "$type");
-   }
-   if (!type) {
-      return;
-   }
-
-   if (strncmp(type, "app.bsky.embed.images", strlen("app.bsky.embed.images")) ==
-       0) {
-      fill_embed_images(post, media);
-   } else if (strncmp(type, "app.bsky.embed.external",
-                      strlen("app.bsky.embed.external")) == 0) {
-      fill_embed_external(post, media);
+   if (embed->has_external) {
+      snprintf(post->link.uri, sizeof(post->link.uri), "%s", embed->external_uri);
+      cobalt_feed_copy_text(post->link.title, sizeof(post->link.title),
+                            embed->external_title ? embed->external_title : "");
+      cobalt_feed_copy_text(post->link.description,
+                            sizeof(post->link.description),
+                            embed->external_description
+                               ? embed->external_description
+                               : "");
+      snprintf(post->link.thumb, sizeof(post->link.thumb), "%s",
+               embed->external_thumb ? embed->external_thumb : "");
    }
 
    /* Real media is now drawn, so the bracket note that used to stand in for
@@ -579,68 +482,88 @@ fill_embed_media(cobalt_post *post, const cJSON *embed)
    if (post->image_count > 0 || post->link.uri[0]) {
       post->embed_note[0] = '\0';
    }
+
+   if (embed->has_quote) {
+      cobalt_feed_set_quote(post, embed->quote_author_display_name,
+                            embed->quote_author_handle, embed->quote_text);
+   }
 }
 
-/*
- * `record#view` carries { record: viewRecord }, `recordWithMedia#view` nests
- * that one level deeper under record.record. Only a viewRecord is drawable;
- * viewNotFound, viewBlocked and viewDetached keep the "[quote]" note.
- */
+/* The embed arrives as an open cJSON subtree; Wolfram flattens it. A failed
+ * read (allocation) leaves the post without media or note rather than
+ * half-filled. */
 static void
-fill_embed_quote(cobalt_post *post, const cJSON *embed)
+fill_embed(cobalt_post *post, const cJSON *embed_json)
 {
-   const cJSON *rec = cJSON_GetObjectItemCaseSensitive(embed, "record");
-   const char *type = json_string(embed, "$type");
-   if (type && strncmp(type, "app.bsky.embed.recordWithMedia",
-                       strlen("app.bsky.embed.recordWithMedia")) == 0) {
-      rec = rec ? cJSON_GetObjectItemCaseSensitive(rec, "record") : NULL;
-   }
-   if (!rec) {
+   if (!embed_json) {
       return;
    }
-   const char *rtype = json_string(rec, "$type");
-   if (!rtype || strncmp(rtype, "app.bsky.embed.record#viewRecord",
-                         strlen("app.bsky.embed.record#viewRecord")) != 0) {
+   wf_post_embed embed;
+   if (wf_post_embed_from_json(embed_json, &embed) != WF_OK) {
       return;
    }
-   const cJSON *author = cJSON_GetObjectItemCaseSensitive(rec, "author");
-   const cJSON *value = cJSON_GetObjectItemCaseSensitive(rec, "value");
-   if (!author) {
-      return;
+   apply_embed(post, &embed);
+   wf_post_embed_free(&embed);
+}
+
+/* Text, facets and age from a record. `indexed_at` is the fallback timestamp:
+ * the record's own createdAt is when the author says they posted, which is
+ * what every other client shows. Returns the record's thread root through
+ * `root` for callers that want it (a thread node carries its reply ref inside
+ * the record). */
+static void
+fill_record(cobalt_post *post, const cJSON *record_json, const char *indexed_at,
+            int64_t now, wf_post_reply_root *root)
+{
+   wf_post_record rec;
+   if (wf_post_record_from_json(record_json, &rec) != WF_OK) {
+      memset(&rec, 0, sizeof(rec));
    }
-   cobalt_feed_set_quote(post, json_string(author, "displayName"),
-                         json_string(author, "handle"),
-                         value ? json_string(value, "text") : NULL);
+
+   /* A post with no text is legitimate — an image-only post — so a missing
+    * field is not an error. */
+   cobalt_feed_copy_text(post->text, sizeof(post->text), rec.text ? rec.text : "");
+   apply_facets(post, &rec);
+
+   const char *created = rec.created_at ? rec.created_at : indexed_at;
+   int64_t epoch = 0;
+   if (created && cobalt_time_parse_rfc3339(created, &epoch) && now > 0) {
+      cobalt_time_relative(epoch, now, post->age, sizeof(post->age));
+   } else {
+      /* An unparseable timestamp, or a console with no usable clock. Blank is
+       * honest; a wrong age is not. */
+      post->age[0] = '\0';
+   }
+
+   if (root) {
+      *root = rec.reply_root;
+      memset(&rec.reply_root, 0, sizeof(rec.reply_root));
+   }
+   wf_post_record_free(&rec);
 }
 
 /* Who reposted this, if the item is in the feed for that reason. */
 static void
-fill_reason(cobalt_post *post, const cJSON *reason)
+fill_reason(cobalt_post *post, const cJSON *reason_json)
 {
    post->reposted_by[0] = '\0';
-   if (!reason) {
+
+   wf_post_reason reason;
+   if (wf_post_reason_from_json(reason_json, &reason) != WF_OK) {
       return;
    }
-
-   const char *type = json_string(reason, "$type");
-   if (!type || strncmp(type, "app.bsky.feed.defs#reasonRepost", 31) != 0) {
-      /* reasonPin and anything added later are not attributions, so they get
-       * no banner rather than a misleading one. */
-      return;
+   /* reasonPin and anything added later are not attributions, so they get no
+    * banner rather than a misleading one. */
+   if (reason.is_repost) {
+      const char *name = reason.by_display_name;
+      if (!name || name[0] == '\0') {
+         name = reason.by_handle;
+      }
+      if (name) {
+         cobalt_feed_copy_text(post->reposted_by, sizeof(post->reposted_by), name);
+      }
    }
-
-   const cJSON *by = cJSON_GetObjectItemCaseSensitive(reason, "by");
-   if (!by) {
-      return;
-   }
-
-   const char *name = json_string(by, "displayName");
-   if (!name || name[0] == '\0') {
-      name = json_string(by, "handle");
-   }
-   if (name) {
-      cobalt_feed_copy_text(post->reposted_by, sizeof(post->reposted_by), name);
-   }
+   wf_post_reason_free(&reason);
 }
 
 static void
@@ -663,31 +586,9 @@ fill_from_view(cobalt_post *post, const wf_agent_post_view *view, int64_t now)
    snprintf(post->avatar, sizeof(post->avatar), "%s",
             view->author.avatar ? view->author.avatar : "");
 
-   /* The post text lives in the record, which Wolfram keeps as raw JSON
-    * because a record can be any shape. A post with no text is legitimate —
-    * an image-only post — so a missing field is not an error. */
-   const char *text = json_string(view->record, "text");
-   cobalt_feed_copy_text(post->text, sizeof(post->text), text ? text : "");
-   cobalt_post_parse_facets(post, cJSON_GetObjectItemCaseSensitive(view->record, "facets"));
-
-   /*
-    * Prefer the record's own createdAt over indexedAt: it is when the author
-    * says they posted, which is what every other client shows. Fall back to
-    * indexedAt when the record does not carry one.
-    */
-   const char *created = json_string(view->record, "createdAt");
-   if (!created) {
-      created = view->indexed_at;
-   }
-
-   int64_t epoch = 0;
-   if (created && cobalt_time_parse_rfc3339(created, &epoch) && now > 0) {
-      cobalt_time_relative(epoch, now, post->age, sizeof(post->age));
-   } else {
-      /* An unparseable timestamp, or a console with no usable clock. Blank is
-       * honest; a wrong age is not. */
-      post->age[0] = '\0';
-   }
+   /* The record is open-shaped JSON that Wolfram keeps raw; the typed reader
+    * flattens text, facets and timestamp. */
+   fill_record(post, view->record, view->indexed_at, now, NULL);
 
    post->reply_count = view->has_reply_count ? view->reply_count : 0;
    post->repost_count = view->has_repost_count ? view->repost_count : 0;
@@ -702,12 +603,7 @@ fill_from_view(cobalt_post *post, const wf_agent_post_view *view, int64_t now)
    snprintf(post->viewer_repost, sizeof(post->viewer_repost), "%s",
             view->viewer.repost ? view->viewer.repost : "");
 
-   if (view->embed) {
-      snprintf(post->embed_note, sizeof(post->embed_note), "%s",
-               cobalt_feed_embed_note(json_string(view->embed, "$type")));
-      fill_embed_media(post, view->embed);
-      fill_embed_quote(post, view->embed);
-   }
+   fill_embed(post, view->embed);
 
    /* Assume the post is its own root; a reply overwrites this below.
     * memcpy rather than snprintf: source and destination are members of the
@@ -718,27 +614,17 @@ fill_from_view(cobalt_post *post, const wf_agent_post_view *view, int64_t now)
 }
 
 /*
- * Pull the thread root out of a replyRef ({ root: {uri,cid}, parent: {...} }).
- * Leaves the post as its own root when the ref is absent or malformed, which
- * is the correct reading for a top-level post and a safe fallback otherwise —
- * a reply naming itself as root is wrong, but a reply naming a *guessed* root
- * would be wrong and hard to notice.
+ * Apply a thread root read by Wolfram. Leaves the post as its own root when
+ * there is none, which is the correct reading for a top-level post and a safe
+ * fallback otherwise — a reply naming itself as root is wrong, but a reply
+ * naming a *guessed* root would be wrong and hard to notice.
  */
 static void
-fill_root(cobalt_post *post, const cJSON *reply_ref)
+apply_root(cobalt_post *post, const wf_post_reply_root *root)
 {
-   if (!reply_ref) {
-      return;
-   }
-   const cJSON *root = cJSON_GetObjectItemCaseSensitive(reply_ref, "root");
-   if (!root) {
-      return;
-   }
-   const char *uri = json_string(root, "uri");
-   const char *cid = json_string(root, "cid");
-   if (uri && cid) {
-      snprintf(post->root_uri, sizeof(post->root_uri), "%s", uri);
-      snprintf(post->root_cid, sizeof(post->root_cid), "%s", cid);
+   if (root && root->uri && root->cid) {
+      snprintf(post->root_uri, sizeof(post->root_uri), "%s", root->uri);
+      snprintf(post->root_cid, sizeof(post->root_cid), "%s", root->cid);
    }
 }
 
@@ -781,7 +667,11 @@ cobalt_feed_append_from_wolfram(cobalt_feed *feed,
       fill_reason(post, item->reason);
       /* The feed sends the reply ref alongside the post rather than inside the
        * record, so it is read from the item. */
-      fill_root(post, item->reply);
+      wf_post_reply_root root;
+      if (wf_post_reply_root_from_json(item->reply, &root) == WF_OK) {
+         apply_root(post, &root);
+         wf_post_reply_root_free(&root);
+      }
 
       feed->count++;
       added++;
@@ -872,18 +762,8 @@ fill_from_thread_post(cobalt_post *post, const wf_agent_thread_post *view,
    snprintf(post->avatar, sizeof(post->avatar), "%s",
             view->author.avatar ? view->author.avatar : "");
 
-   const char *text = json_string(view->record, "text");
-   cobalt_feed_copy_text(post->text, sizeof(post->text), text ? text : "");
-   cobalt_post_parse_facets(post, cJSON_GetObjectItemCaseSensitive(view->record, "facets"));
-
-   const char *created = json_string(view->record, "createdAt");
-   if (!created) {
-      created = view->indexed_at;
-   }
-   int64_t epoch = 0;
-   if (created && cobalt_time_parse_rfc3339(created, &epoch) && now > 0) {
-      cobalt_time_relative(epoch, now, post->age, sizeof(post->age));
-   }
+   wf_post_reply_root root;
+   fill_record(post, view->record, view->indexed_at, now, &root);
 
    /* A thread post view always sends its counts, unlike a feed view where they
     * are optional, so there are no has_* flags to consult here. */
@@ -897,18 +777,14 @@ fill_from_thread_post(cobalt_post *post, const wf_agent_thread_post *view,
    snprintf(post->viewer_repost, sizeof(post->viewer_repost), "%s",
             view->viewer_repost ? view->viewer_repost : "");
 
-   if (view->embed) {
-      snprintf(post->embed_note, sizeof(post->embed_note), "%s",
-               cobalt_feed_embed_note(json_string(view->embed, "$type")));
-      fill_embed_media(post, view->embed);
-      fill_embed_quote(post, view->embed);
-   }
+   fill_embed(post, view->embed);
 
    memcpy(post->root_uri, post->uri, sizeof(post->root_uri));
    memcpy(post->root_cid, post->cid, sizeof(post->root_cid));
    /* A thread node carries its reply ref inside the record, unlike a feed
     * item, which carries it alongside. */
-   fill_root(post, cJSON_GetObjectItemCaseSensitive(view->record, "reply"));
+   apply_root(post, &root);
+   wf_post_reply_root_free(&root);
 }
 
 /* Append one node. Returns false once the buffer is full. */
