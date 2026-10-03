@@ -268,7 +268,7 @@ host-side checks before opening a pull request.
 
 ## Licence
 
-Cobalt is licensed under the GNU General Public License v3.0. See
+Cobalt is licensed under the GNU Affero General Public License v3.0. See
 [LICENSE](LICENSE).
 
 Bundled fonts and icon assets have their own licences where applicable; see
