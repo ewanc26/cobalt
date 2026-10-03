@@ -44,6 +44,9 @@ typedef struct {
     * open (a follow). */
    char subject_uri[COBALT_POST_URI_MAX];
 
+   /* The account behind the notification, so a follow can open their profile. */
+   char actor_did[96];
+
    bool unread;
 } cobalt_notification;
 

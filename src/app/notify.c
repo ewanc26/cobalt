@@ -94,12 +94,15 @@ cobalt_notify_view_update(cobalt_notify_view *view, const cobalt_input *in)
    if (!busy && view->selected < list->count &&
        cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
       const cobalt_notification *item = &list->items[view->selected];
-      /* A follow has nothing to open. Doing nothing is better than opening
-       * something arbitrary, and the row already says what happened. */
       if (item->subject_uri[0]) {
          COBALT_LOGI("notify: opening %s", item->subject_uri);
          cobalt_session_begin_thread(item->subject_uri);
          return COBALT_NOTIFY_OPEN_THREAD;
+      }
+      /* A follow has no post, so the useful thing is who followed. */
+      if (item->actor_did[0] && cobalt_session_begin_profile(item->actor_did)) {
+         COBALT_LOGI("notify: opening profile %s", item->actor_did);
+         return COBALT_NOTIFY_OPEN_PROFILE;
       }
    }
 
