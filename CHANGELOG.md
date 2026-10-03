@@ -7,6 +7,9 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Added
+- Opening a follow notification now opens the new follower's profile instead of doing nothing.
+
 ### Fixed
 - After opening a hashtag or post search, going Home and choosing Timeline no longer shows the search results in place of your home timeline.
 
