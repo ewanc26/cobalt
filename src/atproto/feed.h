@@ -321,10 +321,6 @@ bool cobalt_thread_apply_repost(cobalt_thread *thread, const char *post_uri,
  * ellipsis if it did not fit. Exposed for testing — the truncation rule is the
  * part worth pinning down, since it runs over arbitrary post content.
  */
-/* Fill post->facets from a record's "facets" array (a cJSON array, or NULL).
- * Facets that fall outside the (possibly truncated) text are dropped. */
-void cobalt_post_parse_facets(cobalt_post *post, const void *facets_json);
-
 void cobalt_feed_copy_text(char *out, size_t out_size, const char *text);
 
 /*

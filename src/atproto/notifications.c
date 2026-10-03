@@ -3,6 +3,7 @@
 
 #ifdef COBALT_HAS_WOLFRAM
 #include <wolfram/agent.h>
+#include <wolfram/post_view_typed.h>
 #endif
 
 #include <stdio.h>
@@ -80,14 +81,6 @@ cobalt_notification_subject_is_self(const char *reason)
 
 #ifdef COBALT_HAS_WOLFRAM
 
-static const char *
-json_string(const cJSON *object, const char *key)
-{
-   const cJSON *item = cJSON_GetObjectItemCaseSensitive(object, key);
-   return (item && cJSON_IsString(item) && item->valuestring) ? item->valuestring
-                                                              : NULL;
-}
-
 int
 cobalt_notifications_append_from_wolfram(
    cobalt_notifications *out, const struct wf_agent_notification_list *list,
@@ -130,19 +123,20 @@ cobalt_notifications_append_from_wolfram(
                             cobalt_notification_summary(src->reason));
 
       /* A like has no words; a reply does. Both are normal. */
-      const char *text = json_string(src->record, "text");
-      if (text) {
-         cobalt_feed_copy_text(item->text, sizeof(item->text), text);
+      wf_post_record rec;
+      if (wf_post_record_from_json(src->record, &rec) != WF_OK) {
+         memset(&rec, 0, sizeof(rec));
+      }
+      if (rec.text) {
+         cobalt_feed_copy_text(item->text, sizeof(item->text), rec.text);
       }
 
-      const char *created = json_string(src->record, "createdAt");
-      if (!created) {
-         created = src->indexed_at;
-      }
+      const char *created = rec.created_at ? rec.created_at : src->indexed_at;
       int64_t epoch = 0;
       if (created && cobalt_time_parse_rfc3339(created, &epoch) && now > 0) {
          cobalt_time_relative(epoch, now, item->age, sizeof(item->age));
       }
+      wf_post_record_free(&rec);
 
       const char *subject = cobalt_notification_subject_is_self(src->reason)
                                ? src->uri
