@@ -313,7 +313,8 @@ cobalt_header_height(cobalt_render *r)
    }
    const cobalt_metrics *m = r->m;
    return m->pad_edge + TTF_FontLineSkip(r->fonts[COBALT_FONT_TITLE]) - m->line_gap +
-          TTF_FontLineSkip(r->fonts[COBALT_FONT_CAPTION]) + m->gap / 2;
+          TTF_FontLineSkip(r->fonts[COBALT_FONT_CAPTION]) + m->gap / 2 +
+          (m->width < 1000 ? 10 : 0);
 }
 
 int
@@ -480,7 +481,7 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
    const int line = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
    const int pill_h = line + 12;
    const int padx = pill_h / 3 + 2;
-   const int gap = 8;
+   const int gap = 16;
    const int right = m->width - m->pad_edge;
 
    hint_seg segs[16];
@@ -536,7 +537,7 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
       int total = 0;
       for (int i = 0; i < header_n; i++) total += segs[i].w + (i ? gap : 0);
       int x = right - total;
-      const int y = 56;
+      const int y = m->pad_edge + pill_h + 6;
       for (int i = 0; i < header_n; i++) {
          cobalt_draw_pill(r, segs[i].key, segs[i].label, x, y);
          x += segs[i].w + gap;
