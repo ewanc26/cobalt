@@ -62,9 +62,14 @@ jobs:
           path: wolfram
       - name: Install extra dependencies
         run: |
-          dkp-pacman -Syu --noconfirm
-          dkp-pacman -S --noconfirm --needed wiiu-sdl2 wiiu-sdl2_ttf wiiu-sdl2_image \
-            wiiu-curl wiiu-mbedtls
+          # pkg.devkitpro.org intermittently answers 403 to CI runners.
+          for attempt in 1 2 3 4; do
+            dkp-pacman -Syu --noconfirm &&
+              dkp-pacman -S --noconfirm --needed wiiu-sdl2 wiiu-sdl2_ttf wiiu-sdl2_image \
+                wiiu-curl wiiu-mbedtls && break
+            [ "$attempt" = 4 ] && exit 1
+            sleep $((attempt * 15))
+          done
           apt-get update && apt-get install -y --no-install-recommends cmake openssl curl git make
       - name: Build Wolfram for Wii U
         working-directory: wolfram
