@@ -1,0 +1,89 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    env:
+      E2E_BUILD: ${{ github.workspace }}/wolfram/build-host
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: cobalt
+      - uses: actions/checkout@v4
+        with:
+          repository: ewanc26/wolfram
+          path: wolfram
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config libcurl4-openssl-dev \
+            libcjson-dev libmbedtls-dev libmicrohttpd-dev libsdl2-dev libsdl2-ttf-dev libsdl2-image-dev \
+            fonts-dejavu-core
+      - name: Build Wolfram for the host
+        working-directory: wolfram
+        run: |
+          cmake -S . -B build-host -DWOLFRAM_BUILD_TESTS=OFF -DWOLFRAM_BUILD_EXAMPLES=OFF \
+            -DWOLFRAM_BUILD_TEST_HTTPD=ON
+          cmake --build build-host -j4 --target wolfram
+      - name: Unit tests and warnings sweep
+        working-directory: cobalt
+        run: make test
+      - name: End-to-end
+        working-directory: cobalt
+        run: make -C tests e2e
+      - name: Snapshots
+        working-directory: cobalt
+        run: make -C tests snapshot
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: snapshots
+          path: cobalt/tests/build/snapshot
+          if-no-files-found: ignore
+
+  wuhb:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitppc:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: cobalt
+      - uses: actions/checkout@v4
+        with:
+          repository: ewanc26/wolfram
+          path: wolfram
+      - name: Install extra dependencies
+        run: |
+          # pkg.devkitpro.org intermittently answers 403 to CI runners.
+          for attempt in 1 2 3 4; do
+            dkp-pacman -Syu --noconfirm &&
+              dkp-pacman -S --noconfirm --needed wiiu-sdl2 wiiu-sdl2_ttf wiiu-sdl2_image \
+                wiiu-curl wiiu-mbedtls && break
+            [ "$attempt" = 4 ] && exit 1
+            sleep $((attempt * 15))
+          done
+          apt-get update && apt-get install -y --no-install-recommends cmake openssl curl git make
+      - name: Build Wolfram for Wii U
+        working-directory: wolfram
+        run: |
+          cmake -S . -B build-wiiu \
+            -DCMAKE_TOOLCHAIN_FILE=$PWD/.devdeps/wiiu.cmake \
+            -DWOLFRAM_BUILD_WIIU=ON \
+            -DWOLFRAM_BUILD_TESTS=OFF \
+            -DWOLFRAM_BUILD_EXAMPLES=OFF
+          cmake --build build-wiiu -j4 --target wolfram
+      - name: Bundle
+        working-directory: cobalt
+        run: make bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cobalt-wuhb
+          path: cobalt/dist/wiiu/apps/cobalt.wuhb

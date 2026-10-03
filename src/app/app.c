@@ -86,6 +86,8 @@ struct cobalt_app {
    int feeds_scroll;
    /* The shared feed window holds a custom feed, not the home timeline. */
    bool viewing_custom_feed;
+   /* ...or the results of a post search, which also must not pass for home. */
+   bool viewing_search;
    /* Where B from the profile screen returns to. */
    cobalt_screen profile_return;
    /* profile_return as it was when a followers/following list was opened. */
@@ -288,6 +290,17 @@ cobalt_app_screen(const cobalt_app *app)
    return app ? app->screen : COBALT_SCREEN_HOME;
 }
 
+void
+cobalt_app_timeline_position(const cobalt_app *app, int *selected, int *scroll)
+{
+   if (selected) {
+      *selected = app ? app->timeline.selected : 0;
+   }
+   if (scroll) {
+      *scroll = app ? app->timeline.scroll : 0;
+   }
+}
+
 int
 cobalt_app_home_selection(const cobalt_app *app)
 {
@@ -332,10 +345,12 @@ activate(cobalt_app *app, int index)
          /* Only fetch if there is nothing to show. Re-entering the screen
           * should not throw away a scroll position the user was partway
           * through; refresh is on + and is deliberately explicit. */
-         if (cobalt_session_feed()->count == 0 || app->viewing_custom_feed) {
+         if (cobalt_session_feed()->count == 0 || app->viewing_custom_feed ||
+             app->viewing_search) {
             cobalt_timeline_rewind(&app->timeline);
             cobalt_session_begin_timeline(false);
             app->viewing_custom_feed = false;
+            app->viewing_search = false;
          }
          COBALT_LOGI("menu: opened timeline");
          break;
@@ -430,6 +445,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
             app->screen = COBALT_SCREEN_TIMELINE;
             cobalt_session_begin_timeline(false);
             app->viewing_custom_feed = false;
+            app->viewing_search = false;
 
             char message[COBALT_MESSAGE_MAX];
             if (result->message[0]) {
@@ -457,6 +473,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
             cobalt_timeline_rewind(&app->timeline);
             cobalt_session_begin_timeline(false);
             app->viewing_custom_feed = false;
+            app->viewing_search = false;
          } else {
             /* A failed resume is not an error the user asked for, so it lands
              * on the home screen as a notice rather than throwing them into
@@ -498,6 +515,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
             } else {
                cobalt_session_begin_timeline(false);
                app->viewing_custom_feed = false;
+            app->viewing_search = false;
                cobalt_timeline_rewind(&app->timeline);
             }
             cobalt_compose_init(&app->compose);
@@ -713,6 +731,7 @@ update_feeds(cobalt_app *app, const cobalt_input *in)
       cobalt_timeline_rewind(&app->timeline);
       cobalt_session_begin_feed(e.uri, false);
       app->viewing_custom_feed = true;
+      app->viewing_search = false;
       app->screen = COBALT_SCREEN_TIMELINE;
    }
 }
@@ -844,6 +863,7 @@ popup_choose(cobalt_app *app, int index)
          snprintf(query, sizeof(query), "#%s", it->arg);
          if (cobalt_session_begin_search_posts(query, false)) {
             cobalt_timeline_rewind(&app->timeline);
+            app->viewing_search = true;
             app->screen = COBALT_SCREEN_TIMELINE;
             cobalt_popup_close(&app->popup);
          }
@@ -1064,6 +1084,11 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                app->thread_return = COBALT_SCREEN_NOTIFICATIONS;
                app->screen = COBALT_SCREEN_THREAD;
                break;
+            case COBALT_NOTIFY_OPEN_PROFILE:
+               cobalt_profile_view_rewind(&app->profile);
+               app->profile_return = COBALT_SCREEN_NOTIFICATIONS;
+               app->screen = COBALT_SCREEN_PROFILE;
+               break;
             case COBALT_NOTIFY_STAY:
             default:
                break;
@@ -1154,6 +1179,7 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             case COBALT_SEARCH_VIEW_OPEN_POSTS:
                cobalt_timeline_rewind(&app->timeline);
+               app->viewing_search = true;
                app->screen = COBALT_SCREEN_TIMELINE;
                break;
             case COBALT_SEARCH_VIEW_STAY:

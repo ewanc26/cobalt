@@ -2,6 +2,7 @@
 #include "atproto/session.h"
 #include "atproto/actors.h"
 #include "atproto/feed.h"
+#include "atproto/prefs.h"
 #include "atproto/notifications.h"
 #include "atproto/actor_profile.h"
 #include "cache/session_store.h"
@@ -141,6 +142,11 @@ static struct {
    /* Owned by the worker while a job runs; only touched off-thread when idle. */
    wf_agent *wf;
 #endif
+
+   /* Worker-only: the account's muted words and hide-reposts, fetched once per
+    * sign-in. */
+   cobalt_prefs prefs;
+   bool prefs_loaded;
 } s;
 
 /* --- pure helpers --- */
@@ -529,6 +535,7 @@ teardown_wf(void)
    if (s.wf) {
       wf_agent_free(s.wf);
       s.wf = NULL;
+      s.prefs_loaded = false;
    }
 }
 
@@ -595,6 +602,7 @@ run_login(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
    SDL_UnlockMutex(s.lock);
 
    s.wf = new_wf_agent(in->service);
+   s.prefs_loaded = false;
    if (!s.wf) {
       set_message(r, "Could not create the client.");
       return;
@@ -661,6 +669,7 @@ run_resume(cobalt_job_result *r, cobalt_auth_state *state)
    SDL_UnlockMutex(s.lock);
 
    s.wf = new_wf_agent(service);
+   s.prefs_loaded = false;
    if (!s.wf) {
       memset(&stored, 0, sizeof(stored));
       set_message(r, "Could not create the client.");
@@ -713,6 +722,27 @@ run_resume(cobalt_job_result *r, cobalt_auth_state *state)
  */
 #define TIMELINE_PAGE 20
 
+/* Fetch the saved preferences once per sign-in. Failure is not fatal: the
+ * feed is simply shown unfiltered. */
+static void
+ensure_prefs(void)
+{
+   if (s.prefs_loaded || !s.wf) {
+      return;
+   }
+   wf_actor_preferences p;
+   memset(&p, 0, sizeof(p));
+   const wf_status st = wf_agent_get_actor_prefs_typed(s.wf, &p);
+   if (st != WF_OK) {
+      COBALT_LOGW("session: getPreferences failed (%d); feed unfiltered", (int) st);
+      cobalt_prefs_clear(&s.prefs);
+      return;
+   }
+   cobalt_prefs_from_wolfram(&s.prefs, &p, cobalt_time_now());
+   wf_actor_preferences_free(&p);
+   s.prefs_loaded = true;
+}
+
 static void
 run_timeline(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
 {
@@ -755,13 +785,16 @@ run_timeline(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state
    /* Resolved once per page rather than per post: a feed rendered across a
     * second boundary showing two different "now" values would be worse than
     * one that is a moment stale. */
+   ensure_prefs();
    const int64_t now = cobalt_time_now();
 
    SDL_LockMutex(s.lock);
    if (!in->paging) {
       cobalt_feed_reset(&s.feed);
    }
+   const int before = s.feed.count;
    const int added = cobalt_feed_append_from_wolfram(&s.feed, &list, now);
+   cobalt_prefs_filter_feed(&s.prefs, &s.feed, before, true);
    /* A page that added nothing is the end as far as this client is concerned,
     * whatever cursor came back — otherwise a screen that pages on reaching the
     * last post would ask again immediately, and keep asking. */
@@ -831,13 +864,16 @@ run_feed(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
       return;
    }
 
+   ensure_prefs();
    const int64_t now = cobalt_time_now();
 
    SDL_LockMutex(s.lock);
    if (!in->paging) {
       cobalt_feed_reset(&s.feed);
    }
+   const int before = s.feed.count;
    const int added = cobalt_feed_append_from_wolfram(&s.feed, &list, now);
+   cobalt_prefs_filter_feed(&s.prefs, &s.feed, before, false);
    if (in->paging && added == 0) {
       s.feed.has_more = false;
       s.feed.cursor[0] = '\0';
