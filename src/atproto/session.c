@@ -412,6 +412,7 @@ describe_failure(cobalt_job_result *r, wf_status status, cobalt_job_kind kind)
          set_message(r, "The server did not answer in time. Try again.");
          break;
 
+      case WF_ERR_AUTH:
       case WF_ERR_HTTP:
          if (kind == COBALT_JOB_LOGIN) {
             set_message(r, "The server rejected those details. Check the handle "
@@ -689,7 +690,7 @@ run_resume(cobalt_job_result *r, cobalt_auth_state *state)
       /* A refresh JWT the server has rejected is never coming back, so do not
        * leave it on the card to fail again on the next boot. Transport failures
        * are different — those are worth retrying with the same credentials. */
-      if (status == WF_ERR_HTTP) {
+      if (status == WF_ERR_HTTP || status == WF_ERR_AUTH) {
          cobalt_session_store_clear();
       }
       return;
