@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-03
+
 ### Added
 - Opening a follow notification now opens the new follower's profile instead of doing nothing.
 - Your account's muted words (content and tags, expired ones skipped) and "hide reposts" for the home timeline are now honoured.
@@ -82,7 +84,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ewanc26/cobalt/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/ewanc26/cobalt/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/ewanc26/cobalt/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/ewanc26/cobalt/compare/v0.2.0...v0.3.0
