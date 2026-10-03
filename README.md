@@ -9,6 +9,13 @@ homebrew with devkitPro/WUT and SDL2.
 
 **Version 0.3.1**
 
+Cobalt exists because I looked at a Wii U's weak little PowerPC tri-core and
+decided that, somehow, it was going to post to Bluesky.
+
+That is not a metaphor for the project. I deliberately wanted to make AT
+Protocol work on hardware that was never designed for it, and I wanted to do
+it properly rather than turning the Wii U into a thin browser target.
+
 Cobalt treats the Wii U as the platform it is rather than as a browser target:
 the TV and GamePad are both first-class displays, with support for normal
 two-screen use and Off-TV Play.
