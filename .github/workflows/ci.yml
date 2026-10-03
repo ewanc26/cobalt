@@ -9,6 +9,7 @@ jobs:
   host-tests:
     runs-on: ubuntu-latest
     env:
+      E2E_BUILD: ${{ github.workspace }}/wolfram/build-host
       SDL_VIDEODRIVER: dummy
       SDL_AUDIODRIVER: dummy
     steps:
@@ -29,7 +30,8 @@ jobs:
       - name: Build Wolfram for the host
         working-directory: wolfram
         run: |
-          cmake -S . -B build-host -DWOLFRAM_BUILD_TESTS=OFF -DWOLFRAM_BUILD_EXAMPLES=OFF
+          cmake -S . -B build-host -DWOLFRAM_BUILD_TESTS=OFF -DWOLFRAM_BUILD_EXAMPLES=OFF \
+            -DWOLFRAM_BUILD_TEST_HTTPD=ON
           cmake --build build-host -j4 --target wolfram
       - name: Unit tests and warnings sweep
         working-directory: cobalt
