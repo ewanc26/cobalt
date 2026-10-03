@@ -177,6 +177,19 @@ main(int argc, char **argv)
    frame(COBALT_BTN_BACK);
    settle(10);
    frame(COBALT_BTN_ALT_Y);
+   settle(5);
+   shoot("timeline-menu");
+   frame(COBALT_BTN_BACK); settle(3);
+   frame(COBALT_BTN_DOWN); settle(3);
+   frame(COBALT_BTN_ALT_Y); settle(5);
+   shoot("timeline-menu-facets");
+   frame(COBALT_BTN_DOWN); frame(COBALT_BTN_DOWN); settle(3);
+   frame(COBALT_BTN_CONFIRM); settle(3);
+   shoot("timeline-menu-link");
+   frame(COBALT_BTN_BACK); settle(3);
+   frame(COBALT_BTN_UP); settle(3);
+   frame(COBALT_BTN_ALT_Y); settle(5);
+   frame(COBALT_BTN_CONFIRM);
    settle(40);
    shoot("profile");
 
