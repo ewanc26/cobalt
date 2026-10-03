@@ -164,6 +164,26 @@ main(int argc, char **argv)
       char nm[24]; snprintf(nm, sizeof nm, "timeline-%d", k);
       shoot(nm);
    }
+   /* Backing out of a thread must return to the same card, not the top. */
+   {
+      int sel0, scr0, sel1, scr1;
+      cobalt_app_timeline_position(g_app, &sel0, &scr0);
+      CHECK(sel0 > 0);
+      frame(COBALT_BTN_CONFIRM); settle(30);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_THREAD);
+      frame(COBALT_BTN_BACK); settle(10);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
+      cobalt_app_timeline_position(g_app, &sel1, &scr1);
+      CHECK(sel1 == sel0 && scr1 == scr0);
+      /* And through the More menu to a profile and back. */
+      frame(COBALT_BTN_ALT_Y); settle(5);
+      frame(COBALT_BTN_CONFIRM); settle(30);
+      frame(COBALT_BTN_BACK); settle(10);
+      cobalt_app_timeline_position(g_app, &sel1, &scr1);
+      printf("timeline position %d/%d -> %d/%d, screen %d\n", sel0, scr0, sel1, scr1,
+             (int) cobalt_app_screen(g_app));
+      CHECK(sel1 == sel0 && scr1 == scr0);
+   }
    for (int k = 0; k < 5; k++) { frame(COBALT_BTN_UP); settle(3); }
    settle(20);
 
