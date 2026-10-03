@@ -182,7 +182,7 @@ cobalt_popup_draw(cobalt_popup *p, cobalt_render *r, cobalt_surface_id surface)
    int px = p->panel.x + pad;
    if (!p->text_mode) {
       cobalt_draw_pill(r, "A", "Select", px, py);
-      px += cobalt_pill_width(r, "A", "Select") + pad / 2;
+      px += cobalt_pill_width(r, "A", "Select") + 16;
    }
    cobalt_draw_pill(r, "B", "Close", px, py);
 }
