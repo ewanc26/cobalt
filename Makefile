@@ -85,6 +85,10 @@ else
 	WOLFRAM_LIBS	:=
 endif
 
+ifeq ($(wildcard $(WOLFRAM_LIB)),)
+$(warning *** Wolfram is not built at $(WOLFRAM_LIB) -- building WITHOUT protocol support. Every ATProto call will fail at runtime. To fix: build Wolfram for Wii U first (see the comment above WOLFRAM_ROOT), then re-run make. ***)
+endif
+
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
@@ -259,6 +263,11 @@ run: all
 # identical key material. Cobalt reads it from sd:/wiiu/apps/cobalt/entropy.bin
 # (see src/util/entropy.h) and rotates it on every boot.
 bundle: all
+	@if [ -z "$(WOLFRAM_LIBS)" ]; then \
+		echo "bundle ... REFUSED: Wolfram is not linked — every ATProto call in this build would fail." >&2; \
+		echo "bundle ... Build it first (see the Wolfram comment in the Makefile), then re-run make bundle." >&2; \
+		exit 1; \
+	fi
 	@mkdir -p dist/wiiu/apps/$(TARGET)
 	@cp $(OUTPUT).wuhb dist/wiiu/apps/
 	@if [ ! -f "dist/wiiu/apps/$(TARGET)/entropy.bin" ]; then \
