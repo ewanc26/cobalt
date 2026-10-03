@@ -88,6 +88,7 @@ UNIT_SOURCES := \
 	$(SRC)/util/rng.c \
 	$(SRC)/util/timefmt.c \
 	$(SRC)/atproto/feed.c \
+	$(SRC)/atproto/prefs.c \
 	$(SRC)/app/timeline.c \
 	$(SRC)/app/thread.c \
 	$(SRC)/app/compose.c \

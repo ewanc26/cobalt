@@ -14,6 +14,7 @@
 #include "atproto/session.h"
 #include "atproto/feed.h"
 #include "atproto/notifications.h"
+#include "atproto/prefs.h"
 #include "cache/session_store.h"
 #include "ui/imagecache.h"
 #include "ui/keyboard.h"
@@ -764,6 +765,57 @@ test_feed_embeds(void)
    CHECK_STR(cobalt_feed_embed_note("app.bsky.embed.somethingNew#view"), "");
    CHECK_STR(cobalt_feed_embed_note(""), "");
    CHECK_STR(cobalt_feed_embed_note(NULL), "");
+}
+
+static void
+test_prefs(void)
+{
+   begin("muted words and hide reposts");
+
+   cobalt_prefs p;
+   cobalt_prefs_clear(&p);
+   CHECK(!cobalt_prefs_text_is_muted(&p, "anything", NULL, 0));
+   CHECK(!cobalt_prefs_add_word(&p, "", true, false));
+
+   CHECK(cobalt_prefs_add_word(&p, "cat", true, false));
+   CHECK(cobalt_prefs_text_is_muted(&p, "I like my Cat.", NULL, 0));
+   CHECK(cobalt_prefs_text_is_muted(&p, "cat", NULL, 0));
+   CHECK(!cobalt_prefs_text_is_muted(&p, "a category of things", NULL, 0));
+   CHECK(!cobalt_prefs_text_is_muted(&p, "concatenate", NULL, 0));
+
+   cobalt_prefs_clear(&p);
+   CHECK(cobalt_prefs_add_word(&p, "good morning", true, false));
+   CHECK(cobalt_prefs_text_is_muted(&p, "oh, GOOD MORNING all", NULL, 0));
+   CHECK(!cobalt_prefs_text_is_muted(&p, "good evening", NULL, 0));
+
+   cobalt_prefs_clear(&p);
+   CHECK(cobalt_prefs_add_word(&p, "#spoilers", false, true));
+   const char *tags[] = {"Spoilers"};
+   CHECK(cobalt_prefs_text_is_muted(&p, "text", tags, 1));
+   CHECK(!cobalt_prefs_text_is_muted(&p, "spoilers in text", NULL, 0));
+
+   static cobalt_feed feed;
+   memset(&feed, 0, sizeof(feed));
+   cobalt_prefs_clear(&p);
+   p.hide_reposts = true;
+   CHECK(cobalt_prefs_add_word(&p, "ban", true, false));
+   for (int i = 0; i < 4; i++) {
+      snprintf(feed.posts[i].text, sizeof(feed.posts[i].text), "post %d", i);
+   }
+   snprintf(feed.posts[1].text, sizeof(feed.posts[1].text), "a BAN here");
+   snprintf(feed.posts[2].reposted_by, sizeof(feed.posts[2].reposted_by), "someone");
+   feed.count = 4;
+
+   CHECK(cobalt_prefs_filter_feed(&p, &feed, 1, false) == 1);
+   CHECK(feed.count == 3);
+   CHECK_STR(feed.posts[1].text, "post 2");
+   CHECK_STR(feed.posts[1].reposted_by, "someone");
+   CHECK_STR(feed.posts[2].text, "post 3");
+
+   CHECK(cobalt_prefs_filter_feed(&p, &feed, 0, true) == 1);
+   CHECK(feed.count == 2);
+   CHECK_STR(feed.posts[0].text, "post 0");
+   CHECK_STR(feed.posts[1].text, "post 3");
 }
 
 static void
@@ -1886,6 +1938,7 @@ main(int argc, char **argv)
    test_feed_counts();
    test_feed_embeds();
    test_feed_link_domain();
+   test_prefs();
    test_actor_list_remove();
    test_interactions();
    test_delete_post_helpers();
