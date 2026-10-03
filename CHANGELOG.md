@@ -11,6 +11,9 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 - Opening a follow notification now opens the new follower's profile instead of doing nothing.
 - Your account's muted words (content and tags, expired ones skipped) and "hide reposts" for the home timeline are now honoured.
 
+### Changed
+- Image and avatar downloads go through Wolfram's generic GET instead of Cobalt's own libcurl client; https-only, redirect cap, timeout, size ceiling, CA bundle and TLS RNG are now Wolfram client settings. Needs a Wolfram with the fetch-policy setters (`wf_xrpc_client_set_https_only` and friends).
+
 ### Fixed
 - After opening a hashtag or post search, going Home and choosing Timeline no longer shows the search results in place of your home timeline.
 
