@@ -7,6 +7,17 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Added
+- Opening a follow notification now opens the new follower's profile instead of doing nothing.
+- Your account's muted words (content and tags, expired ones skipped) and "hide reposts" for the home timeline are now honoured.
+
+### Fixed
+- After opening a hashtag or post search, going Home and choosing Timeline no longer shows the search results in place of your home timeline.
+
+### Internal
+- CI builds the host tests, e2e and snapshots, and bundles the .wuhb in a devkitPro container.
+- A snapshot check that backing out of a thread or profile keeps the timeline selection and scroll.
+
 ## [0.3.2] - 2026-10-03
 
 ### Fixed

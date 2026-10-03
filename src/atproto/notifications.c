@@ -111,6 +111,8 @@ cobalt_notifications_append_from_wolfram(
       }
       cobalt_feed_copy_text(item->actor, sizeof(item->actor), display);
       snprintf(item->handle, sizeof(item->handle), "@%s", handle);
+      snprintf(item->actor_did, sizeof(item->actor_did), "%s",
+               src->author.did ? src->author.did : "");
       snprintf(item->avatar, sizeof(item->avatar), "%s",
                src->author.avatar ? src->author.avatar : "");
 

@@ -11,6 +11,7 @@ SRC     := $(ROOT)/src
 OUT     := build
 SCRATCH := $(OUT)/scratch
 
+SOEXT := $(if $(filter Darwin,$(shell uname -s)),dylib,so)
 PKGCONFIG := $(shell command -v pkg-config 2>/dev/null)
 
 ifeq ($(PKGCONFIG),)
@@ -55,13 +56,13 @@ WOLFRAM_HOST_BUILD ?= $(WOLFRAM_ROOT)/build-host
 # convention, and a macOS checkout building Wolfram for this same link check
 # gets a .dylib rather than a .so.
 HAVE_WOLFRAM_LIB := $(firstword $(wildcard $(WOLFRAM_HOST_BUILD)/libwolfram.so \
-                                           $(WOLFRAM_HOST_BUILD)/libwolfram.dylib \
+                                           $(WOLFRAM_HOST_BUILD)/libwolfram.$(SOEXT) \
                                            $(WOLFRAM_HOST_BUILD)/libwolfram.a))
 # Wolfram pulls cJSON in through FetchContent, so the host build carries its own
 # copy rather than using a system one.
 WOLFRAM_CJSON := $(firstword $(wildcard \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.so \
-   $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.dylib \
+   $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.$(SOEXT) \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.a))
 
 CFLAGS  := -std=gnu11 -g -O1 -Wall -Wextra -I$(SRC) $(SDL_CFLAGS) $(CURL_CFLAGS) \
@@ -87,6 +88,7 @@ UNIT_SOURCES := \
 	$(SRC)/util/rng.c \
 	$(SRC)/util/timefmt.c \
 	$(SRC)/atproto/feed.c \
+	$(SRC)/atproto/prefs.c \
 	$(SRC)/app/timeline.c \
 	$(SRC)/app/thread.c \
 	$(SRC)/app/compose.c \
@@ -188,7 +190,7 @@ e2e:
 	@mkdir -p $(OUT)/e2e-data
 	@$(CC) $(CFLAGS) -DCOBALT_HAS_WOLFRAM=1 -DCOBALT_E2E_HOST=1 -I$(WOLFRAM_ROOT)/include $(CJSON_CFLAGS) \
 		-o $(E2E_BIN) e2e_main.c linkcheck_stubs.c host_stubs.c $(WOLFRAM_ROOT)/test/mock_pds.c \
-		$(E2E_SOURCES) $(E2E_BUILD)/libwolfram.dylib $(E2E_BUILD)/_deps/cjson-build/libcjson.dylib \
+		$(E2E_SOURCES) $(E2E_BUILD)/libwolfram.$(SOEXT) $(E2E_BUILD)/_deps/cjson-build/libcjson.$(SOEXT) \
 		$(MHD_LIBS) $(LDLIBS) -Wl,-rpath,$(abspath $(E2E_BUILD)) \
 		-Wl,-rpath,$(abspath $(E2E_BUILD))/_deps/cjson-build
 	@./$(E2E_BIN) $(OUT)/e2e-data
@@ -199,7 +201,7 @@ snapshot:
 	@mkdir -p $(OUT)/snapshot
 	@$(CC) $(CFLAGS) -DCOBALT_HAS_WOLFRAM=1 -DCOBALT_E2E_HOST=1 -I$(WOLFRAM_ROOT)/include $(CJSON_CFLAGS) \
 		-o $(SNAP_BIN) snapshot_main.c linkcheck_stubs.c host_stubs.c $(WOLFRAM_ROOT)/test/mock_pds.c $(E2E_SOURCES) \
-		$(E2E_BUILD)/libwolfram.dylib $(E2E_BUILD)/_deps/cjson-build/libcjson.dylib \
+		$(E2E_BUILD)/libwolfram.$(SOEXT) $(E2E_BUILD)/_deps/cjson-build/libcjson.$(SOEXT) \
 		$(MHD_LIBS) $(LDLIBS) -Wl,-rpath,$(abspath $(E2E_BUILD)) -Wl,-rpath,$(abspath $(E2E_BUILD))/_deps/cjson-build
 	@./$(SNAP_BIN) $(OUT)/snapshot ../romfs/font.ttf
 
@@ -211,7 +213,7 @@ sim:
 	@mkdir -p $(OUT)
 	@$(CC) $(CFLAGS) -DCOBALT_HAS_WOLFRAM=1 -DCOBALT_E2E_HOST=1 -I$(WOLFRAM_ROOT)/include $(CJSON_CFLAGS) \
 		-o $(SIM_BIN) sim_main.c linkcheck_stubs.c host_stubs.c $(WOLFRAM_ROOT)/test/mock_pds.c $(E2E_SOURCES) \
-		$(E2E_BUILD)/libwolfram.dylib $(E2E_BUILD)/_deps/cjson-build/libcjson.dylib \
+		$(E2E_BUILD)/libwolfram.$(SOEXT) $(E2E_BUILD)/_deps/cjson-build/libcjson.$(SOEXT) \
 		$(MHD_LIBS) $(LDLIBS) -Wl,-rpath,$(abspath $(E2E_BUILD)) -Wl,-rpath,$(abspath $(E2E_BUILD))/_deps/cjson-build
 	@cd .. && ./tests/$(SIM_BIN) $(SIM_ARGS)
 
