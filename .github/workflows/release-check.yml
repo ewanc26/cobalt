@@ -1,0 +1,22 @@
+name: release-check
+
+# A v* tag must match COBALT_VERSION and have a CHANGELOG section, so a tag
+# cannot be cut from a tree that reports a different version in-app.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches version.h and CHANGELOG
+        run: |
+          tag=${GITHUB_REF_NAME#v}
+          have=$(sed -n 's/.*COBALT_VERSION "\(.*\)".*/\1/p' src/util/version.h)
+          # Tags that predate the version header have no version.h to check.
+          if [ -n "$have" ]; then
+            [ "$have" = "$tag" ] || { echo "tag $tag != COBALT_VERSION $have"; exit 1; }
+          fi
+          grep -q "^## \[$tag\]" CHANGELOG.md || { echo "no CHANGELOG section for $tag"; exit 1; }
