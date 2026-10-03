@@ -124,6 +124,8 @@ main(int argc, char **argv)
    CHECK(cobalt_session_feed()->posts[0].facets[0].kind == COBALT_FACET_LINK);
    CHECK(cobalt_session_feed()->posts[0].facets[1].kind == COBALT_FACET_TAG);
    CHECK(cobalt_session_feed()->posts[0].facets[1].end == 15);
+   CHECK(strcmp(cobalt_session_feed()->posts[0].facets[0].target, "https://x.io") == 0);
+   CHECK(strcmp(cobalt_session_feed()->posts[0].facets[1].target, "t") == 0);
    CHECK(cobalt_session_feed()->has_more);
 
    /* Refresh follows the search, not the home timeline. */

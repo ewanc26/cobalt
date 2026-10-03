@@ -281,5 +281,5 @@ cobalt_notify_view_draw(cobalt_notify_view *view, cobalt_render *r,
    }
 
    cobalt_draw_hints(r, cobalt_session_busy() ? "Working..."
-                                          : "A: open   +: refresh   B: back");
+                                          : "A: open   +: refresh");
 }
