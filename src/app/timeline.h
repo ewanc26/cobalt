@@ -31,6 +31,7 @@ typedef enum {
    COBALT_TIMELINE_OPEN_THREAD,
    COBALT_TIMELINE_OPEN_PROFILE,
    COBALT_TIMELINE_COMPOSE,
+   COBALT_TIMELINE_MENU,
 } cobalt_timeline_action;
 
 typedef struct {

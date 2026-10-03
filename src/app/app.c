@@ -14,6 +14,7 @@
 #include "atproto/session.h"
 #include "net/net.h"
 #include "ui/imagecache.h"
+#include "ui/popup.h"
 #include "util/log.h"
 #include "util/paths.h"
 
@@ -75,6 +76,9 @@ struct cobalt_app {
    cobalt_graph_view graph;
    cobalt_search_view search;
    cobalt_lists_view lists;
+   cobalt_popup popup;
+   cobalt_screen popup_screen;
+   bool popup_in_thread;
    /* Which row is highlighted on the account screen's small menu. */
    int account_selected;
    /* Which row is highlighted on the feed-picker screen's small menu. */
@@ -765,6 +769,126 @@ draw_back_pill(cobalt_render *r, cobalt_surface_id surface)
    }
 }
 
+/* Copy of the text a facet covers, for a menu label. */
+static void
+facet_label(const cobalt_post *post, const cobalt_post_facet *f, char *out,
+            size_t size)
+{
+   const int len = (int) strlen(post->text);
+   int s = f->start < len ? f->start : len;
+   int e = f->end < len ? f->end : len;
+   size_t n = e > s ? (size_t) (e - s) : 0;
+   if (n >= size) {
+      n = size - 1;
+      while (n > 0 && ((unsigned char) post->text[s + n] & 0xC0) == 0x80) {
+         n--;
+      }
+   }
+   memcpy(out, post->text + s, n);
+   out[n] = '\0';
+}
+
+static void
+open_post_menu(cobalt_app *app, const cobalt_post *post, bool in_thread)
+{
+   const char *handle = post->handle[0] == '@' ? post->handle + 1 : post->handle;
+   char label[COBALT_POPUP_LABEL_MAX];
+   cobalt_popup_open(&app->popup, "More");
+   app->popup_screen = app->screen;
+   app->popup_in_thread = in_thread;
+   if (handle[0]) {
+      snprintf(label, sizeof(label), "View profile @%s", handle);
+      cobalt_popup_add(&app->popup, COBALT_POPUP_PROFILE, label, handle);
+   }
+   for (int i = 0; i < post->facet_count; i++) {
+      const cobalt_post_facet *f = &post->facets[i];
+      if (!f->target[0]) {
+         continue;
+      }
+      facet_label(post, f, label, sizeof(label));
+      cobalt_popup_add(&app->popup,
+                       f->kind == COBALT_FACET_LINK ? COBALT_POPUP_LINK
+                       : f->kind == COBALT_FACET_MENTION ? COBALT_POPUP_MENTION
+                                                         : COBALT_POPUP_TAG,
+                       label, f->target);
+   }
+   if (!in_thread) {
+      cobalt_popup_add(&app->popup, COBALT_POPUP_COMPOSE, "New post", "");
+      cobalt_popup_add(&app->popup, COBALT_POPUP_REFRESH, "Refresh timeline", "");
+   }
+   if (in_thread) {
+      cobalt_popup_add(&app->popup, COBALT_POPUP_QUOTE, "Quote post", post->uri);
+      if (cobalt_post_uri_is_by(post->uri, cobalt_session_did())) {
+         cobalt_popup_add(&app->popup, COBALT_POPUP_DELETE, "Delete post",
+                          post->uri);
+      }
+   }
+}
+
+static void
+popup_choose(cobalt_app *app, int index)
+{
+   const cobalt_popup_item *it = &app->popup.items[index];
+   switch (it->kind) {
+      case COBALT_POPUP_PROFILE:
+      case COBALT_POPUP_MENTION:
+         if (cobalt_session_begin_profile(it->arg)) {
+            cobalt_profile_view_rewind(&app->profile);
+            app->profile_return = app->popup_screen;
+            app->screen = COBALT_SCREEN_PROFILE;
+            cobalt_popup_close(&app->popup);
+         }
+         break;
+      case COBALT_POPUP_TAG: {
+         char query[COBALT_POPUP_ARG_MAX + 2];
+         snprintf(query, sizeof(query), "#%s", it->arg);
+         if (cobalt_session_begin_search_posts(query, false)) {
+            cobalt_timeline_rewind(&app->timeline);
+            app->screen = COBALT_SCREEN_TIMELINE;
+            cobalt_popup_close(&app->popup);
+         }
+         break;
+      }
+      case COBALT_POPUP_LINK: {
+         char arg[COBALT_POPUP_ARG_MAX];
+         snprintf(arg, sizeof(arg), "%s", it->arg);
+         cobalt_popup_show_text(&app->popup, "Link", arg);
+         break;
+      }
+      case COBALT_POPUP_QUOTE: {
+         const cobalt_thread *conv = cobalt_session_thread();
+         cobalt_popup_close(&app->popup);
+         if (app->thread.selected < conv->count) {
+            cobalt_compose_quote(&app->compose,
+                                 &conv->posts[app->thread.selected]);
+            if (cobalt_compose_is_quote(&app->compose)) {
+               app->compose_return = COBALT_SCREEN_THREAD;
+               app->screen = COBALT_SCREEN_COMPOSE;
+            }
+         }
+         break;
+      }
+      case COBALT_POPUP_COMPOSE:
+         cobalt_popup_close(&app->popup);
+         cobalt_compose_init(&app->compose);
+         app->compose_return = COBALT_SCREEN_TIMELINE;
+         app->screen = COBALT_SCREEN_COMPOSE;
+         break;
+      case COBALT_POPUP_REFRESH:
+         cobalt_popup_close(&app->popup);
+         if (!cobalt_session_busy() && cobalt_session_begin_feed_current(false)) {
+            cobalt_timeline_rewind(&app->timeline);
+         }
+         break;
+      case COBALT_POPUP_DELETE:
+         snprintf(app->thread.delete_uri, sizeof(app->thread.delete_uri), "%s",
+                  it->arg);
+         app->thread.confirm_delete = true;
+         cobalt_popup_close(&app->popup);
+         break;
+   }
+}
+
 static void
 app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
 {
@@ -811,6 +935,15 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
     * held across network I/O, so this costs nothing.
     */
    cobalt_session_lock();
+
+   if (app->popup.open) {
+      const int chosen = cobalt_popup_update(&app->popup, in);
+      if (chosen >= 0) {
+         popup_choose(app, chosen);
+      }
+      cobalt_session_unlock();
+      return;
+   }
 
    switch (app->screen) {
       case COBALT_SCREEN_DIAGNOSTICS:
@@ -868,6 +1001,13 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                app->compose_return = COBALT_SCREEN_TIMELINE;
                app->screen = COBALT_SCREEN_COMPOSE;
                break;
+            case COBALT_TIMELINE_MENU: {
+               const cobalt_feed *feed = cobalt_session_feed();
+               if (app->timeline.selected < feed->count) {
+                  open_post_menu(app, &feed->posts[app->timeline.selected], false);
+               }
+               break;
+            }
             case COBALT_TIMELINE_STAY:
             default:
                break;
@@ -898,6 +1038,13 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                                           &conv->posts[app->thread.selected]);
                   app->compose_return = COBALT_SCREEN_THREAD;
                   app->screen = COBALT_SCREEN_COMPOSE;
+               }
+               break;
+            }
+            case COBALT_THREAD_VIEW_MENU: {
+               const cobalt_thread *conv = cobalt_session_thread();
+               if (app->thread.selected < conv->count) {
+                  open_post_menu(app, &conv->posts[app->thread.selected], true);
                }
                break;
             }
@@ -1310,7 +1457,7 @@ draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
    draw_notice(app, r, row_y + m->gap / 2, width);
 
-   cobalt_draw_hints(r, "A / touch: open     B: back");
+   cobalt_draw_hints(r, "A / touch: open");
 }
 
 static void
@@ -1360,7 +1507,7 @@ draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
    draw_notice(app, r, row_y - m->gap / 2 + m->gap / 2, width);
 
-   cobalt_draw_hints(r, "A / touch: open     B: back");
+   cobalt_draw_hints(r, "A / touch: open");
 }
 
 static void
@@ -1594,6 +1741,8 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    } else if (surface == COBALT_SURFACE_DRC) {
       s_back_hit_valid = false;
    }
+
+   cobalt_popup_draw(&app->popup, r, surface);
 
    cobalt_session_unlock();
 }

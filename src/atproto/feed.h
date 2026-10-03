@@ -127,6 +127,7 @@ typedef struct {
    cobalt_facet_kind kind;
    int start;
    int end;
+   char target[96];   /* mention DID, link URI (cut to fit) or tag text */
 } cobalt_post_facet;
 
 typedef struct {

@@ -319,8 +319,8 @@ draw_list_of_lists(cobalt_lists_view *view, cobalt_render *r,
    }
 
    cobalt_draw_hints(r, cobalt_session_busy() ? "Working..."
-                                          : view->browsing_members ? "A / touch: open profile   B: back"
-                                                                   : "A / touch: open list   B: back");
+                                          : view->browsing_members ? "A / touch: open profile"
+                                                                   : "A / touch: open list");
 }
 
 static void

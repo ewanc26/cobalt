@@ -161,11 +161,8 @@ cobalt_thread_view_update(cobalt_thread_view *view, const cobalt_input *in)
             return COBALT_THREAD_VIEW_REPLY;
          } else if (cobalt_input_pressed(in, COBALT_BTN_ALT_X)) {
             return COBALT_THREAD_VIEW_QUOTE;
-         } else if (cobalt_input_pressed(in, COBALT_BTN_ALT_Y) &&
-                    cobalt_post_uri_is_by(post->uri, cobalt_session_did())) {
-            snprintf(view->delete_uri, sizeof(view->delete_uri), "%s",
-                     post->uri);
-            view->confirm_delete = true;
+         } else if (cobalt_input_pressed(in, COBALT_BTN_ALT_Y)) {
+            return COBALT_THREAD_VIEW_MENU;
          }
       }
    }
@@ -336,15 +333,9 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
       view->last_visible = last_fitted;
    }
 
-   const bool own =
-      view->selected >= 0 && view->selected < thread->count &&
-      cobalt_post_uri_is_by(thread->posts[view->selected].uri,
-                            cobalt_session_did());
    cobalt_draw_hints(r, view->confirm_delete
                        ? "Delete this post for good?   A: delete   B: keep it"
                     : cobalt_session_busy()
                        ? "Working..."
-                    : own
-                       ? "A: open/reply   X: quote   Left: like   Right: repost   Y: delete   B: back"
-                       : "A: open/reply   X: quote   +: reply   Left: like   Right: repost   B: back");
+                       : "A: open/reply   Y: more   Left: like   Right: repost");
 }

@@ -302,6 +302,6 @@ cobalt_graph_view_draw(cobalt_graph_view *view, cobalt_render *r,
                         : view->kind == COBALT_GRAPH_MUTED      ? "unmute"
                                                                 : "unblock";
    char hint_text[64];
-   snprintf(hint_text, sizeof(hint_text), "A: %s   B: back", action);
+   snprintf(hint_text, sizeof(hint_text), "A: %s", action);
    cobalt_draw_hints(r, cobalt_session_busy() ? "Working..." : hint_text);
 }

@@ -470,6 +470,11 @@ cobalt_post_parse_facets(cobalt_post *post, const void *facets_json)
          f->kind = kind;
          f->start = start;
          f->end = end;
+         const char *target =
+            kind == COBALT_FACET_LINK ? json_string(feature, "uri")
+            : kind == COBALT_FACET_MENTION ? json_string(feature, "did")
+            : json_string(feature, "tag");
+         cobalt_feed_copy_text(f->target, sizeof(f->target), target ? target : "");
          break;
       }
    }
