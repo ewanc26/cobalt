@@ -666,6 +666,9 @@ run_oauth(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
       set_message(r, "Could not create the OAuth-node client.");
       return;
    }
+   if (s.have_ca) {
+      wf_xrpc_client_set_ca_bundle(client, s.ca_path);
+   }
 
    cJSON *body = cJSON_CreateObject();
    if (!body || !cJSON_AddStringToObject(body, "handle", in->identifier)) {
