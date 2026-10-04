@@ -16,9 +16,9 @@ typedef struct {
 } field_def;
 
 static const field_def FIELDS[] = {
-   { "Server",          "bsky.social",           false },
-   { "Handle or email", "you.bsky.social",       false },
-   { "App password",    "xxxx-xxxx-xxxx-xxxx",   true  },
+   { "Service / OAuth node", "https://auth.example", false },
+   { "Handle or email",      "you.bsky.social",      false },
+   { "App password (optional)", "xxxx-xxxx-xxxx-xxxx", true },
 };
 
 static char *
@@ -166,13 +166,12 @@ cobalt_signin_update(cobalt_signin *s, const cobalt_input *in)
       s->focus = FIELD_IDENTIFIER;
       return COBALT_SIGNIN_STAY;
    }
-   if (s->password[0] == '\0') {
-      cobalt_signin_set_status(s, "Enter an app password. Create one under "
-                                  "Settings > App Passwords on Bluesky.", true);
-      s->focus = FIELD_PASSWORD;
-      return COBALT_SIGNIN_STAY;
-   }
-
+   /*
+    * An empty password deliberately selects browser OAuth. The service field
+    * is then the hosted Wolfram OAuth node URL. Keeping the app-password path
+    * available makes direct PDS sign-in and older self-hosted setups continue
+    * to work without a second screen.
+    */
    return COBALT_SIGNIN_SUBMIT;
 }
 
@@ -224,8 +223,20 @@ draw_status(const cobalt_signin *s, cobalt_render *r, int y)
    const cobalt_metrics *m = cobalt_render_metrics(r);
 
    if (cobalt_session_busy()) {
-      cobalt_draw_text(r, COBALT_FONT_BODY, "Signing in...",
-                       m->pad_edge, y, COBALT_COLOUR_TEXT_DIM);
+      const char *pair_url = cobalt_session_pair_url();
+      const char *pair_code = cobalt_session_pair_code();
+      if (pair_url && pair_url[0]) {
+         char pairing[COBALT_OAUTH_URL_MAX + 64];
+         snprintf(pairing, sizeof(pairing),
+                  "Open this link on another device: %s\nPair code: %s",
+                  pair_url, pair_code ? pair_code : "");
+         cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, pairing,
+                                  m->pad_edge, y, m->width - 2 * m->pad_edge, 4,
+                                  COBALT_COLOUR_TEXT_DIM);
+      } else {
+         cobalt_draw_text(r, COBALT_FONT_BODY, "Signing in...",
+                          m->pad_edge, y, COBALT_COLOUR_TEXT_DIM);
+      }
       return;
    }
 
