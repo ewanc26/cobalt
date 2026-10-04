@@ -2564,7 +2564,7 @@ cobalt_session_begin_oauth(const char *oauth_node, const char *handle)
    s.state = COBALT_AUTH_WORKING;
    s.pair_url[0] = '\0';
    s.pair_code[0] = '\0';
-   SDL_SignalCond(s.wake);
+   SDL_CondSignal(s.wake);
    SDL_UnlockMutex(s.lock);
    return true;
 }
