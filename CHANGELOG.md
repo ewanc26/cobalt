@@ -7,6 +7,17 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-04
+
+### Added
+- Browser-based AT Protocol OAuth sign-in through the hosted Wolfram OAuth node, with a short-lived pairing link that can be opened on another device. The PDS handles the account password and MFA; Cobalt never sees them.
+
+### Changed
+- OAuth-node sessions use Wolfram's DPoP-backed upstream session instead of storing PDS refresh credentials on the Wii U.
+
+### Internal
+- Added a unified hosted OAuth node to the Wolfram SDK and wired Cobalt to it as a thin console client.
+
 ## [0.4.0] - 2026-10-03
 
 ### Added
@@ -84,7 +95,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/ewanc26/cobalt/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/ewanc26/cobalt/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/ewanc26/cobalt/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/ewanc26/cobalt/compare/v0.3.0...v0.3.1
