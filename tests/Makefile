@@ -65,7 +65,7 @@ WOLFRAM_CJSON := $(firstword $(wildcard \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.$(SOEXT) \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.a))
 
-CFLAGS  := -std=gnu11 -g -O1 -Wall -Wextra -I$(SRC) $(SDL_CFLAGS) $(CURL_CFLAGS) \
+CFLAGS  := -std=gnu11 -g -O1 -Wall -Wextra -I$(SRC) $(SDL_CFLAGS) $(CJSON_CFLAGS) $(CURL_CFLAGS) \
            $(IMAGE_CFLAGS) -include $(CURDIR)/host_sdl_compat.h
 LDLIBS  := $(SDL_LIBS) $(IMAGE_LIBS) $(CURL_LIBS) -lmbedcrypto -lm -lpthread
 
