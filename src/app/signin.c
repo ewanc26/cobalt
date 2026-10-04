@@ -288,7 +288,7 @@ draw_fields(cobalt_signin *s, cobalt_render *r, cobalt_surface_id surface)
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
-   draw_header(r, "Sign in", "App password — never your account password");
+   draw_header(r, "Sign in", "Leave App password empty to use browser OAuth");
 
    const int top = cobalt_content_top(r);
    const int row_w = m->width - 2 * m->pad_edge;
