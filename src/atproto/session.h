@@ -44,6 +44,8 @@ extern "C" {
 
 #define COBALT_IDENTIFIER_MAX 256
 #define COBALT_PASSWORD_MAX   128
+#define COBALT_OAUTH_URL_MAX   512
+#define COBALT_OAUTH_CODE_MAX   64
 #define COBALT_MESSAGE_MAX    192
 /* Bluesky's 300-grapheme limit, in bytes, plus a terminator. Kept here rather
  * than taken from app/compose.h so the protocol layer does not depend on a
@@ -132,6 +134,8 @@ bool cobalt_session_busy(void);
 const char *cobalt_session_handle(void);
 const char *cobalt_session_did(void);
 const char *cobalt_session_service(void);
+const char *cobalt_session_pair_url(void);
+const char *cobalt_session_pair_code(void);
 
 /* True if credentials from a previous run are on the card. */
 bool cobalt_session_has_saved(void);
@@ -145,6 +149,10 @@ bool cobalt_session_has_saved(void);
  */
 bool cobalt_session_begin_login(const char *service, const char *identifier,
                                 const char *password);
+
+/* Start OAuth pairing through the hosted Wolfram OAuth node. The supplied
+ * service is the node URL, not the user's PDS. */
+bool cobalt_session_begin_oauth(const char *oauth_node, const char *handle);
 
 /* Resume the stored session, refreshing its tokens. */
 bool cobalt_session_begin_resume(void);
