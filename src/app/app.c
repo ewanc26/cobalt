@@ -432,6 +432,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
 {
    switch (result->kind) {
       case COBALT_JOB_LOGIN:
+      case COBALT_JOB_OAUTH:
          if (result->ok) {
             /* Wolfram has its own copy now, so this one has no reason to live
              * any longer — and it is about to sit in an idle screen's state. */
@@ -746,13 +747,25 @@ update_signin(cobalt_app *app, const cobalt_input *in)
          break;
 
       case COBALT_SIGNIN_SUBMIT:
-         if (!cobalt_session_begin_login(app->signin.service,
-                                         app->signin.identifier,
-                                         app->signin.password)) {
-            cobalt_signin_set_status(&app->signin,
-                                     "Could not start the sign-in request.", true);
+         if (app->signin.password[0]) {
+            if (!cobalt_session_begin_login(app->signin.service,
+                                            app->signin.identifier,
+                                            app->signin.password)) {
+               cobalt_signin_set_status(&app->signin,
+                                        "Could not start the sign-in request.", true);
+            } else {
+               cobalt_signin_set_status(&app->signin, "", false);
+            }
          } else {
-            cobalt_signin_set_status(&app->signin, "", false);
+            if (!cobalt_session_begin_oauth(app->signin.service,
+                                            app->signin.identifier)) {
+               cobalt_signin_set_status(
+                  &app->signin,
+                  "Could not start browser sign-in. Enter the OAuth node URL in the first field.",
+                  true);
+            } else {
+               cobalt_signin_set_status(&app->signin, "", false);
+            }
          }
          break;
 
