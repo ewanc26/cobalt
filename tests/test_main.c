@@ -1660,13 +1660,12 @@ test_signin_validation(void)
    CHECK(form.status_is_error);
    CHECK(form.focus == 1);
 
-   /* Identifier but no password: same again, focus on the password. */
+   /* Identifier but no password: this now selects browser OAuth. */
    snprintf(form.identifier, sizeof(form.identifier), "someone.bsky.social");
    form.focus = 3;
-   CHECK(cobalt_signin_update(&form, &confirm) == COBALT_SIGNIN_STAY);
-   CHECK(form.focus == 2);
+   CHECK(cobalt_signin_update(&form, &confirm) == COBALT_SIGNIN_SUBMIT);
 
-   /* Both present: now it submits. */
+   /* Supplying an app password still selects the legacy direct-login path. */
    snprintf(form.password, sizeof(form.password), "abcd-efgh-ijkl-mnop");
    form.focus = 3;
    CHECK(cobalt_signin_update(&form, &confirm) == COBALT_SIGNIN_SUBMIT);
