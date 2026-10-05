@@ -22,6 +22,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Internal
 - The change flow is the stack's shared one, adopted from Wolfram: a PR template, the `flow` workflow (branch, title, description and commit checks, a drift check and the README style check), a `CI gate` job, and rebase-merge-only. Cobalt adds a check that code changes carry a changelog line and a doc change, a guard that turns a push to `main` without a PR red, and release gating: a `v*` tag must be on `main` with green CI, and `tools/publish.sh` refuses a commit whose CI is not green.
+- Muted-word matching is Wolfram's now (`wf_mod_match_mute_words`) instead of a Cobalt copy. It follows the official client's rules: a single word matches whole words with punctuation trimmed ("cat." matches "cat", "cat's" no longer does), a phrase matches as a substring. `tools/check-shared-logic.sh` stops the copy coming back.
 - The image cache takes its slot and loader counts at creation (`cobalt_imagecache_create_sized`) rather than fixing them at compile time. The viewer's caches are two slots and one loader each — a person looks at one picture at a time — decoded at the surface's own height (720 on the TV, 480 on the GamePad), where a card thumbnail stays capped at 320.
 
 ## [0.5.0] - 2026-10-04
