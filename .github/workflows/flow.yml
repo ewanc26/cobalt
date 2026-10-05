@@ -1,0 +1,32 @@
+name: flow
+
+# The unified-flow checks, hosted by Wolfram. Cobalt-only checks are in
+# `extras` below; everything else is Wolfram's (docs/flow.md there).
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  flow:
+    uses: ewanc26/wolfram/.github/workflows/flow-reusable.yml@main
+
+  extras:
+    # Rules Cobalt adds on top of the stack's: code changes carry a changelog
+    # line and a doc change (docs/workflow.md).
+    name: extras
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Changelog and docs move with code
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash tools/flow-extra.sh
+      - name: The extra checks can fail
+        run: bash tools/flow-extra-selftest.sh

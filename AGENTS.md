@@ -819,5 +819,24 @@ Verified to work by deleting a function that only the Wolfram-side code calls: t
 - Preserve existing architecture, naming, formatting, and error-handling conventions.
 - Use project scripts for validation; never claim checks you did not run.
 - Keep changes scoped and update tests or documentation when behavior changes.
-- Use feature branches and pull requests.
 - Treat generated files, credentials, deployment configuration, and release metadata as sensitive.
+
+<!-- flow:begin -->
+## Unified flow (canonical: ewanc26/wolfram, docs/flow.md)
+
+This block is byte-identical in every repo of the stack and is drift-checked by CI. Do not edit a copy; change it by PR to wolfram, then copy it out.
+
+- Branch from main as `<type>/<slug>`. Types: feat fix docs ci chore refactor test perf build ui release (titles and commits also allow revert). Slug: lowercase `a-z 0-9 . _ -`.
+- Commit subjects and PR titles are Conventional Commits: `type(scope): summary`. Keep commits focused. Never push an empty commit.
+- Agent commits end with the `Co-Authored-By:` and `Claude-Session:` trailers the session supplies. PR descriptions use `.github/PULL_REQUEST_TEMPLATE.md` (What this changes, Verification, Docs) and end with the session link.
+- Nothing goes straight to main. Branch, open a PR, wait for green CI, merge the PR with a rebase merge (never squash, never a merge commit). Required checks: `CI gate` and `flow / conventions`.
+- A rebase merge lands every commit on main as written, so each commit stands alone: a conventional subject, builds, passes tests. Write review fixes as real conventional commits (`fix(scope): ...`), never "address review".
+- Never force-push, so a PR branch is never rebased locally, and never merge main into a PR branch (a merge commit breaks the rebase merge; the flow check fails it). If a PR is behind or conflicted and GitHub can still rebase-merge it cleanly, merge it once CI is green on the current head. Otherwise cut a fresh branch from main, cherry-pick the commits, open a new PR linking the old one, and close the old one with a comment.
+- Never merge red. Never force-push. Never skip, disable or delete a test to get green: read the job log, reproduce, fix the root cause, wait, repeat. A red main is fixed before anything else.
+- Update AGENTS.md, README and docs/ in the same PR as the change. AGENTS.md is imperative and exact; README and docs are user-facing prose.
+- State exactly what was verified and where (host, emulator, hardware). Never claim hardware you did not use.
+- Releases go through the repo's own release script only, and only after every consumer in the stack has been verified against the change.
+- Anything only the owner can supply (credentials, hardware results, money, irreversible actions): file an issue labelled `needs-owner` and move on.
+- READMEs and logos follow `docs/house-style.md` (wolfram), checked by `flow / style`.
+- No secrets in the repo or its CI. No Vercel. No registry publishing.
+<!-- flow:end -->
