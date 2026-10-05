@@ -335,6 +335,8 @@ Rules:
 
 `assets/` artwork is generated, not hand-drawn: `python3 tools/gen_assets.py` writes the 128×128 icon and both splash screens from a palette defined in that script (stdlib only — no Pillow or ImageMagick needed). Regenerate after a palette change rather than editing the PNGs.
 
+**One mark, one generator.** The mark is a cut stone (cobalt is a mineral), defined once as outlines and facet lines in `tools/gen_assets.py` and rasterised on a grid of 3×5-unit cells. The same script writes `docs/logo.svg` (the README logo, in the stack's shared style: 294 units wide, `<rect>` runs, one `.logo` class, `#15803d` light and `#4ade80` dark, `role="img"`, `aria-label`) and draws the icon and both splashes from that grid. Do not edit `docs/logo.svg` or the PNGs by hand, and do not draw a second mark. `assets/icon.png` and the splash screens stay as separate files because wuhbtool needs those exact PNG sizes and they use the Wii U blue palette, not the README's green; the decision is to keep them as platform assets that carry the same shape. The subject is deliberately not an animal or a computer: Wolfram is a wolf, MetalBear a bear, Indigo a bunting, Platinum a Macintosh.
+
 `romfs/font.ttf` is **M PLUS Rounded 1c Medium** (OFL-1.1, text in `romfs/OFL.txt`): a rounded face close to the Wii U menu's, with Japanese built in. Cobalt uses bundled fonts only, never the console's system fonts. `romfs/fallback.ttf` is Noto Emoji (monochrome, OFL-1.1) and covers codepoints it lacks (emoji); see `romfs/FONTS.md`.
 
 ### Asset paths are probed, not assumed

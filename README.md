@@ -1,5 +1,12 @@
 <p align="center">
-  <img src="assets/icon.png" alt="Cobalt icon" width="128">
+  <img src="docs/logo.svg" alt="Cobalt" width="420">
+</p>
+
+<p align="center">
+  <a href="https://github.com/ewanc26/cobalt/actions/workflows/ci.yml"><img src="https://github.com/ewanc26/cobalt/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/ewanc26/cobalt/releases/latest"><img src="https://img.shields.io/github/v/release/ewanc26/cobalt?sort=semver" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/ewanc26/cobalt" alt="AGPL-3.0"></a>
+  <a href="https://github.com/sponsors/ewanc26"><img src="https://img.shields.io/github/sponsors/ewanc26?logo=githubsponsors&logoColor=white&label=sponsors" alt="Sponsor"></a>
 </p>
 
 # Cobalt
@@ -96,6 +103,77 @@ Building Cobalt requires:
 - a sibling checkout of [Wolfram](https://github.com/ewanc26/wolfram)
 - OpenSSL for generating the per-installation entropy seed
 
+## Installing
+
+The normal WUHB installation is:
+
+```
+sd:/wiiu/apps/cobalt.wuhb
+```
+
+For a complete bundle, `make bundle` creates:
+
+```
+dist/wiiu/
+└── apps/
+    ├── cobalt.wuhb
+    └── cobalt/
+        └── entropy.bin
+```
+
+The entropy seed is generated for that installation and must not be shared
+between consoles.
+
+Cobalt can also be loaded in Cemu for development. Cemu is useful for broad
+application and UI checks, but it does not reproduce every GamePad, networking,
+TLS or hardware condition of a real Wii U.
+
+## Updating
+
+Home, then Updates, checks this repository's latest GitHub release. If there is
+a newer one it shows the version and notes and does nothing until you press A.
+The download is checked against the SHA-256 published in the release before it
+is used, and it replaces `cobalt.wuhb` when you quit Cobalt; start it again from
+the Wii U Menu. The previous build is kept as
+`sd:/wiiu/apps/cobalt/update/cobalt.wuhb.old` until the new one has started, and
+if an update is interrupted the next launch puts it back.
+
+That checksum catches a corrupt or swapped download. It does not prove the
+release is mine, because there is no signing key yet. I have only run this on
+the host, not on a console. Installing a `.wuhb` by hand still works exactly as
+below.
+
+## Authentication and storage
+
+Cobalt authenticates with Bluesky app passwords through
+`com.atproto.server.createSession`.
+
+Persistent state is kept under:
+
+| File | Contents |
+|---|---|
+| `sd:/wiiu/apps/cobalt/session.dat` | Encrypted PDS session |
+| `sd:/wiiu/apps/cobalt/device.key` | Per-installation encryption key |
+| `sd:/wiiu/apps/cobalt/entropy.bin` | Per-installation entropy seed |
+| `sd:/wiiu/apps/cobalt/cobalt.log` | Debug log |
+
+Signing out overwrites the session and key before removing them.
+
+The session encryption is deliberately limited by the Wii U's security model:
+the homebrew environment provides no application-accessible keystore, so the
+key lives alongside the encrypted session. It protects against incidental
+exposure of the session file, not someone who has the whole SD card.
+
+### Entropy
+
+The Wii U's available mbedTLS entropy source is not suitable for Cobalt's
+cryptographic needs. Cobalt therefore provisions 64 bytes of entropy per
+installation and uses its own deterministic generator for subsequent draws,
+while also providing the required entropy to Wolfram and its TLS transport.
+
+The seed is rotated on boot. A missing seed prevents network authentication
+rather than silently falling back to weaker randomness.
+
 ## Building
 
 Build Wolfram for Wii U first, then build Cobalt:
@@ -132,77 +210,6 @@ therefore have Wolfram available.
 | `make cacert` | Refresh the bundled TLS trust store |
 | `make run` | Print the expected installation/push location |
 | `make clean` | Remove generated build and test output |
-
-## Updating
-
-Home, then Updates, checks this repository's latest GitHub release. If there is
-a newer one it shows the version and notes and does nothing until you press A.
-The download is checked against the SHA-256 published in the release before it
-is used, and it replaces `cobalt.wuhb` when you quit Cobalt; start it again from
-the Wii U Menu. The previous build is kept as
-`sd:/wiiu/apps/cobalt/update/cobalt.wuhb.old` until the new one has started, and
-if an update is interrupted the next launch puts it back.
-
-That checksum catches a corrupt or swapped download. It does not prove the
-release is mine, because there is no signing key yet. I have only run this on
-the host, not on a console. Installing a `.wuhb` by hand still works exactly as
-below.
-
-## Installing
-
-The normal WUHB installation is:
-
-```
-sd:/wiiu/apps/cobalt.wuhb
-```
-
-For a complete bundle, `make bundle` creates:
-
-```
-dist/wiiu/
-└── apps/
-    ├── cobalt.wuhb
-    └── cobalt/
-        └── entropy.bin
-```
-
-The entropy seed is generated for that installation and must not be shared
-between consoles.
-
-Cobalt can also be loaded in Cemu for development. Cemu is useful for broad
-application and UI checks, but it does not reproduce every GamePad, networking,
-TLS or hardware condition of a real Wii U.
-
-## Authentication and storage
-
-Cobalt authenticates with Bluesky app passwords through
-`com.atproto.server.createSession`.
-
-Persistent state is kept under:
-
-| File | Contents |
-|---|---|
-| `sd:/wiiu/apps/cobalt/session.dat` | Encrypted PDS session |
-| `sd:/wiiu/apps/cobalt/device.key` | Per-installation encryption key |
-| `sd:/wiiu/apps/cobalt/entropy.bin` | Per-installation entropy seed |
-| `sd:/wiiu/apps/cobalt/cobalt.log` | Debug log |
-
-Signing out overwrites the session and key before removing them.
-
-The session encryption is deliberately limited by the Wii U's security model:
-the homebrew environment provides no application-accessible keystore, so the
-key lives alongside the encrypted session. It protects against incidental
-exposure of the session file, not someone who has the whole SD card.
-
-### Entropy
-
-The Wii U's available mbedTLS entropy source is not suitable for Cobalt's
-cryptographic needs. Cobalt therefore provisions 64 bytes of entropy per
-installation and uses its own deterministic generator for subsequent draws,
-while also providing the required entropy to Wolfram and its TLS transport.
-
-The seed is rotated on boot. A missing seed prevents network authentication
-rather than silently falling back to weaker randomness.
 
 ## TLS trust store
 
