@@ -6,6 +6,14 @@ on:
   pull_request:
 
 jobs:
+  shared-logic:
+    # Logic that belongs in Wolfram must not grow back in src/.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/check-shared-logic-selftest.sh
+      - run: tools/check-shared-logic.sh
+
   parity:
     # The parity matrix, README and AGENTS.md must agree, and the check must be
     # able to fail.
