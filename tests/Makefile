@@ -92,7 +92,7 @@ UNIT_SOURCES := \
 	$(SRC)/util/timefmt.c \
 	$(SRC)/atproto/feed.c \
 	$(SRC)/atproto/prefs.c \
-	$(SRC)/update/update.c \
+	$(SRC)/update/selfupdate.c \
 	$(SRC)/app/update.c \
 	$(SRC)/app/timeline.c \
 	$(SRC)/app/thread.c \
@@ -223,7 +223,7 @@ sim:
 	@cd .. && ./tests/$(SIM_BIN) $(SIM_ARGS)
 
 # The release script's manifest is fed to the updater's reader, so the two
-# cannot drift: tools/make-update-manifest.sh writes it, src/update/update.c
+# cannot drift: tools/make-update-manifest.sh writes it, src/update/selfupdate.c
 # has to accept it and agree with the file's own SHA-256.
 check: $(TEST_BIN)
 	@mkdir -p $(SCRATCH)

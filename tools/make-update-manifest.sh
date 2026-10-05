@@ -5,7 +5,7 @@
 #
 # The file name, size and SHA-256 come from the .wuhb itself, and the URL from
 # the repository's release layout, so the manifest cannot disagree with the
-# asset it describes. The contract is ewanc26/wolfram#106; src/update/update.c
+# asset it describes. The contract is ewanc26/wolfram#106; src/update/selfupdate.c
 # is its reader and refuses anything this does not produce.
 set -euo pipefail
 version=${1:?usage: make-update-manifest.sh <version> <wuhb> [notes-file]}

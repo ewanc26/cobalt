@@ -18,7 +18,7 @@
 #include "atproto/notifications.h"
 #include "atproto/prefs.h"
 #include "cache/session_store.h"
-#include "update/update.h"
+#include "update/selfupdate.h"
 #include "ui/imagecache.h"
 #include "ui/imageview.h"
 #include "ui/keyboard.h"
