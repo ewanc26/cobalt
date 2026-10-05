@@ -86,6 +86,8 @@ typedef enum {
    COBALT_JOB_FOLLOWING,
    COBALT_JOB_SEARCH_POSTS,
    COBALT_JOB_SAVED_FEEDS,
+   COBALT_JOB_LIKES,
+   COBALT_JOB_REPOSTED_BY,
 } cobalt_job_kind;
 
 typedef struct {
@@ -336,6 +338,16 @@ const cobalt_actor_list *cobalt_session_blocked_list(void);
  */
 bool cobalt_session_begin_followers(const char *actor, bool paging);
 bool cobalt_session_begin_following(const char *actor, bool paging);
+
+/* Who liked or reposted the post at `uri` (app.bsky.feed.getLikes /
+ * getRepostedBy). Results land in the shared likes list exposed by
+ * cobalt_session_likes_list(); the two share one list because only one is
+ * on screen at a time, same rule as followers/following. */
+bool cobalt_session_begin_likes(const char *uri, bool paging);
+bool cobalt_session_begin_reposted_by(const char *uri, bool paging);
+
+/* The likes/reposted-by list as last fetched; never NULL. */
+const cobalt_actor_list *cobalt_session_likes_list(void);
 const cobalt_actor_list *cobalt_session_followers_list(void);
 const cobalt_actor_list *cobalt_session_following_list(void);
 const char *cobalt_session_follow_list_actor(void);

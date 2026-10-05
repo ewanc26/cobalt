@@ -25,6 +25,8 @@ typedef enum {
    COBALT_GRAPH_BLOCKED,
    COBALT_GRAPH_FOLLOWERS,
    COBALT_GRAPH_FOLLOWING,
+   COBALT_GRAPH_LIKES,
+   COBALT_GRAPH_REPOSTED,
 } cobalt_graph_kind;
 
 typedef enum {
@@ -35,7 +37,8 @@ typedef enum {
 
 typedef struct {
    cobalt_graph_kind kind;
-   /* Followers/following only: whose list this is, so B can return there. */
+   /* Followers/following/likes/reposts only: whose list this is (a DID for
+    * follows, a post URI for likes/reposts), so B can return there. */
    char actor[COBALT_DID_MAX];
    int selected;
    int scroll;
@@ -59,7 +62,12 @@ void cobalt_graph_view_open(cobalt_graph_view *view, cobalt_graph_kind kind);
 void cobalt_graph_view_open_follows(cobalt_graph_view *view,
                                     cobalt_graph_kind kind, const char *actor);
 
-/* True for the two kinds whose rows open a profile rather than undo something. */
+/* Who liked or reposted the post at `uri`. Always fetches fresh, like the
+ * follows open — the list belongs to whichever post it was opened from. */
+void cobalt_graph_view_open_likes(cobalt_graph_view *view,
+                                  cobalt_graph_kind kind, const char *uri);
+
+/* True for the kinds whose rows open a profile rather than undo something. */
 bool cobalt_graph_kind_is_follows(cobalt_graph_kind kind);
 
 cobalt_graph_view_action cobalt_graph_view_update(cobalt_graph_view *view,

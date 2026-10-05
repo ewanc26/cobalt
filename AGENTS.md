@@ -551,6 +551,14 @@ locally (`cobalt_actor_list_remove`) rather than waiting on a refetch, the
 same "apply locally, reconcile on the next real fetch" rule interactions
 already follow elsewhere in this file.
 
+The followers/following and likes/reposts screens are the same view with
+four more kinds (`COBALT_GRAPH_FOLLOWERS/FOLLOWING/LIKES/REPOSTED`), all
+row-opens-a-profile. Likes and reposts share one `cobalt_actor_list` in the
+session (`s.likes`) because only one is on screen at a time and every open
+fetches fresh; `getLikes` does not ride `run_actor_list` because Wolfram
+returns `wf_agent_actor_like_list` (actor one level down), so it has its own
+`run_likes` with the same locking/reset/paging shape.
+
 This is the concrete home for the `wolfram-cpp` adoption the language-policy
 entry above talks about — RAII handles wrapping `wf_agent_actor_list`/
 `wf_agent_profile`'s owned members instead of the hand-paired
