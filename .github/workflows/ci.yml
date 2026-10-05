@@ -64,14 +64,40 @@ jobs:
           path: wolfram
       - name: Install extra dependencies
         run: |
-          # pkg.devkitpro.org intermittently answers 403 to CI runners.
+          # pkg.devkitpro.org intermittently answers 403 to CI runners, which
+          # fails the database *refresh*. The refresh is not what the build
+          # needs though: pacman installs from the database files already in
+          # the image, so try those before giving up. This has bitten three of
+          # four runs on 2026-10-05 alone, and burning the retry loop only
+          # turned a two-second refresh failure into a two-minute one.
+          extra_pkgs="wiiu-sdl2 wiiu-sdl2_ttf wiiu-sdl2_image wiiu-curl wiiu-mbedtls"
+          install_extra() {
+            dkp-pacman -S --noconfirm --needed $extra_pkgs
+          }
+
           for attempt in 1 2 3 4; do
-            dkp-pacman -Syu --noconfirm &&
-              dkp-pacman -S --noconfirm --needed wiiu-sdl2 wiiu-sdl2_ttf wiiu-sdl2_image \
-                wiiu-curl wiiu-mbedtls && break
-            [ "$attempt" = 4 ] && exit 1
+            dkp-pacman -Syu --noconfirm && install_extra && break
+            [ "$attempt" = 4 ] && break
             sleep $((attempt * 15))
           done
+
+          # No refresh: whatever databases the image ships with.
+          install_extra || true
+
+          # And now prove it, rather than trusting an exit status. This is the
+          # same reasoning as the "Verify Wolfram is linked" step below: a
+          # dependency missing quietly is how v0.4.0 shipped with the whole
+          # protocol layer compiled out, so the job states plainly which
+          # packages are absent instead of surfacing a pacman URL error.
+          missing=""
+          for p in $extra_pkgs; do
+            dkp-pacman -Q "$p" >/dev/null 2>&1 || missing="$missing $p"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::devkitPro packages missing from the runner:$missing"
+            exit 1
+          fi
+
           apt-get update && apt-get install -y --no-install-recommends cmake openssl curl git make
       - name: Build Wolfram for Wii U
         working-directory: wolfram
