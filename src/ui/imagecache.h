@@ -45,6 +45,16 @@ extern "C" {
 #define COBALT_IMAGECACHE_ENTRIES 24
 #define COBALT_IMAGECACHE_LOADERS 3
 
+/*
+ * The viewer's cache: a full-size image is looked at one at a time, so two
+ * entries cover paging left and right through a post's pictures without a
+ * refetch, and one loader is enough — the viewer is opened deliberately, not
+ * scrolled past, so a moment's wait for the one image being looked at is the
+ * expected experience rather than a regression.
+ */
+#define COBALT_IMAGECACHE_VIEWER_ENTRIES 2
+#define COBALT_IMAGECACHE_VIEWER_LOADERS 1
+
 /* Bluesky CDN URLs run to about 130 bytes; this leaves room and keeps the
  * whole slot table to a few kilobytes. */
 #define COBALT_IMAGECACHE_URL_MAX 256
@@ -81,6 +91,16 @@ void cobalt_images_shutdown(void);
  */
 cobalt_imagecache *cobalt_imagecache_create(int max_dimension,
                                             cobalt_image_fit fit);
+
+/*
+ * As cobalt_imagecache_create, with the slot and loader counts set by the
+ * caller. The counts are capped at COBALT_IMAGECACHE_ENTRIES and
+ * COBALT_IMAGECACHE_LOADERS; the fixed arrays are sized by those constants
+ * and a cache that claimed more would write past them.
+ */
+cobalt_imagecache *cobalt_imagecache_create_sized(int max_dimension,
+                                                  cobalt_image_fit fit,
+                                                  int entries, int loaders);
 void cobalt_imagecache_destroy(cobalt_imagecache *cache);
 
 /*

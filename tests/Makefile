@@ -85,6 +85,7 @@ UNIT_SOURCES := \
 	$(SRC)/ui/imagecache.c \
 	$(SRC)/ui/keyboard.c \
 	$(SRC)/ui/popup.c \
+	$(SRC)/ui/imageview.c \
 	$(SRC)/util/rng.c \
 	$(SRC)/util/timefmt.c \
 	$(SRC)/atproto/feed.c \
