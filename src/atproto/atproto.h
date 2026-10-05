@@ -15,6 +15,7 @@
  */
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,6 +35,16 @@ cobalt_atproto_status cobalt_atproto_get_status(void);
 
 /* Short human-readable summary for the diagnostics screen. */
 const char *cobalt_atproto_status_string(void);
+
+/*
+ * True when the per-installation entropy seed does not exist, which is the
+ * state of a .wuhb installed without `make bundle`. Networking is refused until
+ * one is made (see util/entropy_gather.h). Only valid after init.
+ */
+bool cobalt_atproto_needs_seed(void);
+
+/* Where the seed file lives. False if there is no writable data root. */
+bool cobalt_atproto_seed_path(char *out, size_t out_size);
 
 /* Wolfram's version, or "not built in". */
 const char *cobalt_atproto_sdk_version(void);

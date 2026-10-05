@@ -43,6 +43,16 @@ cobalt_entropy_seed_load(const char *path, unsigned char seed[COBALT_ENTROPY_SEE
 }
 
 bool
+cobalt_entropy_seed_exists(const char *path)
+{
+   FILE *file = path && path[0] ? fopen(path, "rb") : NULL;
+   if (file) {
+      fclose(file);
+   }
+   return file != NULL;
+}
+
+bool
 cobalt_entropy_seed_save(const char *path,
                          const unsigned char seed[COBALT_ENTROPY_SEED_SIZE])
 {

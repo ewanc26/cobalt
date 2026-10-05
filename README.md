@@ -116,6 +116,14 @@ dist/wiiu/
 The entropy seed is generated for that installation and must not be shared
 between consoles.
 
+If you install only the `.wuhb` (from a release, or from the Homebrew App Store
+once Cobalt is listed there) there is no seed, and Cobalt will not go online
+without one. The first time it starts it asks you to scribble on the GamePad
+screen until a bar fills, builds a seed from that, saves it, and asks you to
+start it again. I have not measured how much randomness a scribble carries, so
+treat that as better than nothing rather than as a proof; `make bundle` is still
+the better way. I have only run this on the host, not on a console.
+
 Cobalt can also be loaded in Cemu for development. Cemu is useful for broad
 application and UI checks, but it does not reproduce every GamePad, networking,
 TLS or hardware condition of a real Wii U.
