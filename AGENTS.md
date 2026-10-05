@@ -712,46 +712,15 @@ before it — was fixed, so `make` now links end-to-end here. Still not a
 hardware pass; see the custom-feeds entry below for what that build actually
 covered.)*
 
-### Custom feeds: one hardcoded generator, reusing the timeline wholesale
+### Custom feeds: the account's saved feeds, reusing the timeline wholesale
 
-`app.bsky.feed.getFeed` is what's implemented — not the user's actual saved
-feeds. Reading those needs `app.bsky.actor.getPreferences`'s `savedFeeds` (or
-the newer `savedFeedsPrefV2`) parsed out of the preferences blob, plus a
-`getFeedGenerators` call to get each one's display name/avatar — real scope,
-deferred rather than half-done here. Instead `app/app.c` carries a small
-`FEEDS[]` table (currently one entry, Bluesky's official "What's Hot") behind
-a new "Feeds" row on the home menu, between Search and Notifications.
+The picker lists the account's own saved feeds, not a compiled-in table. `run_saved_feeds` in `atproto/session.c` reads the raw `getPreferences` array and takes `savedFeedsPrefV2` items of type `feed` (falling back to the older `savedFeedsPref.saved` list), then resolves display names with `getFeedGenerators`; a generator that cannot be resolved shows its record key rather than vanishing. It reads the raw JSON on purpose: a single preference type the strict typed parse rejects (status 5 on a real account) must not take the whole picker down. `FALLBACK_FEED` in `app/app.c` (Bluesky's "What's Hot") is shown only when the account has none or the fetch failed. The list is capped at `COBALT_SAVED_FEEDS_MAX`.
 
-The feed-viewing half adds nothing new: `wf_agent_get_feed_typed` returns
-`wf_agent_feed_view_list`, which is a **typedef alias** for the exact same
-`wf_agent_feed_list` `getTimeline`/`getAuthorFeed` return (see
-`feedgen_typed.h`) — so a custom feed is "the timeline, sourced elsewhere."
-`atproto/session.c` gained `COBALT_JOB_FEED` and `run_feed`, a near-duplicate
-of `run_timeline` that calls `wf_agent_get_feed_typed(agent, in->uri, ...)`
-instead and writes into the *same* `s.feed` storage — no new UI code, no new
-row/card rendering, `app/timeline.c` and `ui/postcard.c` are untouched.
-Opening a feed just calls `cobalt_session_begin_feed(uri, false)` and switches
-to `COBALT_SCREEN_TIMELINE`; leaving it and reopening Timeline from the home
-menu re-fetches the home timeline into the same storage, overwriting the
-custom feed's posts the same way opening the custom feed overwrote whatever
-was there before. The feed picker itself (`update_feeds`/`draw_feeds`, both in
-`app.c`) is a small static-row list, modelled directly on the account screen's
-own inline menu (`update_account`/`draw_account`) rather than getting its own
-file — at one row today it doesn't earn a `feeds.c`.
+Viewing a feed adds nothing new: `wf_agent_get_feed_typed` returns the same `wf_agent_feed_list` `getTimeline`/`getAuthorFeed` return, so a custom feed is "the timeline, sourced elsewhere". `COBALT_JOB_FEED`/`run_feed` write into the same `s.feed` storage; opening a feed calls `cobalt_session_begin_feed(uri, false)` and switches to `COBALT_SCREEN_TIMELINE`, and reopening Timeline from the home menu re-fetches the home timeline over it. The picker (`update_feeds`/`draw_feeds` in `app.c`) is modelled on the account screen's inline menu rather than getting its own file.
 
-**Not done, and worth closing in a later pass:** B from the timeline while
-viewing a custom feed goes to Home, not back to the feed picker — `timeline.c`
-hardcodes its BACK target to `COBALT_SCREEN_HOME` and giving it a second
-return target is the same shape of change §"Search is actor search only"
-above declined to make for `profile_return`, for the same reason (not this
-commit's actual subject). The saved-feeds-from-preferences work described
-above is the other open item.
+**Not done:** B from the timeline while viewing a custom feed goes to Home, not back to the picker, because `timeline.c` hardcodes its BACK target to `COBALT_SCREEN_HOME`; giving it a second return target is the same change the search section declined to make for `profile_return`.
 
-**Verification note:** built with `wiiu-sdl2_image` installed and the
-`profile.c` collision fix in place (see the update above) — `make -j4` from a
-clean worktree succeeds end-to-end, producing `cobalt.elf`/`.rpx`/`.wuhb` with
-no errors or warnings. Still no hardware pass — same standing caveat as
-everything since step 5.
+(An earlier version of this entry said Cobalt carried one hardcoded feed. That stopped being true when saved feeds landed; it was stale for a while, and cobalt#135 asked for work that was already done.)
 
 ### Lists: read-only, own lists and their members only
 
