@@ -39,6 +39,7 @@ replace testing on the console.
 - TV + GamePad and Off-TV Play
 - Diagnostics covering paths, networking, TLS, Wolfram and session state
 - App-password sign-in with an on-screen keyboard
+- Browser-based OAuth sign-in through a hosted Wolfram OAuth node: Cobalt shows a pairing link, you open it on a phone or computer, and the PDS handles your password and MFA
 - Persistent encrypted sessions and sign-out
 - Home timeline with paging, reposts and threads
 - Posting, replies, quote posts and reply gates
@@ -66,19 +67,25 @@ Some Bluesky features do not currently fit Cobalt's Wii U target:
   and performance budget.
 - **Push notifications** — there is no modern push service available to a Wii U
   homebrew application.
-- **OAuth sign-in** — the browser-based redirect flow is not a good fit for
-  this application.
 
 These are platform constraints rather than features merely waiting in the
-backlog.
+backlog. What is done and what is open, next to Indigo and Platinum, is in
+[docs/PARITY.md](docs/PARITY.md).
 
 ## Requirements
 
 Cobalt requires a Wii U with [Aroma](https://aroma.foryour.cafe/) installed.
 It does not install or facilitate the exploit required to run Aroma.
 
-For networked AT Protocol features, you need a Bluesky **app password**.
-Cobalt does not use your normal account password.
+For networked AT Protocol features, you need one of two ways to sign in:
+
+- A Bluesky **app password**. Cobalt does not use your normal account
+  password.
+- An OAuth sign-in through a hosted
+  [Wolfram OAuth node](https://github.com/ewanc26/wolfram/blob/main/docs/oauth-node.md).
+  Put the node's URL in the service field, leave the app password empty, and
+  open the pairing link Cobalt shows on another device. Someone has to run the
+  node; Cobalt does not do OAuth on the console itself.
 
 Building Cobalt requires:
 
