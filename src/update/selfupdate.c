@@ -1,4 +1,4 @@
-#include "update/update.h"
+#include "update/selfupdate.h"
 
 #include <cJSON.h>
 
