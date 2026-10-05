@@ -1,22 +1,17 @@
-# Contributing to cobalt
+# Contributing to Cobalt
 
-a Wii U Bluesky client
+Cobalt is a Wii U Bluesky client written in C. How changes get made is the stack's shared flow, with the few things Cobalt adds in [docs/workflow.md](docs/workflow.md). Read that first.
 
-## Project context
+## Before opening a pull request
 
-- Primary language: C
-- Default branch: main
+- Branch from `main` as `<type>/<slug>`, and commit as `type(scope): description`.
+- Run `make test`. It runs on any machine and needs no devkitPro.
+- Fill in the pull request template, including what you ran and where. Hardware results come from a console and nothing else.
+- Update `CHANGELOG.md` and the docs in the same pull request.
+- Merging is a rebase merge, so each commit has to build and pass on its own.
 
-## Before submitting changes
+Build instructions are in the [README](README.md#building). Rules for agents working in this repository are in [AGENTS.md](AGENTS.md).
 
-- Read the README, manifests, and CI workflows before choosing commands.
-- Run the documented formatter, linter, build, and test checks relevant to your change.
-- Keep commits focused and explain compatibility or operational impact.
-- Open changes through a pull request with verification results.
-
-## Recent direction
-
-Recent commits: Sync AGENTS.md from zincfox; Sync AGENTS.md from zincfox; Sync CONTRIBUTING.md from zincfox; Sync CONTRIBUTING.md from zincfox; Update issue template: config.yml
 ## Releasing
 
 Releases are cut from `main` with `tools/release.sh <patch|minor|major|x.y.z>`.
