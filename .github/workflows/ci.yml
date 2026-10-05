@@ -6,6 +6,15 @@ on:
   pull_request:
 
 jobs:
+  parity:
+    # The parity matrix, README and AGENTS.md must agree, and the check must be
+    # able to fail.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/check-parity-selftest.sh
+      - run: tools/check-parity.sh
+
   host-tests:
     runs-on: ubuntu-latest
     env:

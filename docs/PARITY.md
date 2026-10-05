@@ -1,0 +1,83 @@
+# Parity
+
+This is the parity matrix for the three native clients: Cobalt (Wii U, this repository), [Indigo](https://github.com/ewanc26/indigo) (3DS) and [Platinum](https://github.com/ewanc26/platinum) (Mac OS 9, a Node bridge plus a C89 client). I wrote the Cobalt column from this repository's code. The Indigo and Platinum columns are what their own repositories claim: Indigo's `docs/PARITY.md` and Platinum's `parity` issues. I read their code to check the cells that looked doubtful, but I did not run either client.
+
+Each cell starts with one of these words, and `tools/check-parity.sh` enforces that:
+
+- `implemented`: the code is on `main`.
+- `partial`: some of it is, with the issue for the rest.
+- `issue`: a gap, with its issue. Written `issue #N` for this repository or `issue repo#N` for another.
+- `declined`: a decision with a reason. Not the same as impossible.
+- `impossible`: the hardware cannot do it, with the evidence. Nothing here is in this state, because I have not proved any of the declined rows against the hardware.
+- `n/a`: the row does not apply to that client.
+
+"Verified" means what was actually run. Cobalt's README says it is installed and running on a Wii U; that is the owner's report and I have no console, so nothing below is claimed on hardware by me. "Host" means the unit tests, mock-PDS end-to-end tests and the snapshot renderer, which are not an emulator and not a console.
+
+## Sign-in
+
+The two flows have different dependencies, so they are two rows.
+
+| Flow | Cobalt | Indigo | Platinum | Evidence |
+|---|---|---|---|---|
+| App password | implemented | implemented | issue platinum#38 | Cobalt: `src/app/signin.c`, the login job in `src/atproto/session.c`; host and mock-PDS tests. Platinum's bridge is OAuth-only. |
+| OAuth | implemented | implemented | implemented | Cobalt: `run_oauth()` in `src/atproto/session.c` through a Wolfram OAuth node (`docs/oauth-node.md` in Wolfram). An empty password in the form selects it. Host test covers the form's choice only (`tests/test_main.c`); the pairing exchange is not tested on the host and is not verified by me anywhere. Platinum's bridge pairs differently (its own Node protocol). |
+| Pairing client shared in Wolfram | issue #136 | issue indigo#20 | n/a | Both consoles carry their own copy of the begin/poll client; wolfram#101 is the shared one. |
+
+OAuth on a console is not the AT Protocol browser flow running on the console. The node holds the OAuth session and the DPoP key; the console holds a bearer token for the node and never sees the account password, MFA or a refresh token. The token is not logged.
+
+## Features
+
+| Feature | Cobalt | Indigo | Platinum | Evidence |
+|---|---|---|---|---|
+| Diagnostics | implemented | implemented | issue platinum#37 | Cobalt: `ACTION_DIAGNOSTICS` in `src/app/app.c` |
+| Persistent session, sign-out | implemented | implemented | implemented | Cobalt stores the session encrypted (`src/cache/session_store.c`); see AGENTS.md on what that is worth |
+| Home timeline, paging | implemented | implemented | partial, issue platinum#26 | Platinum parses the cursor and never uses it |
+| Thread view | implemented | implemented | issue platinum#27 | |
+| Profiles | implemented | implemented | partial, issue platinum#31 | Platinum shows the signed-in account only |
+| Follow, unfollow, followers, following | implemented | implemented | issue platinum#31 | |
+| Profile tabs | implemented | partial, issue indigo#20 | issue platinum#31 | Cobalt: posts, replies, media, likes (`src/atproto/actor_profile.h`). Indigo shows a person's posts only. |
+| Pinned posts | implemented | implemented | issue platinum#31 | |
+| Notifications | implemented | implemented | implemented | |
+| Mark notifications seen | implemented | implemented | issue platinum#30 | |
+| Avatars | implemented | implemented | issue platinum#32 | |
+| Images on posts, with alt text | implemented | implemented | issue platinum#32 | |
+| Full-size image viewer | implemented | implemented | issue platinum#32 | |
+| Link cards | implemented | implemented | issue platinum#32 | |
+| Who liked or reposted a post | implemented | implemented | issue platinum#36 | |
+| Compose, reply, quote | implemented | implemented | partial, issue platinum#27 | Platinum posts only |
+| Attach an image when composing | implemented | issue indigo#19 | issue platinum#33 | Cobalt: `wf_agent_upload_blob_ex`, picker in `src/app/compose.c` |
+| Reply gates | implemented | implemented | issue platinum#29 | |
+| Like and repost, with undo | implemented | implemented | issue platinum#28 | |
+| Delete your own post | implemented | issue indigo#22 | issue platinum#42 | Cobalt: `confirm_delete` in `src/app/thread.h` |
+| Actor search, post search | implemented | implemented | issue platinum#34 | |
+| Custom feeds | partial, issue #135 | implemented | issue platinum#34 | Cobalt browses one compiled-in feed; Indigo reads the account's saved feeds |
+| Lists and members | implemented | implemented | issue platinum#34 | Read-only in both consoles |
+| Mute and block, with lists | implemented | implemented | issue platinum#35 | |
+| Muted words, hide reposts | implemented | implemented | issue platinum#35 | Same rules, kept as copies: see "Duplication" below |
+| Direct messages | issue #107 | issue indigo#22 | issue platinum#42 | Wolfram has `chat_typed.h`. |
+| Post to a thread (several posts at once) | issue #103 | issue indigo#22 | issue platinum#42 | |
+| Video poster and external-media embeds | issue #102 | issue indigo#22 | issue platinum#42 | Link cards are done. This row is the video poster frame and other external embeds. |
+| Open a link on a phone via QR code | issue #101 | issue indigo#22 | issue platinum#42 | Needs a QR encoder; that is shared logic and belongs in Wolfram |
+| Video and GIF playback | declined | declined | declined | Cobalt README: no decoder in the dependency and performance budget. This is a decision; I have not tried a decoder, so it is not recorded as impossible. |
+| Push notifications | declined | declined | declined | No push service a homebrew or Classic Mac application can register with; notifications are fetched when the screen is opened. |
+
+## Cobalt only
+
+These are Wii U specific and have no row in the other clients.
+
+| Item | Cobalt | Evidence |
+|---|---|---|
+| GamePad touch coverage of the popup and header pills | issue #112 | |
+| TV layout uses the extra space | issue #111 | |
+| Remember scroll position when returning from a thread or profile | issue #110 | |
+| More menu unified with the thread and profile screens | issue #109 | |
+| User guide with controls per screen and screenshots | issue #114 | |
+| First on-console acceptance pass | issue #24 | Needs the owner's console. |
+
+## Duplication
+
+The same logic exists in more than one client, and shared logic belongs in Wolfram. The findings are in AGENTS.md ("Shared logic lives in Wolfram") and in the issues linked there. Wolfram already has `wf_mod_match_mute_words` for muted words, so that one is a replacement and not a new module.
+
+## Keeping this honest
+
+`tools/check-parity.sh` fails when a cell does not start with a known state, when an `issue` cell has no reference, or when the README or AGENTS.md disagree with this page about OAuth. Change a feature and this page in the same pull request.
