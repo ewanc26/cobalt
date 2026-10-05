@@ -11,6 +11,7 @@
  */
 
 #include "input/input.h"
+#include "ui/popup.h"
 #include "ui/render.h"
 
 #include <stdbool.h>
@@ -64,6 +65,9 @@ int cobalt_app_home_selection(const cobalt_app *app);
 cobalt_screen cobalt_app_screen(const cobalt_app *app);
 /* Timeline cursor and first drawn card, so tests can check they survive a detour. */
 void cobalt_app_timeline_position(const cobalt_app *app, int *selected, int *scroll);
+
+/* The open menu, for tests that tap its rows. NULL when no menu is up. */
+const cobalt_popup *cobalt_app_popup(const cobalt_app *app);
 
 void cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms);
 void cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface);

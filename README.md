@@ -257,6 +257,11 @@ constraints behind the implementation.
 The GamePad is a first-class display and input surface, including touch input
 and a dedicated on-screen keyboard.
 
+The footer prompts are controls rather than captions: on the GamePad, tapping a
+hint pill presses the button it names. That is what makes them readable by
+someone holding the pad instead of memorised by someone using a Pro Controller
+with the GamePad out of view.
+
 Image alt text is surfaced directly in the UI because Wii U homebrew does not
 provide Cobalt with a usable system screen reader. Images with alt text are
 marked with an explicit **ALT** badge, and the focused post can display the
