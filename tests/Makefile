@@ -18,12 +18,14 @@ ifeq ($(PKGCONFIG),)
    SDL_CFLAGS   := -I/usr/include/SDL2
    SDL_LIBS     := -lSDL2 -lSDL2_ttf
    CJSON_CFLAGS := -I/usr/include/cjson
+   CJSON_LIBS   := -lcjson
    CURL_CFLAGS  :=
    CURL_LIBS    := -lcurl
 else
    SDL_CFLAGS   := $(shell pkg-config --cflags sdl2 SDL2_ttf)
    SDL_LIBS     := $(shell pkg-config --libs sdl2 SDL2_ttf)
    CJSON_CFLAGS := $(shell pkg-config --cflags libcjson 2>/dev/null || echo -I/usr/include/cjson)
+   CJSON_LIBS   := $(shell pkg-config --libs libcjson 2>/dev/null || echo -lcjson)
    CURL_CFLAGS  := $(shell pkg-config --cflags libcurl 2>/dev/null)
    CURL_LIBS    := $(shell pkg-config --libs libcurl 2>/dev/null || echo -lcurl)
 endif
@@ -90,6 +92,8 @@ UNIT_SOURCES := \
 	$(SRC)/util/timefmt.c \
 	$(SRC)/atproto/feed.c \
 	$(SRC)/atproto/prefs.c \
+	$(SRC)/update/update.c \
+	$(SRC)/app/update.c \
 	$(SRC)/app/timeline.c \
 	$(SRC)/app/thread.c \
 	$(SRC)/app/compose.c \
@@ -218,13 +222,19 @@ sim:
 		$(MHD_LIBS) $(LDLIBS) -Wl,-rpath,$(abspath $(E2E_BUILD)) -Wl,-rpath,$(abspath $(E2E_BUILD))/_deps/cjson-build
 	@cd .. && ./tests/$(SIM_BIN) $(SIM_ARGS)
 
+# The release script's manifest is fed to the updater's reader, so the two
+# cannot drift: tools/make-update-manifest.sh writes it, src/update/update.c
+# has to accept it and agree with the file's own SHA-256.
 check: $(TEST_BIN)
 	@mkdir -p $(SCRATCH)
-	@./$(TEST_BIN) $(SCRATCH)
+	@printf 'not really a wuhb\n' > $(SCRATCH)/sample.wuhb
+	@printf 'Fixed things.\n' > $(SCRATCH)/sample-notes.txt
+	@$(ROOT)/tools/make-update-manifest.sh 9.9.9 $(SCRATCH)/sample.wuhb $(SCRATCH)/sample-notes.txt > $(SCRATCH)/update-sample.json
+	@./$(TEST_BIN) $(SCRATCH) $(SCRATCH)/update-sample.json $(SCRATCH)/sample.wuhb
 
 $(TEST_BIN): $(UNIT_SOURCES)
 	@mkdir -p $(OUT)
-	@$(CC) $(CFLAGS) -o $@ $(UNIT_SOURCES) $(LDLIBS)
+	@$(CC) $(CFLAGS) -o $@ $(UNIT_SOURCES) $(LDLIBS) $(CJSON_LIBS)
 
 #---------------------------------------------------------------------------------
 clean:

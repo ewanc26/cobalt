@@ -10,6 +10,8 @@
 #include "audio/sound.h"
 #include "util/buildinfo.h"
 #include "app/timeline.h"
+#include "app/update.h"
+#include "app/update.h"
 #include "atproto/atproto.h"
 #include "atproto/session.h"
 #include "net/net.h"
@@ -33,6 +35,7 @@ typedef enum {
    ACTION_LISTS,
    ACTION_NOTIFICATIONS,
    ACTION_ACCOUNT,
+   ACTION_UPDATES,
    ACTION_DIAGNOSTICS,
    ACTION_TOGGLE_DISPLAY,
    ACTION_QUIT,
@@ -52,6 +55,7 @@ static const menu_action MENU[] = {
    ACTION_LISTS,
    ACTION_NOTIFICATIONS,
    ACTION_ACCOUNT,
+   ACTION_UPDATES,
    ACTION_DIAGNOSTICS,
    ACTION_TOGGLE_DISPLAY,
    ACTION_QUIT,
@@ -69,6 +73,7 @@ struct cobalt_app {
    float focus[MENU_COUNT];
 
    cobalt_signin signin;
+   cobalt_update_view update;
    cobalt_timeline timeline;
    cobalt_thread_view thread;
    cobalt_compose compose;
@@ -193,6 +198,7 @@ menu_label(int index)
       case ACTION_LISTS:          return "Lists";
       case ACTION_NOTIFICATIONS:  return "Notifications";
       case ACTION_ACCOUNT:        return signed_in() ? "Account" : "Sign in";
+      case ACTION_UPDATES:        return "Updates";
       case ACTION_DIAGNOSTICS:    return "Diagnostics";
       case ACTION_TOGGLE_DISPLAY: return "TV display";
       case ACTION_QUIT:           return "Quit";
@@ -224,6 +230,8 @@ menu_hint(int index)
          }
          return cobalt_session_available() ? "Connect with an app password"
                                            : "Unavailable — see Diagnostics";
+      case ACTION_UPDATES:
+         return "Check GitHub for a newer Cobalt";
       case ACTION_DIAGNOSTICS:
          return "Paths, network and library status";
       case ACTION_TOGGLE_DISPLAY:
@@ -267,6 +275,8 @@ cobalt_app_create(void)
    app->selected = 1; /* Sign in — the one thing worth doing on run one. */
 
    cobalt_signin_init(&app->signin);
+   cobalt_update_view_init(&app->update);
+   cobalt_update_view_startup(&app->update, cobalt_data_root());
    cobalt_timeline_init(&app->timeline);
    cobalt_thread_view_init(&app->thread);
    cobalt_notify_view_init(&app->notify);
@@ -325,6 +335,9 @@ cobalt_app_destroy(cobalt_app *app)
       /* The password buffer lives in this allocation; do not hand it back to
        * the heap still holding one. */
       cobalt_signin_clear_password(&app->signin);
+      /* A verified update replaces the build only now, with the app closing. */
+      cobalt_update_view_apply_on_quit(&app->update);
+      cobalt_update_view_destroy(&app->update);
    }
    free(app);
 }
@@ -410,6 +423,12 @@ activate(cobalt_app *app, int index)
             cobalt_signin_set_status(&app->signin, "", false);
             app->screen = COBALT_SCREEN_SIGN_IN;
          }
+         break;
+
+      case ACTION_UPDATES:
+         app->screen = COBALT_SCREEN_UPDATE;
+         cobalt_update_view_open(&app->update);
+         COBALT_LOGI("menu: opened updates");
          break;
 
       case ACTION_DIAGNOSTICS:
@@ -990,6 +1009,7 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
 
    (void) now_ms;
    app->frames++;
+   cobalt_update_view_tick(&app->update);
 
    cobalt_input tapped_back;
    if (s_back_hit_valid && screen_has_back_pill(app->screen) &&
@@ -1070,6 +1090,12 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
    in = hint_in;
 
    switch (app->screen) {
+      case COBALT_SCREEN_UPDATE:
+         if (cobalt_update_view_update(&app->update, in) == COBALT_UPDATE_VIEW_BACK) {
+            app->screen = COBALT_SCREEN_HOME;
+         }
+         break;
+
       case COBALT_SCREEN_DIAGNOSTICS:
          if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
             app->screen = COBALT_SCREEN_HOME;
@@ -1830,6 +1856,11 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    }
 
    switch (app->screen) {
+      case COBALT_SCREEN_UPDATE:
+         draw_header(r, "Updates");
+         cobalt_update_view_draw(&app->update, r, cobalt_content_top(r));
+         break;
+
       case COBALT_SCREEN_DIAGNOSTICS:
          draw_diagnostics(app, r, surface);
          break;

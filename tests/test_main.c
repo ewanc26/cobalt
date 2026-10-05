@@ -11,12 +11,14 @@
 #include "app/graph.h"
 #include "app/search.h"
 #include "app/signin.h"
+#include "app/update.h"
 #include "atproto/actors.h"
 #include "atproto/session.h"
 #include "atproto/feed.h"
 #include "atproto/notifications.h"
 #include "atproto/prefs.h"
 #include "cache/session_store.h"
+#include "update/update.h"
 #include "ui/imagecache.h"
 #include "ui/imageview.h"
 #include "ui/keyboard.h"
@@ -820,6 +822,399 @@ test_prefs(void)
    CHECK(feed.count == 2);
    CHECK_STR(feed.posts[0].text, "post 0");
    CHECK_STR(feed.posts[1].text, "post 3");
+}
+
+/* --- self-update core --- */
+
+static void
+hex32(const unsigned char d[32], char out[65])
+{
+   for (int i = 0; i < 32; i++) {
+      snprintf(out + i * 2, 3, "%02x", d[i]);
+   }
+}
+
+static void
+sha_of(const char *text, size_t repeat, char out[65])
+{
+   cobalt_sha256 c;
+   unsigned char d[32];
+
+   cobalt_sha256_init(&c);
+   for (size_t i = 0; i < repeat; i++) {
+      cobalt_sha256_update(&c, text, strlen(text));
+   }
+   cobalt_sha256_final(&c, d);
+   hex32(d, out);
+}
+
+static void
+test_update_sha256(void)
+{
+   begin("sha-256 known answers (FIPS 180-4)");
+   char h[65];
+
+   sha_of("", 1, h);
+   CHECK_STR(h, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+   sha_of("abc", 1, h);
+   CHECK_STR(h, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+   sha_of("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", 1, h);
+   CHECK_STR(h, "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+   /* One million 'a', fed in uneven pieces, crosses every block boundary case. */
+   sha_of("aaaaaaaaaa", 100000, h);
+   CHECK_STR(h, "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
+
+   unsigned char d[32], e[32];
+   CHECK(cobalt_sha256_from_hex("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", d));
+   CHECK(cobalt_sha256_from_hex("BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD", e));
+   CHECK(cobalt_sha256_equal(d, e));
+   e[31] ^= 1;
+   CHECK(!cobalt_sha256_equal(d, e));
+   CHECK(!cobalt_sha256_from_hex("ba78", d));
+   CHECK(!cobalt_sha256_from_hex("zz7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", d));
+   CHECK(!cobalt_sha256_from_hex(NULL, d));
+}
+
+static int
+vcmp(const char *a, const char *b)
+{
+   bool ok;
+   int c = cobalt_update_compare_versions(a, b, &ok);
+   return ok ? (c < 0 ? -1 : c > 0 ? 1 : 0) : 99;
+}
+
+static void
+test_update_versions(void)
+{
+   begin("update version comparison");
+
+   CHECK(vcmp("0.5.0", "0.5.0") == 0);
+   CHECK(vcmp("0.6.0", "0.5.0") == 1);
+   CHECK(vcmp("0.5.1", "0.5.0") == 1);
+   CHECK(vcmp("0.10.0", "0.9.9") == 1);   /* numeric, not lexical */
+   CHECK(vcmp("1.0.0", "0.99.99") == 1);
+   CHECK(vcmp("1.0.0-rc.1", "1.0.0") == -1);
+   CHECK(vcmp("1.0.0-rc.1", "1.0.0-rc.2") == -1);
+   CHECK(vcmp("1.0.0-rc.10", "1.0.0-rc.9") == 1);
+   CHECK(vcmp("1.0.0-alpha", "1.0.0-alpha.1") == -1);
+   CHECK(vcmp("1.0.0-1", "1.0.0-alpha") == -1);
+   CHECK(vcmp("v0.5.0", "0.5.0") == 99);   /* rejected, not stripped */
+   CHECK(vcmp("0.5", "0.5.0") == 99);
+   CHECK(vcmp("0.05.0", "0.5.0") == 99);
+   CHECK(vcmp("0.5.0.1", "0.5.0") == 99);
+   CHECK(vcmp("", "0.5.0") == 99);
+   CHECK(vcmp(NULL, "0.5.0") == 99);
+   CHECK(vcmp("0.5.0-", "0.5.0") == 99);
+}
+
+#define SHA_ABC "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+
+static cobalt_update_status
+parse_manifest_text(const char *text, cobalt_update_manifest *m)
+{
+   return cobalt_update_parse_manifest(text, strlen(text), COBALT_UPDATE_WUHB_MAX, m);
+}
+
+static void
+test_update_manifest(void)
+{
+   begin("update manifest parsing");
+   cobalt_update_manifest m;
+   const char *good =
+      "{\"schema\":1,\"app\":\"cobalt\",\"version\":\"0.6.0\",\"notes\":\"Fixes.\","
+      "\"asset\":{\"name\":\"cobalt-0.6.0.wuhb\",\"url\":"
+      "\"https://github.com/ewanc26/cobalt/releases/download/v0.6.0/cobalt-0.6.0.wuhb\","
+      "\"size\":1234,\"sha256\":\"" SHA_ABC "\"},\"signature\":null}";
+
+   CHECK(parse_manifest_text(good, &m) == COBALT_UPDATE_OK);
+   CHECK_STR(m.version, "0.6.0");
+   CHECK_STR(m.name, "cobalt-0.6.0.wuhb");
+   CHECK(m.size == 1234);
+   CHECK(m.sha256[0] == 0xba && m.sha256[31] == 0xad);
+
+   /* Every one of these is refused, and the output is left zeroed. */
+   struct { const char *what; const char *from; const char *to; cobalt_update_status want; } bad[] = {
+      {"schema 2", "\"schema\":1", "\"schema\":2", COBALT_UPDATE_BAD_SCHEMA},
+      {"no schema", "\"schema\":1,", "", COBALT_UPDATE_BAD_SCHEMA},
+      {"other app", "\"app\":\"cobalt\"", "\"app\":\"indigo\"", COBALT_UPDATE_BAD_APP},
+      {"v-prefixed version", "\"version\":\"0.6.0\"", "\"version\":\"v0.6.0\"", COBALT_UPDATE_BAD_VERSION},
+      {"http url", "https://github.com", "http://github.com", COBALT_UPDATE_BAD_URL},
+      {"other host", "https://github.com/ewanc26", "https://evil.example/ewanc26", COBALT_UPDATE_BAD_URL},
+      {"other repo", "ewanc26/cobalt/releases/download", "someone/else/releases/download", COBALT_UPDATE_BAD_URL},
+      {"other tag", "download/v0.6.0/", "download/v0.5.0/", COBALT_UPDATE_BAD_URL},
+      {"name with a slash", "\"name\":\"cobalt-0.6.0.wuhb\"", "\"name\":\"../cobalt-0.6.0.wuhb\"", COBALT_UPDATE_BAD_FIELD},
+      {"zero size", "\"size\":1234", "\"size\":0", COBALT_UPDATE_BAD_SIZE},
+      {"oversize", "\"size\":1234", "\"size\":99999999999", COBALT_UPDATE_BAD_SIZE},
+      {"short sha", SHA_ABC, "ba7816bf", COBALT_UPDATE_BAD_FIELD},
+      {"non-hex sha", "ba7816bf8f", "zz7816bf8f", COBALT_UPDATE_BAD_FIELD},
+      {"sha as number", "\"sha256\":\"" SHA_ABC "\"", "\"sha256\":5", COBALT_UPDATE_BAD_FIELD},
+   };
+   for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+      char text[1024];
+      const char *at = strstr(good, bad[i].from);
+      CHECK(at != NULL);
+      if (!at) continue;
+      snprintf(text, sizeof text, "%.*s%s%s", (int) (at - good), good, bad[i].to,
+               at + strlen(bad[i].from));
+      cobalt_update_status st = parse_manifest_text(text, &m);
+      if (st != bad[i].want) fprintf(stderr, "  case: %s -> %d\n", bad[i].what, (int) st);
+      CHECK(st == bad[i].want);
+      CHECK(m.version[0] == '\0');
+   }
+   CHECK(parse_manifest_text("not json", &m) == COBALT_UPDATE_BAD_JSON);
+   CHECK(parse_manifest_text("", &m) == COBALT_UPDATE_BAD_JSON);
+   CHECK(parse_manifest_text("[]", &m) == COBALT_UPDATE_BAD_JSON);
+
+   /* A name that does not fit is an error, never a truncation. */
+   char longname[1100];
+   snprintf(longname, sizeof longname, "{\"schema\":1,\"app\":\"cobalt\",\"version\":\"0.6.0\","
+            "\"asset\":{\"name\":\"%0200d\",\"url\":\"x\",\"size\":1,\"sha256\":\"" SHA_ABC "\"}}", 7);
+   CHECK(parse_manifest_text(longname, &m) == COBALT_UPDATE_BAD_FIELD);
+}
+
+static bool
+file_has(const char *path, const char *bytes, size_t n)
+{
+   FILE *f = fopen(path, "rb");
+   char buf[256];
+   if (!f) return false;
+   size_t got = fread(buf, 1, sizeof buf, f);
+   fclose(f);
+   return got == n && memcmp(buf, bytes, n) == 0;
+}
+
+static bool
+file_exists(const char *path)
+{
+   FILE *f = fopen(path, "rb");
+   if (f) fclose(f);
+   return f != NULL;
+}
+
+static void
+write_file(const char *path, const char *text)
+{
+   FILE *f = fopen(path, "wb");
+   if (f) { fputs(text, f); fclose(f); }
+}
+
+static void
+test_update_staging(const char *root)
+{
+   begin("update staging, replacement and recovery");
+
+   char stage[300], installed[300];
+   snprintf(stage, sizeof stage, "%s/update", root);
+   snprintf(installed, sizeof installed, "%s/cobalt.wuhb", root);
+   mkdir(stage, 0755);
+   cobalt_update_paths p;
+   CHECK(cobalt_update_paths_init(&p, installed, stage));
+   CHECK(!cobalt_update_paths_init(&p, "", stage));
+   CHECK(cobalt_update_paths_init(&p, installed, stage));
+
+   remove(p.part); remove(p.staged); remove(p.old);
+   write_file(p.installed, "OLD BUILD");
+
+   unsigned char abc[32], other[32];
+   cobalt_sha256_from_hex(SHA_ABC, abc);
+   memcpy(other, abc, 32);
+   other[0] ^= 0xff;
+
+   /* A wrong digest is refused before anything touches the card. */
+   CHECK(cobalt_update_stage(&p, "abc", 3, other) == COBALT_STAGE_MISMATCH);
+   CHECK(!file_exists(p.part) && !file_exists(p.staged));
+   CHECK(file_has(p.installed, "OLD BUILD", 9));
+
+   /* A truncated download is a different digest, so it is refused too. */
+   CHECK(cobalt_update_stage(&p, "ab", 2, abc) == COBALT_STAGE_MISMATCH);
+
+   /* Staging never touches the installed build. */
+   CHECK(cobalt_update_stage(&p, "abc", 3, abc) == COBALT_STAGE_OK);
+   CHECK(cobalt_update_has_staged(&p));
+   CHECK(!file_exists(p.part));
+   CHECK(file_has(p.installed, "OLD BUILD", 9));
+
+   /* Applying keeps the old build until it is committed. */
+   CHECK(cobalt_update_apply(&p));
+   CHECK(file_has(p.installed, "abc", 3));
+   CHECK(file_has(p.old, "OLD BUILD", 9));
+   CHECK(!cobalt_update_has_staged(&p));
+   CHECK(cobalt_update_recover(&p) == COBALT_RECOVER_NOTHING);   /* a healthy start keeps .old */
+   CHECK(file_exists(p.old));
+   CHECK(cobalt_update_commit(&p));
+   CHECK(!file_exists(p.old));
+   CHECK(!cobalt_update_commit(&p));
+
+   /* Interrupted between the two renames: installed is gone, .old holds the build. */
+   write_file(p.old, "OLD BUILD");
+   remove(p.installed);
+   write_file(p.staged, "abc");
+   CHECK(cobalt_update_recover(&p) == COBALT_RECOVER_RESTORED);
+   CHECK(file_has(p.installed, "OLD BUILD", 9));
+   CHECK(!file_exists(p.old));
+   CHECK(!file_exists(p.staged));
+
+   /* Interrupted download and an unapplied staged file are cleaned up. */
+   write_file(p.part, "half");
+   CHECK(cobalt_update_recover(&p) == COBALT_RECOVER_CLEANED);
+   CHECK(!file_exists(p.part));
+   write_file(p.staged, "abc");
+   CHECK(cobalt_update_recover(&p) == COBALT_RECOVER_CLEANED);
+   CHECK(!file_exists(p.staged));
+   CHECK(file_has(p.installed, "OLD BUILD", 9));
+
+   /* Nothing to apply, or nothing to replace: refused, nothing changes. */
+   CHECK(!cobalt_update_apply(&p));
+   write_file(p.staged, "abc");
+   remove(p.installed);
+   CHECK(!cobalt_update_apply(&p));
+   remove(p.staged);
+}
+
+static const char *s_fake_wuhb = "abc";
+static int s_fake_fetches = 0;
+static bool s_fake_manifest_ok = true;
+static const char *s_fake_version = "9.9.9";
+
+static bool
+fake_fetch(const char *url, size_t max_bytes, unsigned char **data, size_t *size)
+{
+   char body[1024];
+   const char *text;
+
+   s_fake_fetches++;
+   if (strcmp(url, COBALT_UPDATE_MANIFEST_URL) == 0) {
+      if (!s_fake_manifest_ok) return false;
+      snprintf(body, sizeof body,
+               "{\"schema\":1,\"app\":\"cobalt\",\"version\":\"%s\",\"notes\":\"n\",\"asset\":{"
+               "\"name\":\"cobalt-%s.wuhb\",\"url\":\"" COBALT_UPDATE_ASSET_PREFIX "v%s/cobalt-%s.wuhb\","
+               "\"size\":3,\"sha256\":\"" SHA_ABC "\"}}",
+               s_fake_version, s_fake_version, s_fake_version, s_fake_version);
+      text = body;
+   } else {
+      text = s_fake_wuhb;
+      if (strlen(text) > max_bytes) return false;
+   }
+   *size = strlen(text);
+   *data = malloc(*size);
+   memcpy(*data, text, *size);
+   return true;
+}
+
+static void
+test_update_view(const char *root)
+{
+   begin("update screen asks first, downloads on A, installs on quit");
+
+   char data[300], installed[300];
+   snprintf(data, sizeof data, "%s/cobalt", root);
+   mkdir(data, 0755);
+   snprintf(installed, sizeof installed, "%s.wuhb", data);
+   write_file(installed, "RUNNING");
+
+   cobalt_update_view v;
+   cobalt_update_view_init(&v);
+   v.threaded = false;
+   v.fetch = fake_fetch;
+   snprintf(v.running, sizeof v.running, "0.5.0");
+   cobalt_update_view_startup(&v, data);
+   CHECK(v.have_paths);
+
+   cobalt_input in;
+   memset(&in, 0, sizeof in);
+
+   /* Opening only checks. A newer version is offered, not fetched. */
+   s_fake_fetches = 0;
+   s_fake_wuhb = "abc";
+   cobalt_update_view_open(&v);
+   CHECK(cobalt_update_view_state(&v) == COBALT_UPDATE_AVAILABLE);
+   CHECK(s_fake_fetches == 1);
+   CHECK(!cobalt_update_has_staged(&v.paths));
+
+   /* B leaves without downloading. */
+   in.pressed[COBALT_BTN_BACK] = true;
+   CHECK(cobalt_update_view_update(&v, &in) == COBALT_UPDATE_VIEW_BACK);
+   CHECK(s_fake_fetches == 1);
+   in.pressed[COBALT_BTN_BACK] = false;
+
+   /* Quitting with nothing confirmed changes nothing. */
+   CHECK(!cobalt_update_view_apply_on_quit(&v));
+   CHECK(file_has(installed, "RUNNING", 7));
+
+   /* A downloads, verifies and stages; the running build is untouched until quit. */
+   in.pressed[COBALT_BTN_CONFIRM] = true;
+   cobalt_update_view_update(&v, &in);
+   in.pressed[COBALT_BTN_CONFIRM] = false;
+   CHECK(cobalt_update_view_state(&v) == COBALT_UPDATE_READY);
+   CHECK(file_has(installed, "RUNNING", 7));
+   CHECK(cobalt_update_view_apply_on_quit(&v));
+   CHECK(file_has(installed, "abc", 3));
+   CHECK(file_exists(v.paths.old));
+
+   /* The next start keeps the old build until the new one has run a frame. */
+   cobalt_update_view v2;
+   cobalt_update_view_init(&v2);
+   cobalt_update_view_startup(&v2, data);
+   CHECK(file_exists(v2.paths.old));
+   cobalt_update_view_tick(&v2);
+   CHECK(!file_exists(v2.paths.old));
+   cobalt_update_view_destroy(&v2);
+
+   /* A corrupt download is discarded and the build is untouched. */
+   s_fake_wuhb = "xyz";
+   cobalt_update_view_init(&v2);
+   v2.threaded = false;
+   v2.fetch = fake_fetch;
+   snprintf(v2.running, sizeof v2.running, "0.5.0");
+   cobalt_update_view_startup(&v2, data);
+   cobalt_update_view_open(&v2);
+   in.pressed[COBALT_BTN_CONFIRM] = true;
+   cobalt_update_view_update(&v2, &in);
+   in.pressed[COBALT_BTN_CONFIRM] = false;
+   CHECK(cobalt_update_view_state(&v2) == COBALT_UPDATE_FAILED);
+   CHECK(!cobalt_update_has_staged(&v2.paths));
+   CHECK(!cobalt_update_view_apply_on_quit(&v2));
+   CHECK(file_has(installed, "abc", 3));
+
+   /* Same or older version: nothing to offer. Unreachable network: a failure, not a hang. */
+   s_fake_version = "0.5.0";
+   in.pressed[COBALT_BTN_CONFIRM] = true;
+   cobalt_update_view_update(&v2, &in);
+   in.pressed[COBALT_BTN_CONFIRM] = false;
+   CHECK(cobalt_update_view_state(&v2) == COBALT_UPDATE_CURRENT);
+   s_fake_manifest_ok = false;
+   in.pressed[COBALT_BTN_CONFIRM] = true;
+   cobalt_update_view_update(&v2, &in);
+   in.pressed[COBALT_BTN_CONFIRM] = false;
+   CHECK(cobalt_update_view_state(&v2) == COBALT_UPDATE_FAILED);
+   s_fake_manifest_ok = true;
+   s_fake_version = "9.9.9";
+
+   cobalt_update_view_destroy(&v2);
+   cobalt_update_view_destroy(&v);
+}
+
+/* The manifest tools/make-update-manifest.sh produced, read by the real parser. */
+static void
+test_update_release_manifest(const char *manifest_path, const char *wuhb_path)
+{
+   begin("release script manifest is accepted by the reader");
+   char text[2048];
+   cobalt_update_manifest m;
+   unsigned char digest[32];
+   FILE *f = fopen(manifest_path, "rb");
+   size_t n = f ? fread(text, 1, sizeof text - 1, f) : 0;
+   if (f) fclose(f);
+   text[n] = '\0';
+   CHECK(n > 0);
+   CHECK(parse_manifest_text(text, &m) == COBALT_UPDATE_OK);
+   CHECK_STR(m.version, "9.9.9");
+   CHECK_STR(m.name, "cobalt-9.9.9.wuhb");
+   CHECK_STR(m.notes, "Fixed things.");
+   CHECK(cobalt_sha256_file(wuhb_path, digest));
+   CHECK(cobalt_sha256_equal(digest, m.sha256));
+   struct stat st;
+   CHECK(stat(wuhb_path, &st) == 0 && (unsigned long) st.st_size == m.size);
 }
 
 static void
@@ -2135,6 +2530,12 @@ main(int argc, char **argv)
    test_feed_embeds();
    test_feed_link_domain();
    test_prefs();
+   test_update_sha256();
+   test_update_versions();
+   test_update_manifest();
+   test_update_staging(root);
+   test_update_view(root);
+   if (argc > 3) test_update_release_manifest(argv[2], argv[3]);
    test_actor_list_remove();
    test_interactions();
    test_delete_post_helpers();
