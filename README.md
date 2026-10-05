@@ -50,6 +50,7 @@ replace testing on the console.
 - Avatars
 - Post, reply and quote images with alt text
 - A full-size image viewer, from the post menu, on both screens
+- Who liked or reposted a post, from the post menu
 - Link-card previews
 - Actor search
 - Custom feed browsing

@@ -8,6 +8,7 @@
  */
 
 #include "app/compose.h"
+#include "app/graph.h"
 #include "app/search.h"
 #include "app/signin.h"
 #include "atproto/actors.h"
@@ -1311,6 +1312,37 @@ test_follow_lists(void)
 }
 
 static void
+test_likes_lists(void)
+{
+   begin("likes and reposts need a post URI");
+
+   CHECK(!cobalt_session_begin_likes(NULL, false));
+   CHECK(!cobalt_session_begin_likes("", true));
+   CHECK(!cobalt_session_begin_reposted_by(NULL, false));
+   CHECK(cobalt_session_likes_list()->count == 0);
+
+   /* The graph open mirrors the follows open: it rewinds the cursor and
+    * records which post the list belongs to. */
+   cobalt_graph_view view;
+   memset(&view, 0, sizeof(view));
+   cobalt_graph_view_open_likes(&view, COBALT_GRAPH_LIKES, "at://did:plc:x");
+   CHECK(view.kind == COBALT_GRAPH_LIKES);
+   CHECK_STR(view.actor, "at://did:plc:x");
+   CHECK(view.selected == 0 && view.scroll == 0);
+
+   /* A wrong kind is refused rather than half-opened. */
+   cobalt_graph_view_open_likes(&view, COBALT_GRAPH_MUTED, "at://did:plc:x");
+   CHECK(view.kind == COBALT_GRAPH_LIKES);
+
+   /* A follows kind is not a likes kind and vice versa, but both open
+    * profiles on A rather than undoing something. */
+   CHECK(cobalt_graph_kind_is_follows(COBALT_GRAPH_LIKES));
+   CHECK(cobalt_graph_kind_is_follows(COBALT_GRAPH_REPOSTED));
+   CHECK(cobalt_graph_kind_is_follows(COBALT_GRAPH_FOLLOWERS));
+   CHECK(!cobalt_graph_kind_is_follows(COBALT_GRAPH_MUTED));
+}
+
+static void
 test_quote_helpers(void)
 {
    begin("quote post flattening");
@@ -2024,6 +2056,7 @@ main(int argc, char **argv)
    test_delete_post_helpers();
    test_quote_helpers();
    test_follow_lists();
+   test_likes_lists();
    test_profile_tabs();
    test_quote_compose();
    test_image_attach(root);

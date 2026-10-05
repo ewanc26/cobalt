@@ -132,6 +132,10 @@ static struct {
    cobalt_actor_list followers;
    cobalt_actor_list following;
    char follow_actor[COBALT_POST_URI_MAX];
+   /* getLikes/getRepostedBy share this one list: only one is on screen at
+    * a time, and a fetch always resets it, so there is no cross-talk. */
+   cobalt_actor_list likes;
+   char likes_uri[COBALT_POST_URI_MAX];
    /* What the shared feed window holds, so refresh and paging re-fetch the
     * same source. Written and read on the UI thread only. */
    int feed_source;            /* 0 home, 1 custom feed, 2 post search */
@@ -1816,6 +1820,108 @@ run_following(const job_input *in, cobalt_job_result *r,
                   "Not following anyone.");
 }
 
+/* getRepostedBy is the same shape as the followers fetches — a plain actor
+ * list keyed by a URI instead of a DID — so it rides run_actor_list. */
+static void
+run_reposted_by(const job_input *in, cobalt_job_result *r,
+                cobalt_auth_state *state)
+{
+   run_actor_list(in, r, state, &s.likes, wf_agent_get_reposted_by_typed,
+                  "No reposts yet.");
+}
+
+/* getLikes is not: Wolfram hands back wf_agent_actor_like_list, whose rows
+ * carry the actor one level down, so it gets its own run rather than a
+ * fetch_fn that would have to lie about the output type. */
+static void
+run_likes(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in first.");
+      return;
+   }
+
+   const char *cursor = NULL;
+   if (in->paging) {
+      SDL_LockMutex(s.lock);
+      cursor = s.likes.cursor[0] ? s.likes.cursor : NULL;
+      SDL_UnlockMutex(s.lock);
+      if (!cursor) {
+         *state = COBALT_AUTH_SIGNED_IN;
+         r->ok = true;
+         return;
+      }
+   }
+
+   wf_agent_actor_like_list wf_likes;
+   memset(&wf_likes, 0, sizeof(wf_likes));
+
+   const wf_status status =
+      wf_agent_get_likes_typed(s.wf, in->uri, TIMELINE_PAGE, cursor, &wf_likes);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: getLikes failed (%d)", (int) status);
+      set_message(r, "Could not load the likes (wolfram status %d).",
+                  (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(s.lock);
+   if (!in->paging) {
+      cobalt_actor_list_reset(&s.likes);
+   }
+   int added = 0;
+   for (size_t i = 0; i < wf_likes.like_count; i++) {
+      if (s.likes.count >= COBALT_ACTORS_MAX) {
+         COBALT_LOGI("session: likes window full at %d, dropping the rest",
+                      s.likes.count);
+         break;
+      }
+      const wf_agent_profile_view *src = &wf_likes.likes[i].actor;
+      cobalt_actor *out = &s.likes.actors[s.likes.count];
+      memset(out, 0, sizeof(*out));
+
+      snprintf(out->did, sizeof(out->did), "%s",
+               src->did ? src->did : "");
+      snprintf(out->handle, sizeof(out->handle), "@%s",
+               src->handle ? src->handle : "");
+      const char *display = src->display_name;
+      if (!display || display[0] == '\0') {
+         display = src->handle ? src->handle : "";
+      }
+      cobalt_feed_copy_text(out->display_name, sizeof(out->display_name),
+                            display);
+      snprintf(out->avatar, sizeof(out->avatar), "%s",
+               src->avatar ? src->avatar : "");
+      s.likes.count++;
+      added++;
+   }
+   if (s.likes.count >= COBALT_ACTORS_MAX) {
+      s.likes.cursor[0] = '\0';
+      s.likes.has_more = false;
+   } else if (wf_likes.cursor && wf_likes.cursor[0]) {
+      snprintf(s.likes.cursor, sizeof(s.likes.cursor), "%s", wf_likes.cursor);
+      s.likes.has_more = true;
+   } else {
+      s.likes.cursor[0] = '\0';
+      s.likes.has_more = false;
+   }
+   const int total = s.likes.count;
+   SDL_UnlockMutex(s.lock);
+
+   wf_agent_actor_like_list_free(&wf_likes);
+   COBALT_LOGI("session: likes +%d (%d held)", added, total);
+
+   if (total == 0) {
+      set_message(r, "No likes yet.");
+   }
+
+   publish_session();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
 /* Not routed through run_actor_list — searchActors takes a query string on
  * top of limit/cursor, so its Wolfram wrapper has a different shape than the
  * mutes/blocks fetchers run_actor_list is built around. A fresh (non-paging)
@@ -2264,6 +2370,8 @@ run_job(cobalt_job_kind kind, const job_input *in, cobalt_auth_state *state)
       case COBALT_JOB_PROFILE_TAB:  run_profile_tab(in, &r, state); break;
       case COBALT_JOB_FOLLOWERS:    run_followers(in, &r, state);    break;
       case COBALT_JOB_FOLLOWING:    run_following(in, &r, state);    break;
+      case COBALT_JOB_LIKES:        run_likes(in, &r, state);        break;
+      case COBALT_JOB_REPOSTED_BY:  run_reposted_by(in, &r, state); break;
       case COBALT_JOB_SEARCH_ACTORS: run_search_actors(in, &r, state); break;
       case COBALT_JOB_FEED:     run_feed(in, &r, state);      break;
       case COBALT_JOB_SEARCH_POSTS: run_search_posts(in, &r, state); break;
@@ -2818,6 +2926,29 @@ begin_follow_list(cobalt_job_kind kind, cobalt_actor_list *list,
    return submit(kind, &in);
 }
 
+/* Likes/reposted-by: same shape as begin_follow_list but keyed by a post
+ * URI, and the two kinds share one list so there is no list argument. */
+static bool
+begin_likes_list(cobalt_job_kind kind, const char *uri, bool paging)
+{
+   if (!uri || uri[0] == '\0') {
+      return false;
+   }
+
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   in.paging = paging;
+   snprintf(in.uri, sizeof(in.uri), "%s", uri);
+
+   if (!paging) {
+      SDL_LockMutex(s.lock);
+      cobalt_actor_list_reset(&s.likes);
+      snprintf(s.likes_uri, sizeof(s.likes_uri), "%s", uri);
+      SDL_UnlockMutex(s.lock);
+   }
+   return submit(kind, &in);
+}
+
 bool
 cobalt_session_begin_followers(const char *actor, bool paging)
 {
@@ -2840,6 +2971,24 @@ const cobalt_actor_list *
 cobalt_session_following_list(void)
 {
    return &s.following;
+}
+
+bool
+cobalt_session_begin_likes(const char *uri, bool paging)
+{
+   return begin_likes_list(COBALT_JOB_LIKES, uri, paging);
+}
+
+bool
+cobalt_session_begin_reposted_by(const char *uri, bool paging)
+{
+   return begin_likes_list(COBALT_JOB_REPOSTED_BY, uri, paging);
+}
+
+const cobalt_actor_list *
+cobalt_session_likes_list(void)
+{
+   return &s.likes;
 }
 
 const char *
