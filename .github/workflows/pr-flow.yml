@@ -1,0 +1,13 @@
+name: pr-flow
+
+# Cobalt's own call of the reusable flow checks. The edited trigger re-runs them
+# when the title or description is fixed, without a new commit.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  flow:
+    uses: ./.github/workflows/flow.yml
+    with:
+      flow_ref: ${{ github.event.pull_request.head.sha }}

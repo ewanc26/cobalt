@@ -21,6 +21,14 @@ print(m.group(1).strip())
 PY
 )
 
+# Release gate: main's CI must be finished and green on this exact commit, the
+# same condition the release-check workflow enforces on the tag.
+sha=$(git rev-parse HEAD)
+runs=$(gh api "repos/{owner}/{repo}/commits/$sha/check-runs?per_page=100" \
+  --jq '[.check_runs[] | select(.name=="host-tests" or .name=="wuhb")] | map(.status + ":" + (.conclusion // "")) | join(" ")')
+[ "$(wc -w <<<"$runs")" -ge 2 ] || { echo "no host-tests/wuhb run on $sha yet; wait for CI" >&2; exit 1; }
+[ "$(tr ' ' '\n' <<<"$runs" | grep -vc '^completed:success$')" -eq 0 ] || { echo "CI is not green on $sha ($runs)" >&2; exit 1; }
+
 git tag -a "v$new" -m "Cobalt $new"
 git push -q origin "v$new"
 DEVKITPRO=${DEVKITPRO:-/opt/devkitpro} DEVKITPPC=${DEVKITPPC:-/opt/devkitpro/devkitPPC} make bundle

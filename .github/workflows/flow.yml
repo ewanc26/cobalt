@@ -1,0 +1,51 @@
+name: flow
+
+# Reusable pull-request flow checks for the Wolfram stack (wolfram, metalbear,
+# cobalt, indigo, platinum). Call it from a pull_request workflow:
+#
+#   jobs:
+#     flow:
+#       uses: ewanc26/cobalt/.github/workflows/flow.yml@main
+#
+# The script it runs is fetched from `flow_repo` at `flow_ref`, so a repo that
+# calls this needs no copy of it. It is hosted in Cobalt until Wolfram hosts it;
+# moving it is a change to the two defaults below.
+on:
+  workflow_call:
+    inputs:
+      flow_repo:
+        type: string
+        default: ewanc26/cobalt
+      flow_ref:
+        type: string
+        default: main
+      code_paths:
+        description: Extended regex for files that count as code.
+        type: string
+        default: ^src/
+
+permissions:
+  contents: read
+
+jobs:
+  conventions:
+    name: conventions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.flow_repo }}
+          ref: ${{ inputs.flow_ref }}
+          path: .flow-src
+      - name: Branch, title, description, commits, changelog and docs
+        env:
+          BRANCH: ${{ github.head_ref }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+          BASE: origin/${{ github.base_ref }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          CODE_PATHS: ${{ inputs.code_paths }}
+        run: bash .flow-src/.github/flow/flow-check.sh all

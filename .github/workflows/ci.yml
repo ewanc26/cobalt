@@ -6,6 +6,44 @@ on:
   pull_request:
 
 jobs:
+  drift:
+    # The written flow, its enforcement and the hosting repo must agree.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ewanc26/wolfram
+          ref: main
+          path: wolfram
+      - name: Flow checks fail on deliberate violations
+        run: .github/flow/flow-selftest.sh
+      - name: Drift
+        # Compared with Wolfram's copy once Wolfram hosts the flow; until
+        # then Cobalt is the canonical host and there is nothing to compare.
+        run: |
+          if [ -f wolfram/.github/flow/flow-check.sh ]; then
+            .github/flow/check-drift.sh wolfram
+          else
+            .github/flow/check-drift.sh
+          fi
+
+  direct-push-guard:
+    # Branch protection is the owner's to set. Until it is, this turns a push
+    # to main that did not come from a pull request into a red main.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Commit came from a merged pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq 'length')
+          [ "$n" -gt 0 ] || { echo "::error::$GITHUB_SHA reached main without a pull request"; exit 1; }
+
   host-tests:
     runs-on: ubuntu-latest
     env:

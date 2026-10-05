@@ -154,6 +154,21 @@ When setting up the initial project skeleton, start from the WUT sample's CMake/
 - Log liberally during development (to console via any available debug output, or to a log file on SD) since on-device debugging is much harder than on a desktop target. Strip or gate verbose logging behind a debug build flag before release builds.
 - No dynamic memory allocation inside per-frame render/input loops where avoidable — allocate once, reuse buffers. The Wii U's memory model is more forgiving than the Wii's but still nowhere near desktop-class.
 
+### Workflow
+
+The flow is written in `docs/workflow.md` and shared by every repo in the stack. Follow it exactly:
+
+- Branch `<type>/<kebab-description>` from `main`. Types: `feat fix docs test refactor style build chore ci perf`, plus `release`. Never commit to `main`.
+- Commit subjects and PR titles are `type(scope): lowercase imperative description`, at most 72 characters, no full stop.
+- Open the PR from `.github/pull_request_template.md`. `## Summary` and `## Verification` must be filled. Verification names the host, emulator or hardware that was actually used.
+- Update code, tests, `CHANGELOG.md` (`## [Unreleased]`) and docs in the same PR. Opt out only with `Changelog: none (reason)` / `Docs: none (reason)` in the description.
+- Merge only green PRs, through the PR. Red CI is never an end state: read the job log, reproduce, fix.
+- Releases only through `tools/release.sh` and `tools/publish.sh`.
+- `.github/flow/*` and `.github/workflows/flow.yml` are shared across repos. Change them in the hosting repo first, then copy; `check-drift.sh` fails a copy that differs.
+- Adding or loosening a check requires adding the deliberate violation to `.github/flow/flow-selftest.sh`.
+
+Rationale: a rule nobody checks drifts, and a check that cannot fail proves nothing.
+
 ### Commits
 
 Cobalt follows the same commit conventions as Wolfram (see that repo's `CONTRIBUTING.md`), so the two read as one body of work rather than two houses' styles:

@@ -18,6 +18,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 - The right stick navigates like the left: both sticks drive the D-pad directions, and letting go of one does not release a direction the other is still holding.
 
 ### Internal
+- The unified change flow is written down (`docs/workflow.md`) and enforced: a reusable `flow.yml` checks branch names, PR titles and descriptions, commit subjects, and that code changes carry a changelog line and a doc change. A drift check and a self-test that breaks each rule on purpose run in CI. A `release-check` tag must now sit on `main` with green CI, and `tools/publish.sh` refuses to tag a commit whose CI is not green.
 - The image cache takes its slot and loader counts at creation (`cobalt_imagecache_create_sized`) rather than fixing them at compile time. The viewer's caches are two slots and one loader each — a person looks at one picture at a time — decoded at the surface's own height (720 on the TV, 480 on the GamePad), where a card thumbnail stays capped at 320.
 
 ## [0.5.0] - 2026-10-04
