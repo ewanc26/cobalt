@@ -445,6 +445,33 @@ Consequences worth keeping:
 
 Avatar counts are on the diagnostics screen. Without them there is no way to tell "nobody has set one" from "every fetch is failing", which are very different problems and look identical.
 
+### On-screen prompts are themselves buttons, and only when they name exactly one
+
+The footer pills are not decoration. `cobalt_draw_hints` records where the
+GamePad drew each keyed pill (`s_hint_hit`/`s_hint_keys`), and
+`cobalt_hints_tapped()` turns a tap on one into the button press it names — so
+a Pro Controller user can read the prompts off the GamePad screen while holding
+the pad, which is the whole point of drawing them there.
+
+Three things about it are easy to get wrong, and all three have been wrong here
+at least once:
+
+- **A pill is only tappable if it names one specific button.** The key is
+  looked up in `hint_key_button()`; `Up/Down`, `A/Left/Right` and `+` name
+  ranges or chords, and half-applying one is worse than ignoring the tap. A
+  spec with no `": "` at all (`"Working..."`, home's `"TV + GamePad"` status
+  word) names nothing and is correctly inert.
+- **Segments and pills are not one-to-one.** A spec may mix a bare word with
+  keyed prompts (`profile.c`'s `"[Public]  +: tab   X: followers…"`), so rects
+  are stored through `hint_seg.pill` — the index assigned when the key was
+  parsed — never through the segment index. Indexing both by segment
+  desynchronises them and a tap lands on the wrong button.
+- **The overlays take the frame first.** `cobalt_app_update` routes hint taps
+  *after* the imageview and popup gates, not before. Both are drawn over the
+  screen's own footer, so a tap on a pill while one is up belongs to the
+  overlay; pressing the button as well would dismiss the popup and act on
+  whatever was underneath it.
+
 ### Post images and link cards reuse the avatar pipeline, through a second cache
 
 Images embedded in a post (`app.bsky.embed.images`) and link-card previews

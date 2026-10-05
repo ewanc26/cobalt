@@ -15,6 +15,7 @@
  */
 
 #include "ui/theme.h"
+#include "input/input.h"
 
 #include <SDL.h>
 #include <SDL_ttf.h>
@@ -98,6 +99,15 @@ void cobalt_fill_rounded_rect(cobalt_render *r, const SDL_Rect *rect, int radius
  * colon is drawn as a plain pill. Rows wrap upward if they run out of width.
  */
 void cobalt_draw_hints(cobalt_render *r, const char *spec);
+
+/* Route a GamePad tap that landed on a hint pill (drawn by the last
+ * cobalt_draw_hints on the GamePad surface) to the button it names. Returns
+ * the number of pills hit, filling `out`. */
+int cobalt_hints_tapped(const cobalt_input *in, cobalt_button *out, int max);
+
+/* Pill `i`'s GamePad rect and key text from the last draw_hints, for tests
+ * that tap them. Returns 0 when the index is out of range. */
+int cobalt_hints_pill(int i, SDL_Rect *rect, char *key, size_t key_size);
 
 /* A single control-prompt pill ("key" may be NULL/empty for a plain one), and
  * its size, for callers that place pills themselves (the header Back pill). */
