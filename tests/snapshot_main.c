@@ -134,7 +134,7 @@ open_home_item(int idx)
       frame(COBALT_BTN_UP); settle(2);
       CHECK(cobalt_app_home_selection(g_app) == start);
    }
-   for (int n = (idx - cobalt_app_home_selection(g_app) + 10) % 11; n > 0; n--) {
+   for (int n = (idx - cobalt_app_home_selection(g_app) + 11) % 11; n > 0; n--) {
       frame(COBALT_BTN_RIGHT);
       settle(2);
    }
