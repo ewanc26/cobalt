@@ -35,6 +35,9 @@ extern "C" {
 bool cobalt_entropy_seed_load(const char *path,
                               unsigned char seed[COBALT_ENTROPY_SEED_SIZE]);
 
+/* Whether a file exists at `path`, whatever is in it. */
+bool cobalt_entropy_seed_exists(const char *path);
+
 /*
  * Write via a temporary file and rename, so a power loss mid-write leaves the
  * previous seed intact rather than a truncated one.

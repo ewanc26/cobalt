@@ -8,6 +8,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ## [Unreleased]
 
 ### Added
+- A first-run seed. If there is no `entropy.bin` (a `.wuhb` installed without `make bundle`), Cobalt asks me to scribble on the GamePad, builds a seed from the touches, saves it and asks for a restart, instead of silently refusing to go online ([#156](https://github.com/ewanc26/cobalt/pull/156)).
 - Updates, from the Home menu. Cobalt checks this repository's latest release, shows the version and notes, and downloads only when you press A. The file is checked against the SHA-256 in the release, replaces `cobalt.wuhb` when you quit, and the old build is kept until the new one has started; an interrupted update is repaired on the next launch. `tools/publish.sh` now attaches the `.sha256` and an `update.json` manifest to each release.
 - The footer prompts are tappable. Tapping a hint pill on the GamePad presses the button it names, so "A: thread" opens the thread and "Y: more" opens the post menu without reaching for the pad. A prompt naming a range or a chord (`Up/Down: choose`) stays inert rather than half-applying, and an overlay that covers the footer — the post menu, the image viewer — keeps the tap.
 

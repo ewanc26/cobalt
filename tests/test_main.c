@@ -12,6 +12,8 @@
 #include "app/search.h"
 #include "app/signin.h"
 #include "app/update.h"
+#include "app/entropyview.h"
+#include "util/entropy_gather.h"
 #include "atproto/actors.h"
 #include "atproto/session.h"
 #include "atproto/feed.h"
@@ -1200,6 +1202,119 @@ test_update_release_manifest(const char *manifest_path, const char *wuhb_path)
    CHECK(cobalt_sha256_equal(digest, m.sha256));
    struct stat st;
    CHECK(stat(wuhb_path, &st) == 0 && (unsigned long) st.st_size == m.size);
+}
+
+/* --- first-run seed from touch input --- */
+
+static void
+feed_scribble(cobalt_gather *g, int n, int step_x, int step_y, uint32_t tick0)
+{
+   /* A zig-zag across the panel, offset every call so cells differ. */
+   for (int i = 0; i < n; i++) {
+      int x = (i * step_x) % COBALT_GATHER_PANEL_W;
+      int y = (i * step_y) % COBALT_GATHER_PANEL_H;
+      cobalt_gather_add(g, x, y, tick0 + (uint32_t) i * 7919u);
+   }
+}
+
+static void
+test_entropy_gather(const char *root)
+{
+   begin("first-run seed from touch input");
+
+   cobalt_gather g;
+   unsigned char seed[COBALT_ENTROPY_SEED_SIZE];
+
+   /* A resting finger, or jitter under 4px, is not a stream of samples. */
+   cobalt_gather_init(&g, "dev", 3);
+   for (int i = 0; i < 5000; i++) {
+      cobalt_gather_add(&g, 100 + (i & 1), 100 + ((i >> 1) & 1), (uint32_t) i);
+   }
+   CHECK(g.accepted <= 1);
+   CHECK(!cobalt_gather_done(&g));
+   CHECK(!cobalt_gather_finish(&g, seed));
+   {
+      int zero = 1;
+      for (int i = 0; i < COBALT_ENTROPY_SEED_SIZE; i++) if (seed[i]) zero = 0;
+      CHECK(zero);   /* refusal leaves nothing behind */
+   }
+
+   /* Plenty of movement in one small area: enough samples, too few places. */
+   cobalt_gather_init(&g, NULL, 0);
+   for (int i = 0; i < 2000; i++) {
+      cobalt_gather_add(&g, 100 + (i % 2) * 20, 100 + (i % 3) * 10, (uint32_t) i);
+   }
+   CHECK(g.accepted == COBALT_GATHER_SAMPLES);
+   CHECK(g.cells < COBALT_GATHER_CELLS);
+   CHECK(!cobalt_gather_done(&g));
+   CHECK(cobalt_gather_percent(&g) < 100);
+
+   /* Off-panel coordinates are refused. */
+   CHECK(!cobalt_gather_add(&g, -1, 5, 0));
+   CHECK(!cobalt_gather_add(&g, 5, COBALT_GATHER_PANEL_H, 0));
+
+   /* A real scribble completes, and different strokes give different seeds. */
+   unsigned char a[COBALT_ENTROPY_SEED_SIZE], b[COBALT_ENTROPY_SEED_SIZE];
+   cobalt_gather_init(&g, "dev", 3);
+   feed_scribble(&g, 3000, 37, 23, 1000);
+   CHECK(cobalt_gather_done(&g));
+   CHECK(cobalt_gather_percent(&g) == 100);
+   CHECK(cobalt_gather_finish(&g, a));
+   cobalt_gather_init(&g, "dev", 3);
+   feed_scribble(&g, 3000, 41, 29, 1000);
+   CHECK(cobalt_gather_finish(&g, b));
+   CHECK(memcmp(a, b, sizeof a) != 0);
+   /* Same input, same device bytes: same seed (it is a hash, not a coin). */
+   cobalt_gather_init(&g, "dev", 3);
+   feed_scribble(&g, 3000, 37, 23, 1000);
+   unsigned char c[COBALT_ENTROPY_SEED_SIZE];
+   CHECK(cobalt_gather_finish(&g, c));
+   CHECK(memcmp(a, c, sizeof a) == 0);
+   /* Different device bytes, same strokes: different seed. */
+   cobalt_gather_init(&g, "other", 5);
+   feed_scribble(&g, 3000, 37, 23, 1000);
+   CHECK(cobalt_gather_finish(&g, c));
+   CHECK(memcmp(a, c, sizeof a) != 0);
+   /* The two halves are not the same bytes. */
+   CHECK(memcmp(a, a + 32, 32) != 0);
+
+   /* The screen: collects from touch, saves, then asks for a restart. */
+   char path[300];
+   snprintf(path, sizeof path, "%s/gathered.bin", root);
+   remove(path);
+   cobalt_entropy_view v;
+   cobalt_entropy_view_init(&v, path, "dev", 3);
+   cobalt_input in;
+   memset(&in, 0, sizeof in);
+   CHECK(!cobalt_entropy_seed_exists(path));
+   for (int i = 0; i < 3000 && v.state == COBALT_ENTROPY_VIEW_COLLECTING; i++) {
+      in.touch_down = true;
+      in.touch_x = (i * 37) % COBALT_GATHER_PANEL_W;
+      in.touch_y = (i * 23) % COBALT_GATHER_PANEL_H;
+      CHECK(cobalt_entropy_view_update(&v, &in, 5000u + (uint32_t) i * 7919u) == COBALT_ENTROPY_VIEW_STAY);
+   }
+   CHECK(v.state == COBALT_ENTROPY_VIEW_SAVED);
+   CHECK(cobalt_entropy_seed_exists(path));
+   unsigned char loaded[COBALT_ENTROPY_SEED_SIZE];
+   CHECK(cobalt_entropy_seed_load(path, loaded));
+   in.touch_down = false;
+   in.pressed[COBALT_BTN_CONFIRM] = true;
+   CHECK(cobalt_entropy_view_update(&v, &in, 0) == COBALT_ENTROPY_VIEW_QUIT);
+   remove(path);
+
+   /* An unwritable path fails visibly and can be retried. */
+   cobalt_entropy_view_init(&v, "/nonexistent-dir/x/entropy.bin", NULL, 0);
+   memset(&in, 0, sizeof in);
+   for (int i = 0; i < 3000 && v.state == COBALT_ENTROPY_VIEW_COLLECTING; i++) {
+      in.touch_down = true;
+      in.touch_x = (i * 37) % COBALT_GATHER_PANEL_W;
+      in.touch_y = (i * 23) % COBALT_GATHER_PANEL_H;
+      cobalt_entropy_view_update(&v, &in, (uint32_t) i);
+   }
+   CHECK(v.state == COBALT_ENTROPY_VIEW_FAILED);
+   memset(&in, 0, sizeof in);
+   in.pressed[COBALT_BTN_BACK] = true;
+   CHECK(cobalt_entropy_view_update(&v, &in, 0) == COBALT_ENTROPY_VIEW_SKIP);
 }
 
 static void
@@ -2520,6 +2635,7 @@ main(int argc, char **argv)
    test_update_manifest();
    test_update_staging(root);
    test_update_view(root);
+   test_entropy_gather(root);
    if (argc > 3) test_update_release_manifest(argv[2], argv[3]);
    test_actor_list_remove();
    test_interactions();

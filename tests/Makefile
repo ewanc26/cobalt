@@ -94,6 +94,9 @@ UNIT_SOURCES := \
 	$(SRC)/atproto/prefs.c \
 	$(SRC)/update/selfupdate.c \
 	$(SRC)/app/update.c \
+	$(SRC)/app/entropyview.c \
+	$(SRC)/util/entropy_gather.c \
+	$(SRC)/util/entropy.c \
 	$(SRC)/app/timeline.c \
 	$(SRC)/app/thread.c \
 	$(SRC)/app/compose.c \
