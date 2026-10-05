@@ -91,7 +91,7 @@ jobs:
           # packages are absent instead of surfacing a pacman URL error.
           missing=""
           for p in $extra_pkgs; do
-            pacman -Q "$p" >/dev/null 2>&1 || missing="$missing $p"
+            dkp-pacman -Q "$p" >/dev/null 2>&1 || missing="$missing $p"
           done
           if [ -n "$missing" ]; then
             echo "::error::devkitPro packages missing from the runner:$missing"
