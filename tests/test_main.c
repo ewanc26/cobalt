@@ -17,6 +17,7 @@
 #include "atproto/prefs.h"
 #include "cache/session_store.h"
 #include "ui/imagecache.h"
+#include "ui/imageview.h"
 #include "ui/keyboard.h"
 #include "ui/postcard.h"
 #include "util/entropy.h"
@@ -1901,6 +1902,86 @@ test_postcard_contain_fit(void)
    CHECK(w == 0 && h == 0);
 }
 
+/* --- image viewer --- */
+
+static void
+test_imageview(void)
+{
+   begin("image viewer opens, cycles and closes");
+
+   cobalt_imageview view;
+   memset(&view, 0, sizeof(view));
+
+   /* A post with no pictures is a no-op rather than an empty viewer. */
+   cobalt_post bare;
+   memset(&bare, 0, sizeof(bare));
+   cobalt_imageview_open(&view, &bare);
+   CHECK(!view.open);
+
+   cobalt_post post;
+   memset(&post, 0, sizeof(post));
+   post.image_count = 3;
+   for (int i = 0; i < 3; i++) {
+      snprintf(post.images[i].thumb, sizeof(post.images[i].thumb),
+               "https://cdn.example/%d.jpg", i);
+      post.images[i].aspect_w = 4;
+      post.images[i].aspect_h = 3;
+   }
+   snprintf(post.images[1].alt, sizeof(post.images[1].alt), "A description.");
+
+   cobalt_imageview_open(&view, &post);
+   CHECK(view.open);
+   CHECK(view.image_count == 3);
+   CHECK(view.index == 0);
+
+   /* The viewer holds copies: rewriting the post afterwards cannot change
+    * what the person is looking at. */
+   snprintf(post.images[0].thumb, sizeof(post.images[0].thumb), "changed");
+   CHECK_STR(view.images[0].thumb, "https://cdn.example/0.jpg");
+
+   /* Empty input does nothing but still consumes the frame: the screen
+    * underneath must not act on presses the viewer already saw. */
+   cobalt_input in;
+   memset(&in, 0, sizeof(in));
+   CHECK(cobalt_imageview_update(&view, &in));
+   CHECK(view.open);
+
+   /* Left and right cycle through the pictures, wrapping at both ends. */
+   view = (cobalt_imageview){0};
+   cobalt_imageview_open(&view, &post);
+   in = tap(COBALT_BTN_RIGHT);
+   CHECK(cobalt_imageview_update(&view, &in));
+   CHECK(view.index == 1);
+   in = tap(COBALT_BTN_RIGHT);
+   cobalt_imageview_update(&view, &in);
+   CHECK(view.index == 2);
+   in = tap(COBALT_BTN_RIGHT);
+   cobalt_imageview_update(&view, &in);
+   CHECK(view.index == 0); /* wrapped */
+   in = tap(COBALT_BTN_LEFT);
+   cobalt_imageview_update(&view, &in);
+   CHECK(view.index == 2); /* wrapped back */
+
+   /* B closes, and the frame is consumed either way. */
+   in = tap(COBALT_BTN_BACK);
+   CHECK(cobalt_imageview_update(&view, &in));
+   CHECK(!view.open);
+   CHECK(view.image_count == 0);
+
+   /* A single-image post does not cycle on Left/Right — there is nothing
+    * to cycle to, and the hints already say so. */
+   cobalt_post one;
+   memset(&one, 0, sizeof(one));
+   one.image_count = 1;
+   snprintf(one.images[0].thumb, sizeof(one.images[0].thumb), "https://x/y.jpg");
+   cobalt_imageview_open(&view, &one);
+   in = tap(COBALT_BTN_RIGHT);
+   cobalt_imageview_update(&view, &in);
+   CHECK(view.index == 0);
+   cobalt_imageview_close(&view);
+   CHECK(!view.open);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -1959,6 +2040,7 @@ main(int argc, char **argv)
    test_image_resample();
    test_image_circle_mask();
    test_postcard_contain_fit();
+   test_imageview();
 
    printf("\n%d checks, %d failures\n", s_checks, s_failures);
    return s_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

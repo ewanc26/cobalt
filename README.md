@@ -49,6 +49,7 @@ replace testing on the console.
 - Pinned posts
 - Avatars
 - Post, reply and quote images with alt text
+- A full-size image viewer, from the post menu, on both screens
 - Link-card previews
 - Actor search
 - Custom feed browsing
@@ -259,6 +260,10 @@ Image alt text is surfaced directly in the UI because Wii U homebrew does not
 provide Cobalt with a usable system screen reader. Images with alt text are
 marked with an explicit **ALT** badge, and the focused post can display the
 first image's alt text as a caption.
+
+The post menu's "View image" opens a picture contain-fitted to the whole
+surface — the TV's 720p where the card thumbnail was a fraction of that —
+with the alt text beneath and Left/Right cycling when a post carries several.
 
 ## Contributing
 

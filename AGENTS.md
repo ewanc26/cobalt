@@ -461,6 +461,19 @@ and destroyed in lockstep with it in `main.c`. `COBALT_THUMB_TEXTURE_MAX`
 (320px) is deliberately smaller than a CDN thumbnail can arrive at, for the
 same texture-budget reasoning §13's avatar section gives for 64px avatars.
 
+The full-size viewer (`ui/imageview.c`) adds a third per surface
+(`cobalt_render_set_viewer()`), decoded CONTAIN at the surface's own height —
+720 on the TV, 480 on the GamePad — because a viewer picture is the whole
+screen and a 320px decode would be an enlargement. Its caches are two slots
+and one loader (`cobalt_imagecache_create_sized`, which takes the counts at
+creation where `cobalt_imagecache_create` fixes them at compile time): a
+person looks at one picture at a time, and two slots cover paging left and
+right through a post's images without a refetch. The viewer is an overlay
+over whichever screen opened it — `cobalt_app_update` gates on it before the
+popup, and `cobalt_app_draw` draws it instead of the screen — and it holds
+copies of the post's image list, not pointers into the feed buffer, for the
+same reason the popup copies its items.
+
 Card height is a fixed budget per embed shape (one image, a 2-4 image row, a
 link card), not something computed from the source image's aspect ratio.
 This wasn't a shortcut: `cobalt_postcard_height()` has no rect to measure

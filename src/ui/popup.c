@@ -105,6 +105,7 @@ icon_for(cobalt_popup_kind kind)
       case COBALT_POPUP_LINK:    return COBALT_ICON_LIST;
       case COBALT_POPUP_QUOTE:   return COBALT_ICON_PENCIL;
       case COBALT_POPUP_DELETE:  return COBALT_ICON_WARNING;
+      case COBALT_POPUP_IMAGE:   return COBALT_ICON_IMAGE;
       case COBALT_POPUP_COMPOSE: return COBALT_ICON_PENCIL;
       case COBALT_POPUP_REFRESH: return COBALT_ICON_HOUSE;
    }

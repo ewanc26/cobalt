@@ -157,6 +157,18 @@ cobalt_imagecache *cobalt_render_images(cobalt_render *r);
 void cobalt_render_set_thumbs(cobalt_render *r, cobalt_imagecache *cache);
 cobalt_imagecache *cobalt_render_thumbs(cobalt_render *r);
 
+/*
+ * The full-size viewer cache this context draws from, or NULL if images are
+ * off. Separate from the thumbnail cache for the same reason it is separate
+ * from the avatar cache: the decode size is baked into the cache instance,
+ * and a viewer image is decoded at the surface's full height (720 on the TV,
+ * 480 on the GamePad) where a card thumbnail is capped at 320. Two entries
+ * and one loader rather than twenty-four and three, because a person looks
+ * at one image at a time — see COBALT_IMAGECACHE_VIEWER_ENTRIES.
+ */
+void cobalt_render_set_viewer(cobalt_render *r, cobalt_imagecache *cache);
+cobalt_imagecache *cobalt_render_viewer(cobalt_render *r);
+
 /* --- text --- */
 
 /* Returns the drawn width, or 0 if there is no font. */
