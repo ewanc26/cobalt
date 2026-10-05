@@ -98,6 +98,9 @@ struct cobalt_app {
    cobalt_screen compose_return;
    /* Where B from the thread screen returns to — the timeline or notifications. */
    cobalt_screen thread_return;
+   /* Where B from a likes/reposts list returns to — the timeline or the
+    * thread. The post it belongs to is already in app->graph.actor. */
+   cobalt_screen likes_return;
 
    /* Last completed request's message, shown on the home and account screens
     * so an auto-resume that failed while nobody was looking is not silent. */
@@ -852,6 +855,16 @@ open_post_menu(cobalt_app *app, const cobalt_post *post, bool in_thread)
       cobalt_popup_add(&app->popup, COBALT_POPUP_COMPOSE, "New post", "");
       cobalt_popup_add(&app->popup, COBALT_POPUP_REFRESH, "Refresh timeline", "");
    }
+   if (post->like_count > 0) {
+      char label[COBALT_POPUP_LABEL_MAX];
+      snprintf(label, sizeof(label), "Liked by (%d)", post->like_count);
+      cobalt_popup_add(&app->popup, COBALT_POPUP_LIKES, label, post->uri);
+   }
+   if (post->repost_count > 0) {
+      char label[COBALT_POPUP_LABEL_MAX];
+      snprintf(label, sizeof(label), "Reposted by (%d)", post->repost_count);
+      cobalt_popup_add(&app->popup, COBALT_POPUP_REPOSTS, label, post->uri);
+   }
    if (in_thread) {
       cobalt_popup_add(&app->popup, COBALT_POPUP_QUOTE, "Quote post", post->uri);
       if (cobalt_post_uri_is_by(post->uri, cobalt_session_did())) {
@@ -927,6 +940,18 @@ popup_choose(cobalt_app *app, int index)
             cobalt_imageview_open(&app->imageview, post);
             cobalt_popup_close(&app->popup);
          }
+         break;
+      }
+      case COBALT_POPUP_LIKES:
+      case COBALT_POPUP_REPOSTS: {
+         cobalt_graph_view_open_likes(
+            &app->graph,
+            it->kind == COBALT_POPUP_LIKES ? COBALT_GRAPH_LIKES
+                                            : COBALT_GRAPH_REPOSTED,
+            it->arg);
+         app->likes_return = app->popup_screen;
+         app->screen = COBALT_SCREEN_LIKES_LIST;
+         cobalt_popup_close(&app->popup);
          break;
       }
       case COBALT_POPUP_COMPOSE:
@@ -1210,6 +1235,22 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
             case COBALT_GRAPH_VIEW_OPEN_PROFILE:
                cobalt_profile_view_rewind(&app->profile);
                app->profile_return = COBALT_SCREEN_FOLLOWS_LIST;
+               app->screen = COBALT_SCREEN_PROFILE;
+               break;
+            case COBALT_GRAPH_VIEW_STAY:
+            default:
+               break;
+         }
+         break;
+
+      case COBALT_SCREEN_LIKES_LIST:
+         switch (cobalt_graph_view_update(&app->graph, in)) {
+            case COBALT_GRAPH_VIEW_BACK:
+               app->screen = app->likes_return;
+               break;
+            case COBALT_GRAPH_VIEW_OPEN_PROFILE:
+               cobalt_profile_view_rewind(&app->profile);
+               app->profile_return = COBALT_SCREEN_LIKES_LIST;
                app->screen = COBALT_SCREEN_PROFILE;
                break;
             case COBALT_GRAPH_VIEW_STAY:
@@ -1800,6 +1841,7 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
       case COBALT_SCREEN_MUTED_LIST:
       case COBALT_SCREEN_BLOCKED_LIST:
       case COBALT_SCREEN_FOLLOWS_LIST:
+      case COBALT_SCREEN_LIKES_LIST:
          cobalt_graph_view_draw(&app->graph, r, surface);
          break;
 

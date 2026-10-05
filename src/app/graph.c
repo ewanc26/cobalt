@@ -15,6 +15,8 @@ list_for(cobalt_graph_kind kind)
       case COBALT_GRAPH_BLOCKED:   return cobalt_session_blocked_list();
       case COBALT_GRAPH_FOLLOWERS: return cobalt_session_followers_list();
       case COBALT_GRAPH_FOLLOWING: return cobalt_session_following_list();
+      case COBALT_GRAPH_LIKES:     return cobalt_session_likes_list();
+      case COBALT_GRAPH_REPOSTED:  return cobalt_session_likes_list();
    }
    return cobalt_session_muted_list();
 }
@@ -22,13 +24,14 @@ list_for(cobalt_graph_kind kind)
 bool
 cobalt_graph_kind_is_follows(cobalt_graph_kind kind)
 {
-   return kind == COBALT_GRAPH_FOLLOWERS || kind == COBALT_GRAPH_FOLLOWING;
+   return kind == COBALT_GRAPH_FOLLOWERS || kind == COBALT_GRAPH_FOLLOWING ||
+          kind == COBALT_GRAPH_LIKES || kind == COBALT_GRAPH_REPOSTED;
 }
 
 static void
-begin_fetch(cobalt_graph_kind kind, bool paging)
+begin_fetch(cobalt_graph_view *view, bool paging)
 {
-   switch (kind) {
+   switch (view->kind) {
       case COBALT_GRAPH_MUTED:
          cobalt_session_begin_muted_list(paging);
          break;
@@ -41,6 +44,12 @@ begin_fetch(cobalt_graph_kind kind, bool paging)
       case COBALT_GRAPH_FOLLOWING:
          cobalt_session_begin_following(cobalt_session_follow_list_actor(), paging);
          break;
+      case COBALT_GRAPH_LIKES:
+         cobalt_session_begin_likes(view->actor, paging);
+         break;
+      case COBALT_GRAPH_REPOSTED:
+         cobalt_session_begin_reposted_by(view->actor, paging);
+         break;
    }
 }
 
@@ -52,6 +61,8 @@ title_for(cobalt_graph_kind kind)
       case COBALT_GRAPH_BLOCKED:   return "Blocked accounts";
       case COBALT_GRAPH_FOLLOWERS: return "Followers";
       case COBALT_GRAPH_FOLLOWING: return "Following";
+      case COBALT_GRAPH_LIKES:     return "Liked by";
+      case COBALT_GRAPH_REPOSTED:  return "Reposted by";
    }
    return "";
 }
@@ -64,6 +75,8 @@ empty_message_for(cobalt_graph_kind kind)
       case COBALT_GRAPH_BLOCKED:   return "No blocked accounts.";
       case COBALT_GRAPH_FOLLOWERS: return "No followers yet.";
       case COBALT_GRAPH_FOLLOWING: return "Not following anyone.";
+      case COBALT_GRAPH_LIKES:     return "No likes yet.";
+      case COBALT_GRAPH_REPOSTED:  return "No reposts yet.";
    }
    return "";
 }
@@ -93,7 +106,7 @@ cobalt_graph_view_open(cobalt_graph_view *view, cobalt_graph_kind kind)
     * away a scroll position, same rule the timeline/notifications entry
     * points already follow. */
    if (list_for(kind)->count == 0) {
-      begin_fetch(kind, false);
+      begin_fetch(view, false);
    }
 }
 
@@ -114,6 +127,29 @@ cobalt_graph_view_open_follows(cobalt_graph_view *view, cobalt_graph_kind kind,
       cobalt_session_begin_followers(actor, false);
    } else {
       cobalt_session_begin_following(actor, false);
+   }
+}
+
+void
+cobalt_graph_view_open_likes(cobalt_graph_view *view, cobalt_graph_kind kind,
+                             const char *uri)
+{
+   if (!view || !uri || uri[0] == '\0') {
+      return;
+   }
+   if (kind != COBALT_GRAPH_LIKES && kind != COBALT_GRAPH_REPOSTED) {
+      return;
+   }
+   view->kind = kind;
+   view->selected = 0;
+   view->scroll = 0;
+   view->last_visible = -1;
+   snprintf(view->actor, sizeof(view->actor), "%s", uri);
+
+   if (kind == COBALT_GRAPH_LIKES) {
+      cobalt_session_begin_likes(uri, false);
+   } else {
+      cobalt_session_begin_reposted_by(uri, false);
    }
 }
 
@@ -186,7 +222,7 @@ cobalt_graph_view_update(cobalt_graph_view *view, const cobalt_input *in)
 
    if (!busy && cobalt_actor_list_can_page(list) &&
        view->selected >= list->count - 1) {
-      begin_fetch(view->kind, true);
+      begin_fetch(view, true);
    }
 
    return COBALT_GRAPH_VIEW_STAY;
