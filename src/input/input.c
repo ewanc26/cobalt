@@ -113,6 +113,34 @@ release(cobalt_input *in, cobalt_button btn)
    in->next_repeat[btn] = 0;
 }
 
+/* Which sticks are currently past the deadzone, per direction. Both sticks
+ * drive the same four buttons, so letting go of one must not release a
+ * direction the other is still holding. Index: [0] = left, [1] = right;
+ * [axis][0] = negative (up/left), [axis][1] = positive (down/right). */
+static bool s_stick_dir[2][2][2]; /* [stick][0 = X, 1 = Y][negative, positive] */
+
+static void
+stick_motion(cobalt_input *in, Uint8 axis, Sint16 value, uint32_t now)
+{
+   int stick, xy;
+   switch (axis) {
+      case SDL_CONTROLLER_AXIS_LEFTX:  stick = 0; xy = 0; break;
+      case SDL_CONTROLLER_AXIS_LEFTY:  stick = 0; xy = 1; break;
+      case SDL_CONTROLLER_AXIS_RIGHTX: stick = 1; xy = 0; break;
+      case SDL_CONTROLLER_AXIS_RIGHTY: stick = 1; xy = 1; break;
+      default: return;
+   }
+   s_stick_dir[stick][xy][0] = value < -STICK_DEADZONE;
+   s_stick_dir[stick][xy][1] = value > STICK_DEADZONE;
+
+   const cobalt_button neg = xy ? COBALT_BTN_UP : COBALT_BTN_LEFT;
+   const cobalt_button pos = xy ? COBALT_BTN_DOWN : COBALT_BTN_RIGHT;
+   const bool neg_on = s_stick_dir[0][xy][0] || s_stick_dir[1][xy][0];
+   const bool pos_on = s_stick_dir[0][xy][1] || s_stick_dir[1][xy][1];
+   if (neg_on) press(in, neg, now); else release(in, neg);
+   if (pos_on) press(in, pos, now); else release(in, pos);
+}
+
 void
 cobalt_input_handle_event(cobalt_input *in, const SDL_Event *event)
 {
@@ -140,20 +168,10 @@ cobalt_input_handle_event(cobalt_input *in, const SDL_Event *event)
          break;
       }
 
-      case SDL_CONTROLLERAXISMOTION: {
-         /* Left stick doubles as a D-pad so stick-only navigation works. */
-         const Sint16 value = event->caxis.value;
-         if (event->caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
-            if (value < -STICK_DEADZONE)      press(in, COBALT_BTN_UP, now);
-            else if (value > STICK_DEADZONE)  press(in, COBALT_BTN_DOWN, now);
-            else { release(in, COBALT_BTN_UP); release(in, COBALT_BTN_DOWN); }
-         } else if (event->caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
-            if (value < -STICK_DEADZONE)      press(in, COBALT_BTN_LEFT, now);
-            else if (value > STICK_DEADZONE)  press(in, COBALT_BTN_RIGHT, now);
-            else { release(in, COBALT_BTN_LEFT); release(in, COBALT_BTN_RIGHT); }
-         }
+      case SDL_CONTROLLERAXISMOTION:
+         /* Both sticks double as a D-pad so stick-only navigation works. */
+         stick_motion(in, event->caxis.axis, event->caxis.value, now);
          break;
-      }
 
       case SDL_FINGERDOWN:
       case SDL_FINGERMOTION:

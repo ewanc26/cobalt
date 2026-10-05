@@ -20,7 +20,9 @@
 #include "ui/imagecache.h"
 #include "ui/imageview.h"
 #include "ui/keyboard.h"
+#include "ui/popup.h"
 #include "ui/postcard.h"
+#include "input/input.h"
 #include "util/entropy.h"
 #include "util/rng.h"
 #include "util/timefmt.h"
@@ -2014,6 +2016,88 @@ test_imageview(void)
    CHECK(!view.open);
 }
 
+/* --- sticks and touch --- */
+
+static void
+axis_event(cobalt_input *in, SDL_GameControllerAxis axis, int value)
+{
+   SDL_Event e;
+   memset(&e, 0, sizeof(e));
+   e.type = SDL_CONTROLLERAXISMOTION;
+   e.caxis.axis = (Uint8) axis;
+   e.caxis.value = (Sint16) value;
+   cobalt_input_handle_event(in, &e);
+}
+
+static void
+test_both_sticks_navigate(void)
+{
+   begin("both sticks act as a D-pad");
+   cobalt_input in;
+   cobalt_input_init(&in);
+
+   axis_event(&in, SDL_CONTROLLER_AXIS_RIGHTY, 30000);
+   CHECK(cobalt_input_pressed(&in, COBALT_BTN_DOWN));
+   axis_event(&in, SDL_CONTROLLER_AXIS_RIGHTX, -30000);
+   CHECK(cobalt_input_pressed(&in, COBALT_BTN_LEFT));
+
+   /* Both sticks hold DOWN; centring one must not release it. */
+   axis_event(&in, SDL_CONTROLLER_AXIS_LEFTY, 30000);
+   axis_event(&in, SDL_CONTROLLER_AXIS_RIGHTY, 0);
+   CHECK(cobalt_input_held(&in, COBALT_BTN_DOWN));
+   axis_event(&in, SDL_CONTROLLER_AXIS_LEFTY, 0);
+   CHECK(!cobalt_input_held(&in, COBALT_BTN_DOWN));
+
+   axis_event(&in, SDL_CONTROLLER_AXIS_RIGHTX, 0);
+   CHECK(!cobalt_input_held(&in, COBALT_BTN_LEFT));
+
+   /* Inside the deadzone is nothing. */
+   axis_event(&in, SDL_CONTROLLER_AXIS_RIGHTY, 5000);
+   CHECK(!cobalt_input_held(&in, COBALT_BTN_DOWN));
+}
+
+static void
+touch_release_at(cobalt_input *in, int x, int y)
+{
+   memset(in, 0, sizeof(*in));
+   in->touch_x = x;
+   in->touch_y = y;
+   in->touch_ended = true;
+}
+
+static void
+test_popup_touch(void)
+{
+   begin("popup rows take taps, outside closes");
+   cobalt_popup p;
+   memset(&p, 0, sizeof(p));
+   cobalt_popup_open(&p, "More");
+   cobalt_popup_add(&p, COBALT_POPUP_PROFILE, "Profile", "");
+   cobalt_popup_add(&p, COBALT_POPUP_LINK, "Link", "");
+   p.panel = (SDL_Rect){ 100, 100, 300, 200 };
+   p.hit[0] = (SDL_Rect){ 100, 120, 300, 40 };
+   p.hit[1] = (SDL_Rect){ 100, 160, 300, 40 };
+   p.hit_valid = true;
+
+   cobalt_input in;
+   touch_release_at(&in, 150, 180);
+   CHECK(cobalt_popup_update(&p, &in) == 1);
+   CHECK(p.selected == 1);
+   CHECK(p.open);
+
+   touch_release_at(&in, 150, 130);
+   CHECK(cobalt_popup_update(&p, &in) == 0);
+
+   /* Inside the panel but on no row: ignored, stays open. */
+   touch_release_at(&in, 150, 290);
+   CHECK(cobalt_popup_update(&p, &in) == -1);
+   CHECK(p.open);
+
+   touch_release_at(&in, 10, 10);
+   CHECK(cobalt_popup_update(&p, &in) == -2);
+   CHECK(!p.open);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -2063,6 +2147,8 @@ main(int argc, char **argv)
    test_search_mode_toggle();
    test_pinned_prepend();
    test_compose();
+   test_both_sticks_navigate();
+   test_popup_touch();
    test_post_refuses_partial_refs();
    test_notification_wording();
    test_paging_stops_when_the_window_fills();
