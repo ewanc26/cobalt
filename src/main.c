@@ -62,6 +62,8 @@ typedef struct {
     * ui/render.h's cobalt_render_set_thumbs(). */
    cobalt_imagecache *tv_thumbs;
    cobalt_imagecache *drc_thumbs;
+   cobalt_imagecache *tv_viewer;
+   cobalt_imagecache *drc_viewer;
 
    bool sdl_up;
    bool ttf_up;
@@ -107,6 +109,14 @@ shutdown_all(cobalt_context *ctx)
    if (ctx->tv_thumbs) {
       cobalt_imagecache_destroy(ctx->tv_thumbs);
       ctx->tv_thumbs = NULL;
+   }
+   if (ctx->drc_viewer) {
+      cobalt_imagecache_destroy(ctx->drc_viewer);
+      ctx->drc_viewer = NULL;
+   }
+   if (ctx->tv_viewer) {
+      cobalt_imagecache_destroy(ctx->tv_viewer);
+      ctx->tv_viewer = NULL;
    }
    if (ctx->drc_images) {
       cobalt_imagecache_destroy(ctx->drc_images);
@@ -235,6 +245,19 @@ startup(cobalt_context *ctx)
                                                  COBALT_IMAGE_FIT_CONTAIN);
       cobalt_render_set_thumbs(ctx->tv, ctx->tv_thumbs);
       cobalt_render_set_thumbs(ctx->drc, ctx->drc_thumbs);
+
+      /* The full-size viewer's caches. Decoded at the surface's own height
+       * — a viewer image is the whole screen, so a 320px decode would be an
+       * enlargement — and small, because a person looks at one picture at
+       * a time. See COBALT_IMAGECACHE_VIEWER_ENTRIES. */
+      ctx->tv_viewer = cobalt_imagecache_create_sized(
+         720, COBALT_IMAGE_FIT_CONTAIN, COBALT_IMAGECACHE_VIEWER_ENTRIES,
+         COBALT_IMAGECACHE_VIEWER_LOADERS);
+      ctx->drc_viewer = cobalt_imagecache_create_sized(
+         480, COBALT_IMAGE_FIT_CONTAIN, COBALT_IMAGECACHE_VIEWER_ENTRIES,
+         COBALT_IMAGECACHE_VIEWER_LOADERS);
+      cobalt_render_set_viewer(ctx->tv, ctx->tv_viewer);
+      cobalt_render_set_viewer(ctx->drc, ctx->drc_viewer);
    } else {
       COBALT_LOGW("avatars unavailable — cards will show initials");
    }
@@ -353,6 +376,8 @@ main(int argc, char **argv)
       cobalt_imagecache_pump(ctx.drc_images, ctx.drc);
       cobalt_imagecache_pump(ctx.tv_thumbs, ctx.tv);
       cobalt_imagecache_pump(ctx.drc_thumbs, ctx.drc);
+      cobalt_imagecache_pump(ctx.tv_viewer, ctx.tv);
+      cobalt_imagecache_pump(ctx.drc_viewer, ctx.drc);
 
       const uint32_t t_tv = SDL_GetTicks();
       /* TV first (no swap), GamePad second (swaps both). */

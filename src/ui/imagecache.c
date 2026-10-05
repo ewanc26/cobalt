@@ -79,6 +79,7 @@ struct cobalt_imagecache {
    bool warned_owner;
 
    uint32_t clock;
+   int entries;
    slot slots[COBALT_IMAGECACHE_ENTRIES];
 };
 
@@ -403,7 +404,7 @@ load_one(const char *url, int max_dimension, cobalt_image_fit fit)
 static int
 next_queued(const cobalt_imagecache *cache)
 {
-   for (int i = 0; i < COBALT_IMAGECACHE_ENTRIES; i++) {
+   for (int i = 0; i < cache->entries; i++) {
       if (cache->slots[i].state == SLOT_QUEUED) {
          return i;
       }
@@ -487,7 +488,7 @@ request_locked(cobalt_imagecache *cache, const char *url)
    int chosen = -1;
    uint32_t oldest = 0;
 
-   for (int i = 0; i < COBALT_IMAGECACHE_ENTRIES; i++) {
+   for (int i = 0; i < cache->entries; i++) {
       const slot *s = &cache->slots[i];
       if (s->state == SLOT_FREE) {
          chosen = i;
@@ -524,7 +525,22 @@ request_locked(cobalt_imagecache *cache, const char *url)
 cobalt_imagecache *
 cobalt_imagecache_create(int max_dimension, cobalt_image_fit fit)
 {
+   return cobalt_imagecache_create_sized(max_dimension, fit,
+                                         COBALT_IMAGECACHE_ENTRIES,
+                                         COBALT_IMAGECACHE_LOADERS);
+}
+
+cobalt_imagecache *
+cobalt_imagecache_create_sized(int max_dimension, cobalt_image_fit fit,
+                               int entries, int loaders)
+{
    if (max_dimension <= 0) {
+      return NULL;
+   }
+   if (entries <= 0 || entries > COBALT_IMAGECACHE_ENTRIES) {
+      return NULL;
+   }
+   if (loaders <= 0 || loaders > COBALT_IMAGECACHE_LOADERS) {
       return NULL;
    }
 
@@ -536,6 +552,7 @@ cobalt_imagecache_create(int max_dimension, cobalt_image_fit fit)
 
    cache->max_dimension = max_dimension;
    cache->fit = fit;
+   cache->entries = entries;
 
    cache->lock = SDL_CreateMutex();
    cache->wake = SDL_CreateCond();
@@ -545,7 +562,7 @@ cobalt_imagecache_create(int max_dimension, cobalt_image_fit fit)
       return NULL;
    }
 
-   for (int i = 0; i < COBALT_IMAGECACHE_LOADERS; i++) {
+   for (int i = 0; i < loaders; i++) {
       char name[24];
       snprintf(name, sizeof(name), "cobalt-img-%d", i);
       SDL_Thread *thread = SDL_CreateThread(loader_main, name, cache);
@@ -590,7 +607,7 @@ cobalt_imagecache_destroy(cobalt_imagecache *cache)
       SDL_WaitThread(cache->loaders[i], NULL);
    }
 
-   for (int i = 0; i < COBALT_IMAGECACHE_ENTRIES; i++) {
+   for (int i = 0; i < cache->entries; i++) {
       release_slot(&cache->slots[i]);
    }
 
@@ -643,7 +660,7 @@ cobalt_imagecache_get(cobalt_imagecache *cache, cobalt_render *renderer_owner,
 
    if (bind_owner(cache, renderer_owner)) {
       int found = -1;
-      for (int i = 0; i < COBALT_IMAGECACHE_ENTRIES; i++) {
+      for (int i = 0; i < cache->entries; i++) {
          slot *s = &cache->slots[i];
          if (s->state != SLOT_FREE && strcmp(s->url, url) == 0) {
             found = i;
@@ -683,8 +700,7 @@ cobalt_imagecache_pump(cobalt_imagecache *cache, cobalt_render *owner)
       return;
    }
 
-   for (int i = 0; i < COBALT_IMAGECACHE_ENTRIES && uploaded < UPLOADS_PER_FRAME;
-        i++) {
+   for (int i = 0; i < cache->entries && uploaded < UPLOADS_PER_FRAME; i++) {
       slot *s = &cache->slots[i];
       if (s->state != SLOT_DECODED || !s->surface) {
          continue;
@@ -736,7 +752,7 @@ cobalt_imagecache_flush(cobalt_imagecache *cache)
    }
 
    SDL_LockMutex(cache->lock);
-   for (int i = 0; i < COBALT_IMAGECACHE_ENTRIES; i++) {
+   for (int i = 0; i < cache->entries; i++) {
       /* release_slot() bumps the generation, which is what makes this safe
        * against a loader that is mid-fetch: its result is dropped on return
        * rather than landing in a slot the new renderer now owns. */
@@ -754,7 +770,7 @@ cobalt_imagecache_stats(cobalt_imagecache *cache, int *out_ready,
 
    if (cache) {
       SDL_LockMutex(cache->lock);
-      for (int i = 0; i < COBALT_IMAGECACHE_ENTRIES; i++) {
+      for (int i = 0; i < cache->entries; i++) {
          switch (cache->slots[i].state) {
          case SLOT_READY:   ready++;   break;
          case SLOT_FAILED:  failed++;  break;

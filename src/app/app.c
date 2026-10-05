@@ -15,6 +15,7 @@
 #include "net/net.h"
 #include "ui/imagecache.h"
 #include "ui/popup.h"
+#include "ui/imageview.h"
 #include "util/log.h"
 #include "util/paths.h"
 
@@ -79,6 +80,7 @@ struct cobalt_app {
    cobalt_popup popup;
    cobalt_screen popup_screen;
    bool popup_in_thread;
+   cobalt_imageview imageview;
    /* Which row is highlighted on the account screen's small menu. */
    int account_selected;
    /* Which row is highlighted on the feed-picker screen's small menu. */
@@ -831,6 +833,9 @@ open_post_menu(cobalt_app *app, const cobalt_post *post, bool in_thread)
       snprintf(label, sizeof(label), "View profile @%s", handle);
       cobalt_popup_add(&app->popup, COBALT_POPUP_PROFILE, label, handle);
    }
+   if (post->image_count > 0) {
+      cobalt_popup_add(&app->popup, COBALT_POPUP_IMAGE, "View image", "");
+   }
    for (int i = 0; i < post->facet_count; i++) {
       const cobalt_post_facet *f = &post->facets[i];
       if (!f->target[0]) {
@@ -897,6 +902,30 @@ popup_choose(cobalt_app *app, int index)
                app->compose_return = COBALT_SCREEN_THREAD;
                app->screen = COBALT_SCREEN_COMPOSE;
             }
+         }
+         break;
+      }
+      case COBALT_POPUP_IMAGE: {
+         /* The post the menu was opened on is the one the popup remembers
+          * the screen for: the timeline's or the thread's selected card.
+          * Re-derived here rather than copied into the popup so a refresh
+          * that moved the selection cannot make the viewer show a different
+          * post's pictures than the menu named. */
+         const cobalt_post *post = NULL;
+         if (app->popup_in_thread) {
+            const cobalt_thread *conv = cobalt_session_thread();
+            if (app->thread.selected < conv->count) {
+               post = &conv->posts[app->thread.selected];
+            }
+         } else {
+            const cobalt_feed *feed = cobalt_session_feed();
+            if (app->timeline.selected < feed->count) {
+               post = &feed->posts[app->timeline.selected];
+            }
+         }
+         if (post) {
+            cobalt_imageview_open(&app->imageview, post);
+            cobalt_popup_close(&app->popup);
          }
          break;
       }
@@ -967,6 +996,16 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
     * held across network I/O, so this costs nothing.
     */
    cobalt_session_lock();
+
+   /* The viewer is an overlay over whatever screen opened it, so it takes
+    * the input before the popup and the screen both. Its update returns
+    * whether it consumed the frame; the screen underneath must not also act
+    * on the same presses. */
+   if (app->imageview.open) {
+      cobalt_imageview_update(&app->imageview, in);
+      cobalt_session_unlock();
+      return;
+   }
 
    if (app->popup.open) {
       const int chosen = cobalt_popup_update(&app->popup, in);
@@ -1711,6 +1750,15 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
     * worker and it edits them in place. Both surfaces are drawn per frame, so
     * this is taken twice. */
    cobalt_session_lock();
+
+   /* Drawn after the screen switch so it covers whatever is underneath, on
+    * both surfaces — the TV and the GamePad show the same picture, which is
+    * the point of looking at one. */
+   if (app->imageview.open) {
+      cobalt_imageview_draw(&app->imageview, r);
+      cobalt_session_unlock();
+      return;
+   }
 
    switch (app->screen) {
       case COBALT_SCREEN_DIAGNOSTICS:
