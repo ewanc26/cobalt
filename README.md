@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/ewanc26/cobalt/actions/workflows/ci.yml"><img src="https://github.com/ewanc26/cobalt/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/ewanc26/cobalt/releases/latest"><img src="https://img.shields.io/github/v/release/ewanc26/cobalt?sort=semver" alt="Latest release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/ewanc26/cobalt" alt="AGPL-3.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/ewanc26/cobalt?label=licence" alt="AGPL-3.0"></a>
   <a href="https://github.com/sponsors/ewanc26"><img src="https://img.shields.io/github/sponsors/ewanc26?logo=githubsponsors&logoColor=white&label=sponsors" alt="Sponsor"></a>
 </p>
 
