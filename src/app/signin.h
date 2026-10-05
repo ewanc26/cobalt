@@ -3,9 +3,9 @@
 /*
  * The sign-in screen.
  *
- * App passwords over the software keyboard are the auth story for v1
- * (AGENTS.md §7 — the browser-redirect OAuth flow every modern Bluesky client
- * uses has nowhere to redirect to on a console).
+ * Two flows share this screen (AGENTS.md §7): an app password typed on Cobalt's
+ * own keyboard, or, with the password left empty, OAuth through a hosted
+ * Wolfram OAuth node whose URL goes in the service field.
  *
  * The screen has two modes and they are not a style choice: the GamePad panel
  * is 854x480, and a field list plus a full keyboard does not fit on it at a
