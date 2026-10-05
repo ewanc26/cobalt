@@ -20,6 +20,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 - The right stick navigates like the left: both sticks drive the D-pad directions, and letting go of one does not release a direction the other is still holding.
 
 ### Internal
+- AGENTS.md no longer says Cobalt has one hardcoded custom feed. It reads the account's saved feeds, as it has for a while.
 - The image cache takes its slot and loader counts at creation (`cobalt_imagecache_create_sized`) rather than fixing them at compile time. The viewer's caches are two slots and one loader each — a person looks at one picture at a time — decoded at the surface's own height (720 on the TV, 480 on the GamePad), where a card thumbnail stays capped at 320.
 
 ## [0.5.0] - 2026-10-04
