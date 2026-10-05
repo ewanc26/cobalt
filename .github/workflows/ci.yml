@@ -6,6 +6,22 @@ on:
   pull_request:
 
 jobs:
+  direct-push-guard:
+    # Branch protection is the owner's to set (cobalt#134). Until it is, this
+    # turns a push to main that did not come from a pull request into a red main.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Commit came from a merged pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq 'length')
+          [ "$n" -gt 0 ] || { echo "::error::$GITHUB_SHA reached main without a pull request"; exit 1; }
+
   parity:
     # The parity matrix, README and AGENTS.md must agree, and the check must be
     # able to fail.
@@ -130,3 +146,25 @@ jobs:
         with:
           name: cobalt-wuhb
           path: cobalt/dist/wiiu/apps/cobalt.wuhb
+
+  # One name for branch protection to require. It fails when any gating job
+  # failed or was cancelled, so a new job is covered by adding it to `needs`
+  # here instead of editing repository settings. direct-push-guard only runs on
+  # pushes and is deliberately not listed.
+  ci-gate:
+    name: CI gate
+    if: always()
+    needs:
+      - host-tests
+      - wuhb
+      - parity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every gating job to have passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do
+            [ "$r" = success ] || { echo "::error::a gating job finished as '$r'"; exit 1; }
+          done

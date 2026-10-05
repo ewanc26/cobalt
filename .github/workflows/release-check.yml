@@ -1,7 +1,8 @@
 name: release-check
 
-# A v* tag must match COBALT_VERSION and have a CHANGELOG section, so a tag
-# cannot be cut from a tree that reports a different version in-app.
+# A v* tag must sit on main, with green CI, match COBALT_VERSION and have a
+# CHANGELOG section, so a tag cannot be cut from a tree that is unreviewed,
+# red, or reports a different version in-app.
 on:
   push:
     tags: ["v*"]
@@ -9,8 +10,34 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tag commit is on main
+        # Releases come from main only (docs/workflow.md). A tag on a branch
+        # commit would publish code that never went through a merged PR.
+        run: |
+          git fetch -q origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::$GITHUB_REF_NAME is not on main"; exit 1; }
+      - name: CI is green on the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The ci workflow's jobs, on this exact commit. The release-check job
+          # itself is excluded; it is the one asking.
+          bad=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
+            --jq '[.check_runs[] | select(.app.slug=="github-actions" and .name!="verify")
+                   | select(.status!="completed" or (.conclusion!="success" and .conclusion!="skipped"))
+                   | .name] | join(", ")')
+          seen=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
+            --jq '[.check_runs[] | select(.name=="host-tests" or .name=="wuhb")] | length')
+          [ "$seen" -ge 2 ] || { echo "::error::no host-tests/wuhb run on $GITHUB_SHA; CI never ran on this commit"; exit 1; }
+          [ -z "$bad" ] || { echo "::error::not green on $GITHUB_SHA: $bad"; exit 1; }
       - name: Tag matches version.h and CHANGELOG
         run: |
           tag=${GITHUB_REF_NAME#v}
