@@ -17,7 +17,7 @@
 
 #include "input/input.h"
 #include "ui/render.h"
-#include "update/update.h"
+#include "update/selfupdate.h"
 
 #include <SDL.h>
 #include <stdbool.h>
