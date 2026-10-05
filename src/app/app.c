@@ -1,5 +1,6 @@
 #include "app/app.h"
 #include "app/compose.h"
+#include "app/entropyview.h"
 #include "app/graph.h"
 #include "app/lists.h"
 #include "app/notify.h"
@@ -74,6 +75,7 @@ struct cobalt_app {
 
    cobalt_signin signin;
    cobalt_update_view update;
+   cobalt_entropy_view entropy;
    cobalt_timeline timeline;
    cobalt_thread_view thread;
    cobalt_compose compose;
@@ -277,6 +279,17 @@ cobalt_app_create(void)
    cobalt_signin_init(&app->signin);
    cobalt_update_view_init(&app->update);
    cobalt_update_view_startup(&app->update, cobalt_data_root());
+
+   /* An install made without `make bundle` has no entropy seed, and without one
+    * Cobalt will not use the network: ask for one before anything else. */
+   {
+      char seed_path[256];
+      if (cobalt_atproto_needs_seed() && cobalt_atproto_seed_path(seed_path, sizeof(seed_path))) {
+         const uint64_t extra[2] = {(uint64_t) SDL_GetPerformanceCounter(), (uint64_t) SDL_GetTicks()};
+         cobalt_entropy_view_init(&app->entropy, seed_path, extra, sizeof(extra));
+         app->screen = COBALT_SCREEN_ENTROPY;
+      }
+   }
    cobalt_timeline_init(&app->timeline);
    cobalt_thread_view_init(&app->thread);
    cobalt_notify_view_init(&app->notify);
@@ -813,7 +826,9 @@ static bool
 screen_has_back_pill(cobalt_screen s)
 {
    return s != COBALT_SCREEN_HOME && s != COBALT_SCREEN_COMPOSE &&
-          s != COBALT_SCREEN_SIGN_IN && s != COBALT_SCREEN_SEARCH;
+          s != COBALT_SCREEN_SIGN_IN && s != COBALT_SCREEN_SEARCH &&
+          /* Strokes land anywhere on the panel; a corner pill would end setup. */
+          s != COBALT_SCREEN_ENTROPY;
 }
 
 static void
@@ -1090,6 +1105,19 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
    in = hint_in;
 
    switch (app->screen) {
+      case COBALT_SCREEN_ENTROPY:
+         switch (cobalt_entropy_view_update(&app->entropy, in, (uint32_t) SDL_GetPerformanceCounter())) {
+            case COBALT_ENTROPY_VIEW_SKIP:
+               app->screen = COBALT_SCREEN_HOME;
+               break;
+            case COBALT_ENTROPY_VIEW_QUIT:
+               app->quit = true;
+               break;
+            case COBALT_ENTROPY_VIEW_STAY:
+               break;
+         }
+         break;
+
       case COBALT_SCREEN_UPDATE:
          if (cobalt_update_view_update(&app->update, in) == COBALT_UPDATE_VIEW_BACK) {
             app->screen = COBALT_SCREEN_HOME;
@@ -1856,6 +1884,11 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    }
 
    switch (app->screen) {
+      case COBALT_SCREEN_ENTROPY:
+         draw_header(r, "Set up");
+         cobalt_entropy_view_draw(&app->entropy, r, surface, cobalt_content_top(r));
+         break;
+
       case COBALT_SCREEN_UPDATE:
          draw_header(r, "Updates");
          cobalt_update_view_draw(&app->update, r, cobalt_content_top(r));
