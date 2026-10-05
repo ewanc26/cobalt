@@ -96,6 +96,31 @@ go_home(void)
    }
 }
 
+/* A finger released at (x, y) in GamePad coordinates for one frame. */
+static void
+tap(int x, int y)
+{
+   uint32_t now = SDL_GetTicks();
+   cobalt_input_begin_frame(&g_in, now);
+   g_in.touch_x = x;
+   g_in.touch_y = y;
+   g_in.touch_ended = true;
+   cobalt_input_end_frame(&g_in, now);
+   cobalt_app_update(g_app, &g_in, now);
+   cobalt_render_begin(g_tv);
+   cobalt_app_draw(g_app, g_tv, COBALT_SURFACE_TV);
+   cobalt_render_end(g_tv);
+   cobalt_render_begin(g_drc);
+   cobalt_app_draw(g_app, g_drc, COBALT_SURFACE_DRC);
+   cobalt_render_end(g_drc);
+}
+
+static void
+tap_rect_centre(const SDL_Rect *r)
+{
+   tap(r->x + r->w / 2, r->y + r->h / 2);
+}
+
 /* Home selection is linear and wraps; the app remembers it across screens. */
 static void
 open_home_item(int idx)
@@ -199,6 +224,47 @@ main(int argc, char **argv)
    frame(COBALT_BTN_ALT_Y);
    settle(5);
    shoot("timeline-menu");
+
+   /* A tap outside the popup's panel closes it without choosing anything. */
+   {
+      const cobalt_popup *p = cobalt_app_popup(g_app);
+      CHECK(p != NULL && p->open && p->count >= 2);
+      tap(5, 5);
+      settle(3);
+      CHECK(cobalt_app_popup(g_app) == NULL);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
+
+      /* A tap on a row picks it: row 0 is "View profile", which navigates. */
+      frame(COBALT_BTN_ALT_Y);
+      settle(5);
+      p = cobalt_app_popup(g_app);
+      CHECK(p != NULL && p->open && p->hit_valid);
+      CHECK(p->hit[0].w > 0 && p->hit[0].h > 0);
+      tap_rect_centre(&p->hit[0]);
+      settle(40);
+      CHECK(cobalt_app_popup(g_app) == NULL);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE);
+      frame(COBALT_BTN_BACK);
+      settle(10);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
+
+      /* The bottom-most row picks too, by its own rect. */
+      frame(COBALT_BTN_ALT_Y);
+      settle(5);
+      p = cobalt_app_popup(g_app);
+      CHECK(p != NULL && p->count >= 2);
+      const int last = p->count - 1;
+      tap_rect_centre(&p->hit[last]);
+      settle(40);
+      CHECK(cobalt_app_popup(g_app) == NULL);
+      /* Reposted-by opens the actor-list screen; back returns to the timeline. */
+      if (cobalt_app_screen(g_app) != COBALT_SCREEN_TIMELINE) {
+         frame(COBALT_BTN_BACK);
+         settle(10);
+      }
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
+   }
+
    frame(COBALT_BTN_BACK); settle(3);
    frame(COBALT_BTN_DOWN); settle(3);
    frame(COBALT_BTN_ALT_Y); settle(5);
@@ -281,14 +347,59 @@ main(int argc, char **argv)
 
    /* Tapping the header's Back pill on the GamePad leaves the screen. */
    {
-      uint32_t now = SDL_GetTicks();
-      cobalt_input_begin_frame(&g_in, now);
-      g_in.touch_x = 800; g_in.touch_y = 38; g_in.touch_ended = true;
-      cobalt_input_end_frame(&g_in, now);
-      cobalt_app_update(g_app, &g_in, now);
-      g_in.touch_ended = false;
+      tap(800, 38);
       settle(3);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
+   }
+
+   /* Tapping a hint pill is the button it names. The timeline footer carries
+    * "A: thread  Y: more  Left: like  Right: repost", so a tap on "Y" opens
+    * the post menu and a tap on "A" opens the thread. */
+   {
+      SDL_Rect r;
+      char key[8];
+
+      /* Home's own footer is "TV + GamePad": a status word, not a prompt, so
+       * it names no button and must not be tappable. Checked here because
+       * that is the case a mappable-key assumption would get wrong. */
+      go_home();
+      settle(4);
+      CHECK(cobalt_hints_pill(0, &r, key, sizeof key) == 0);
+
+      open_home_item(0); /* timeline */
+      settle(40);
+
+      int a = -1, y = -1;
+      for (int i = 0; i < 16; i++) {
+         if (cobalt_hints_pill(i, &r, key, sizeof key) != 1) break;
+         if (a < 0 && strcmp(key, "A") == 0) a = i;
+         if (y < 0 && strcmp(key, "Y") == 0) y = i;
+      }
+      CHECK(a >= 0);
+      CHECK(y >= 0);
+
+      if (y >= 0) {
+         cobalt_hints_pill(y, &r, key, sizeof key);
+         tap_rect_centre(&r);
+         settle(5);
+         CHECK(cobalt_app_popup(g_app) != NULL);
+         /* While the popup is up it owns the frame: the tap that opened it
+          * must not also have pressed the button underneath. */
+         CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
+         frame(COBALT_BTN_BACK);
+         settle(3);
+         CHECK(cobalt_app_popup(g_app) == NULL);
+      }
+
+      if (a >= 0) {
+         cobalt_hints_pill(a, &r, key, sizeof key);
+         tap_rect_centre(&r);
+         settle(10);
+         CHECK(cobalt_app_screen(g_app) != COBALT_SCREEN_TIMELINE);
+         frame(COBALT_BTN_BACK);
+         settle(10);
+         CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
+      }
    }
 
    wf_mock_pds_free(pds);

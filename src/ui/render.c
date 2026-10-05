@@ -1,4 +1,5 @@
 #include "ui/render.h"
+#include "input/input.h"
 #include "util/log.h"
 
 #include <math.h>
@@ -471,7 +472,41 @@ typedef struct {
    char key[32];
    char label[64];
    int kw, lw, w;
+   /* Index into the tappable-pill arrays, or -1 when this segment names no
+    * button. Segments and pills are *not* one-to-one — a spec may mix a bare
+    * word ("Working...") with keyed prompts — so the draw loops store rects
+    * through this rather than through the segment index. */
+   int pill;
 } hint_seg;
+
+/* Where the last draw_hints put each pill, so a tap can be routed back to the
+ * button the pill names. Only the GamePad's are tappable: the TV has no touch.
+ * [0] is the header band (under the Back pill), the rest the footer. */
+#define COBALT_HINT_MAX 16
+static SDL_Rect s_hint_hit[COBALT_HINT_MAX];
+static int s_hint_count;
+static char s_hint_keys[COBALT_HINT_MAX][8];
+static bool s_hint_valid;
+
+/* Map a hint pill's key text to the button it names. COBALT_BTN_COUNT when
+ * it names none (a bare word like "Working..." has no button). */
+static cobalt_button
+hint_key_button(const char *key)
+{
+   static const struct { const char *key; cobalt_button btn; } table[] = {
+      { "A", COBALT_BTN_CONFIRM }, { "B", COBALT_BTN_BACK },
+      { "X", COBALT_BTN_ALT_X }, { "Y", COBALT_BTN_ALT_Y },
+      { "+", COBALT_BTN_MENU }, { "Left", COBALT_BTN_LEFT },
+      { "Right", COBALT_BTN_RIGHT }, { "Up", COBALT_BTN_UP },
+      { "Down", COBALT_BTN_DOWN },
+   };
+   for (size_t i = 0; i < sizeof table / sizeof *table; i++) {
+      if (strcmp(key, table[i].key) == 0) {
+         return table[i].btn;
+      }
+   }
+   return COBALT_BTN_COUNT;
+}
 
 void
 cobalt_draw_hints(cobalt_render *r, const char *spec)
@@ -485,6 +520,9 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
    const int padx = pill_h / 3 + 2;
    const int gap = 16;
    const int right = m->width - m->pad_edge;
+
+   s_hint_count = 0;
+   s_hint_valid = (r->surface == COBALT_SURFACE_DRC);
 
    hint_seg segs[16];
    int count = 0;
@@ -512,6 +550,18 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
          cobalt_text_size(r, COBALT_FONT_CAPTION, h->key, &h->kw, NULL);
       } else {
          snprintf(h->label, sizeof h->label, "%s", seg);
+      }
+      /* Only a pill naming a single, mappable button is tappable. A key that
+       * is a range or a compound ("Up/Down", "A/Left/Right") has no one
+       * button to be, and half-applying it would be worse than ignoring the
+       * tap. */
+      h->pill = -1;
+      if (s_hint_valid && h->key[0] &&
+          hint_key_button(h->key) != COBALT_BTN_COUNT &&
+          s_hint_count < COBALT_HINT_MAX) {
+         snprintf(s_hint_keys[s_hint_count], sizeof s_hint_keys[0], "%s",
+                  h->key);
+         h->pill = s_hint_count++;
       }
       cobalt_text_size(r, COBALT_FONT_CAPTION, h->label, &h->lw, NULL);
       const int chip_w = h->key[0] ? h->kw + pill_h / 3 + 4 : 0;
@@ -542,6 +592,9 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
       const int y = m->pad_edge + pill_h + 6;
       for (int i = 0; i < header_n; i++) {
          cobalt_draw_pill(r, segs[i].key, segs[i].label, x, y);
+         if (segs[i].pill >= 0) {
+            s_hint_hit[segs[i].pill] = (SDL_Rect){ x, y, segs[i].w, pill_h };
+         }
          x += segs[i].w + gap;
       }
    }
@@ -554,8 +607,47 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
          y -= pill_h + 6;
       }
       cobalt_draw_pill(r, segs[i].key, segs[i].label, x, y);
+      if (segs[i].pill >= 0) {
+         s_hint_hit[segs[i].pill] = (SDL_Rect){ x, y, segs[i].w, pill_h };
+      }
       x += segs[i].w + gap;
    }
+}
+
+/* Turn a GamePad tap that landed on a hint pill into the button press it
+ * names, so the on-screen prompts are themselves buttons. Returns the number
+ * of pills hit, filling `out` with their buttons. */
+int
+cobalt_hints_tapped(const cobalt_input *in, cobalt_button *out, int max)
+{
+   if (!in || !out || max <= 0 || !in->touch_ended || !s_hint_valid) {
+      return 0;
+   }
+   int n = 0;
+   for (int i = 0; i < s_hint_count; i++) {
+      if (cobalt_input_tapped(in, &s_hint_hit[i])) {
+         const cobalt_button btn = hint_key_button(s_hint_keys[i]);
+         if (btn != COBALT_BTN_COUNT && n < max) {
+            out[n++] = btn;
+         }
+      }
+   }
+   return n;
+}
+
+int
+cobalt_hints_pill(int i, SDL_Rect *rect, char *key, size_t key_size)
+{
+   if (!s_hint_valid || i < 0 || i >= s_hint_count) {
+      return 0;
+   }
+   if (rect) {
+      *rect = s_hint_hit[i];
+   }
+   if (key && key_size > 0) {
+      snprintf(key, key_size, "%s", s_hint_keys[i]);
+   }
+   return 1;
 }
 
 void

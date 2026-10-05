@@ -306,6 +306,12 @@ cobalt_app_timeline_position(const cobalt_app *app, int *selected, int *scroll)
    }
 }
 
+const cobalt_popup *
+cobalt_app_popup(const cobalt_app *app)
+{
+   return app && app->popup.open ? &app->popup : NULL;
+}
+
 int
 cobalt_app_home_selection(const cobalt_app *app)
 {
@@ -994,6 +1000,14 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
       in = &tapped_back;
    }
 
+   /* A tap on a hint pill (the "A: thread" style prompts) is that button.
+    * Routed after the overlay gates below, not here: the image viewer and the
+    * popup are both drawn over the screen's own footer, so a tap on a pill
+    * while one of them is up belongs to the overlay. Pressing the button as
+    * well would dismiss the popup *and* act on what was underneath it. */
+   cobalt_input tapped_hint;
+   const cobalt_input *hint_in = in;
+
    if (in->quit_requested) {
       app->quit = true;
       return;
@@ -1040,6 +1054,20 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
       cobalt_session_unlock();
       return;
    }
+
+   {
+      cobalt_button btns[4];
+      const int n = cobalt_hints_tapped(in, btns, 4);
+      if (n > 0) {
+         tapped_hint = *in;
+         for (int i = 0; i < n; i++) {
+            tapped_hint.pressed[btns[i]] = true;
+         }
+         tapped_hint.touch_ended = false;
+         hint_in = &tapped_hint;
+      }
+   }
+   in = hint_in;
 
    switch (app->screen) {
       case COBALT_SCREEN_DIAGNOSTICS:
