@@ -352,6 +352,36 @@ main(int argc, char **argv)
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
    }
 
+   /* The Back pill is drawn on every screen that does not give B to the
+    * keyboard, and tapping it must leave each one (cobalt#112). The home items
+    * are: timeline 0, notifications 5, account 6, updates 7, diagnostics 8, and
+    * the two lists, feeds 3 and lists 4. Compose and search are left out on
+    * purpose: B types there, so they have no pill. */
+   {
+      static const int items[] = {0, 3, 4, 5, 6, 7, 8};
+      for (size_t k = 0; k < sizeof items / sizeof items[0]; k++) {
+         open_home_item(items[k]);
+         settle(20);
+         CHECK(cobalt_app_screen(g_app) != COBALT_SCREEN_HOME);
+         tap(800, 38);
+         settle(3);
+         if (cobalt_app_screen(g_app) != COBALT_SCREEN_HOME) {
+            printf("back pill did not leave home item %d\n", items[k]);
+         }
+         CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
+      }
+   }
+
+   /* A tap where the Back pill would be does nothing on a screen without one:
+    * the sign-in-style keyboard screens own B, and home has nowhere to go. */
+   {
+      go_home();
+      settle(4);
+      tap(800, 38);
+      settle(3);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
+   }
+
    /* Tapping a hint pill is the button it names. The timeline footer carries
     * "A: thread  Y: more  Left: like  Right: repost", so a tap on "Y" opens
     * the post menu and a tap on "A" opens the thread. */
