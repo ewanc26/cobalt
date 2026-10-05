@@ -17,6 +17,19 @@
 #define ENTROPY_SEED_FILE "entropy.bin"
 
 static cobalt_atproto_status s_status = COBALT_ATPROTO_ABSENT;
+static bool s_needs_seed = false;
+
+bool
+cobalt_atproto_needs_seed(void)
+{
+   return s_needs_seed;
+}
+
+bool
+cobalt_atproto_seed_path(char *out, size_t out_size)
+{
+   return cobalt_data_path(out, out_size, ENTROPY_SEED_FILE);
+}
 
 /*
  * Provision every generator that needs real entropy, from the one seed file on
@@ -52,8 +65,13 @@ provision_entropy(void)
 
    unsigned char seed[COBALT_ENTROPY_SEED_SIZE];
    if (!cobalt_entropy_seed_load(path, seed)) {
-      COBALT_LOGW("entropy: no seed at %s — run `make bundle` to generate one "
-                  "per installation, then copy it to the SD card", path);
+      /* Absent is the normal state of an install made without `make bundle`;
+       * a file that exists but is the wrong size is damage, and is not
+       * silently replaced. */
+      s_needs_seed = !cobalt_entropy_seed_exists(path);
+      COBALT_LOGW("entropy: no usable seed at %s — %s", path,
+                  s_needs_seed ? "Cobalt will ask for one on the GamePad"
+                               : "the file is damaged; remove it to make a new one");
       memset(seed, 0, sizeof(seed));
       return false;
    }

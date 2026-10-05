@@ -39,6 +39,7 @@ typedef enum {
    COBALT_SCREEN_LISTS,
    COBALT_SCREEN_DIAGNOSTICS,
    COBALT_SCREEN_UPDATE,
+   COBALT_SCREEN_ENTROPY,
 } cobalt_screen;
 
 /*
