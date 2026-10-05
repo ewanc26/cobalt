@@ -50,7 +50,7 @@ OAuth on a console is not the AT Protocol browser flow running on the console. T
 | Like and repost, with undo | implemented | implemented | issue platinum#28 | |
 | Delete your own post | implemented | issue indigo#22 | issue platinum#42 | Cobalt: `confirm_delete` in `src/app/thread.h` |
 | Actor search, post search | implemented | implemented | issue platinum#34 | |
-| Custom feeds | partial, issue #135 | implemented | issue platinum#34 | Cobalt browses one compiled-in feed; Indigo reads the account's saved feeds |
+| Custom feeds | implemented | implemented | issue platinum#34 | Both read the account's saved feeds. Cobalt: `run_saved_feeds` in `src/atproto/session.c`; B from a feed goes Home, not back to the picker. |
 | Lists and members | implemented | implemented | issue platinum#34 | Read-only in both consoles |
 | Mute and block, with lists | implemented | implemented | issue platinum#35 | |
 | Muted words, hide reposts | implemented | implemented | issue platinum#35 | Cobalt calls Wolfram's matcher; Indigo still carries a copy (indigo#20) |
