@@ -141,7 +141,7 @@ if an update is interrupted the next launch puts it back.
 That checksum catches a corrupt or swapped download. It does not prove the
 release is mine, because there is no signing key yet. I have only run this on
 the host, not on a console. Installing a `.wuhb` by hand still works exactly as
-below.
+above.
 
 ## Authentication and storage
 
