@@ -1,5 +1,12 @@
 <p align="center">
-  <img src="assets/icon.png" alt="Cobalt icon" width="128">
+  <img src="docs/logo.svg" alt="Cobalt" width="420">
+</p>
+
+<p align="center">
+  <a href="https://github.com/ewanc26/cobalt/actions/workflows/ci.yml"><img src="https://github.com/ewanc26/cobalt/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/ewanc26/cobalt/releases/latest"><img src="https://img.shields.io/github/v/release/ewanc26/cobalt?sort=semver" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/ewanc26/cobalt" alt="AGPL-3.0"></a>
+  <a href="https://github.com/sponsors/ewanc26"><img src="https://img.shields.io/github/sponsors/ewanc26?logo=githubsponsors&logoColor=white&label=sponsors" alt="Sponsor"></a>
 </p>
 
 # Cobalt
@@ -95,43 +102,6 @@ Building Cobalt requires:
 - a sibling checkout of [Wolfram](https://github.com/ewanc26/wolfram)
 - OpenSSL for generating the per-installation entropy seed
 
-## Building
-
-Build Wolfram for Wii U first, then build Cobalt:
-
-```sh
-git clone https://github.com/ewanc26/wolfram ../wolfram
-
-cd ../wolfram
-cmake -S . -B build-wiiu \
-  -DCMAKE_TOOLCHAIN_FILE=$PWD/.devdeps/wiiu.cmake \
-  -DWOLFRAM_BUILD_WIIU=ON \
-  -DWOLFRAM_BUILD_TESTS=OFF \
-  -DWOLFRAM_BUILD_EXAMPLES=OFF
-cmake --build build-wiiu -j8 --target wolfram
-
-cd ../cobalt
-make
-```
-
-Cobalt looks for Wolfram at `../wolfram/build-wiiu` by default. Set
-`WOLFRAM_ROOT` and `WOLFRAM_BUILD` to override those paths.
-
-A Cobalt build can technically be produced without Wolfram, but the
-AT Protocol functionality is then omitted. A normal networked build should
-therefore have Wolfram available.
-
-### Build targets
-
-| Command | Purpose |
-|---|---|
-| `make` | Build the Wii U application |
-| `make bundle` | Build the application and create a per-installation entropy seed |
-| `make test` | Run the host-side test suite |
-| `make cacert` | Refresh the bundled TLS trust store |
-| `make run` | Print the expected installation/push location |
-| `make clean` | Remove generated build and test output |
-
 ## Installing
 
 The normal WUHB installation is:
@@ -187,6 +157,43 @@ while also providing the required entropy to Wolfram and its TLS transport.
 
 The seed is rotated on boot. A missing seed prevents network authentication
 rather than silently falling back to weaker randomness.
+
+## Building
+
+Build Wolfram for Wii U first, then build Cobalt:
+
+```sh
+git clone https://github.com/ewanc26/wolfram ../wolfram
+
+cd ../wolfram
+cmake -S . -B build-wiiu \
+  -DCMAKE_TOOLCHAIN_FILE=$PWD/.devdeps/wiiu.cmake \
+  -DWOLFRAM_BUILD_WIIU=ON \
+  -DWOLFRAM_BUILD_TESTS=OFF \
+  -DWOLFRAM_BUILD_EXAMPLES=OFF
+cmake --build build-wiiu -j8 --target wolfram
+
+cd ../cobalt
+make
+```
+
+Cobalt looks for Wolfram at `../wolfram/build-wiiu` by default. Set
+`WOLFRAM_ROOT` and `WOLFRAM_BUILD` to override those paths.
+
+A Cobalt build can technically be produced without Wolfram, but the
+AT Protocol functionality is then omitted. A normal networked build should
+therefore have Wolfram available.
+
+### Build targets
+
+| Command | Purpose |
+|---|---|
+| `make` | Build the Wii U application |
+| `make bundle` | Build the application and create a per-installation entropy seed |
+| `make test` | Run the host-side test suite |
+| `make cacert` | Refresh the bundled TLS trust store |
+| `make run` | Print the expected installation/push location |
+| `make clean` | Remove generated build and test output |
 
 ## TLS trust store
 
