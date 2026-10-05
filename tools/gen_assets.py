@@ -8,6 +8,11 @@ Pillow or ImageMagick available.
 
     python3 tools/gen_assets.py
 
+It also writes docs/logo.svg, the README mark shared in style with the rest of
+the stack (a pixel silhouette on a 3x5 grid, 294 units wide, one `.logo` class,
+green in the same two shades Wolfram and MetalBear use). The icon and splash
+screens draw the very same grid, so the console and the README carry one mark.
+
 Sizes are dictated by wuhbtool: 128x128 icon, 1280x720 TV splash, 854x480 DRC
 splash. See AGENTS.md section 5 for the palette rationale (Wii U menu blues and
 whites rather than Bluesky's own web branding).
@@ -154,6 +159,114 @@ def draw_ring_c(image, cx, cy, outer, thickness, colour, gap_deg=(-38.0, 38.0)):
             image.put(x, y, colour, cover)
 
 
+# --- The mark ---------------------------------------------------------------
+#
+# A cut stone: cobalt is a mineral, and the project is named for one. Silhouette only, like Wolfram's wolf and MetalBear's bear; the facets
+# are gaps in it, not colour. It is drawn on a grid of cells 3 units wide and 5
+# tall in a 294-unit-wide viewBox, which is what the other repositories' logos
+# use, so the rects are a run-length encoding of the grid and nothing is placed
+# by hand.
+
+CELL_W = 3
+CELL_H = 5
+LOGO_W = 294
+LOGO_H = 270
+COLS = LOGO_W // CELL_W
+ROWS = LOGO_H // CELL_H
+
+
+def _inside(poly, x, y):
+    inside = False
+    j = len(poly) - 1
+    for i in range(len(poly)):
+        xi, yi = poly[i]
+        xj, yj = poly[j]
+        if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def _near_segment(a, b, x, y, half):
+    """Whether (x, y) is within `half` units of the segment a-b."""
+    ax, ay = a
+    bx, by = b
+    dx, dy = bx - ax, by - ay
+    t = max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / float(dx * dx + dy * dy)))
+    return math.hypot(x - (ax + t * dx), y - (ay + t * dy)) <= half
+
+
+# The cut stone: a table across the top, a wide girdle, a point below. The
+# facets are one-cell gaps along the cut lines.
+CRYSTALS = [
+    ([(66, 0), (228, 0), (294, 95), (147, 270), (0, 95)],
+     [((0, 97), (294, 97)),
+      ((66, 0), (105, 95)), ((147, 0), (105, 95)), ((147, 0), (189, 95)), ((228, 0), (189, 95)),
+      ((105, 95), (147, 270)), ((189, 95), (147, 270))]),
+]
+
+
+def crystal_grid():
+    """ROWS x COLS booleans: True where the silhouette is solid."""
+    grid = [[False] * COLS for _ in range(ROWS)]
+    for row in range(ROWS):
+        y = row * CELL_H + CELL_H / 2.0
+        for col in range(COLS):
+            x = col * CELL_W + CELL_W / 2.0
+            for outline, facets in CRYSTALS:
+                if _inside(outline, x, y):
+                    grid[row][col] = True
+                    # A facet is a one-cell gap, so the cut survives the grid.
+                    if any(_near_segment(a, b, x, y, 1.6) for a, b in facets):
+                        grid[row][col] = False
+                    break
+    return grid
+
+
+def write_logo_svg(path):
+    grid = crystal_grid()
+    rects = []
+    for row, cells in enumerate(grid):
+        col = 0
+        while col < COLS:
+            if cells[col]:
+                start = col
+                while col < COLS and cells[col]:
+                    col += 1
+                rects.append('<rect x="%d" y="%d" width="%d" height="%d"/>' % (
+                    start * CELL_W, row * CELL_H, (col - start) * CELL_W, CELL_H))
+            else:
+                col += 1
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" role="img" '
+        'aria-label="Cobalt logo"><style>@media (prefers-color-scheme: dark) '
+        '{ .logo { fill: #4ade80; } } @media (prefers-color-scheme: light), '
+        '(prefers-color-scheme: no-preference) { .logo { fill: #15803d; } }</style>'
+        '<g class="logo" shape-rendering="crispEdges">%s</g></svg>'
+    ) % (LOGO_W, LOGO_H, "".join(rects))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as handle:
+        handle.write(svg)
+    print("wrote %s (%d rects)" % (path, len(rects)))
+
+
+def draw_crystal(image, cx, cy, height, colour, offset=(0, 0)):
+    """Draw the grid centred on (cx, cy), `height` pixels tall, as hard-edged cells."""
+    grid = crystal_grid()
+    scale = height / float(LOGO_H)
+    x0 = cx - LOGO_W * scale / 2.0 + offset[0]
+    y0 = cy - LOGO_H * scale / 2.0 + offset[1]
+    for row, cells in enumerate(grid):
+        ya, yb = int(round(y0 + row * CELL_H * scale)), int(round(y0 + (row + 1) * CELL_H * scale))
+        for col, solid in enumerate(cells):
+            if not solid:
+                continue
+            xa, xb = int(round(x0 + col * CELL_W * scale)), int(round(x0 + (col + 1) * CELL_W * scale))
+            for y in range(ya, yb):
+                for x in range(xa, xb):
+                    image.put(x, y, colour)
+
+
 def make_icon():
     size = ICON_SIZE
     image = Image(size, size, DEEP)
@@ -170,8 +283,8 @@ def make_icon():
 
     centre = size / 2.0
     # Drop shadow under the mark, then the mark itself.
-    draw_ring_c(image, centre, centre + 2.0, size * 0.31, size * 0.105, DEEP)
-    draw_ring_c(image, centre, centre, size * 0.31, size * 0.105, WHITE)
+    draw_crystal(image, centre, centre, size * 0.70, DEEP, offset=(0, 2))
+    draw_crystal(image, centre, centre, size * 0.70, WHITE)
 
     image.write_png(os.path.join(ASSETS, "icon.png"))
 
@@ -181,16 +294,17 @@ def make_splash(width, height, path, mark_scale):
     vertical_gradient(image, MID, DEEP)
     glass_highlight(image, 0.10)
 
-    radius = min(width, height) * mark_scale
+    mark = min(width, height) * mark_scale * 2.4
     cx = width / 2.0
     cy = height / 2.0
-    draw_ring_c(image, cx, cy + radius * 0.05, radius, radius * 0.30, DEEP)
-    draw_ring_c(image, cx, cy, radius, radius * 0.30, WHITE)
+    draw_crystal(image, cx, cy, mark, DEEP, offset=(0, mark * 0.02))
+    draw_crystal(image, cx, cy, mark, WHITE)
 
     image.write_png(path)
 
 
 def main():
+    write_logo_svg(os.path.join(os.path.dirname(ASSETS), "docs", "logo.svg"))
     make_icon()
     make_splash(TV_SIZE[0], TV_SIZE[1], os.path.join(ASSETS, "tv_splash.png"), 0.16)
     make_splash(DRC_SIZE[0], DRC_SIZE[1], os.path.join(ASSETS, "drc_splash.png"), 0.18)
