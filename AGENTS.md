@@ -312,6 +312,25 @@ Consequences to design around:
 - **Cobalt now requires a Wolfram with `wf_xrpc_client_set_tls_rng()`.** An older checkout will fail to compile rather than silently building without the fix, which is the right way round.
 - **Worth reporting upstream.** The poll affects every Wii U homebrew using mbedTLS, not just Cobalt. No devkitPro issue for it was found. An honest upstream fix may have to be "fail" rather than "return tick bytes", since no PowerPC-reachable hardware RNG is documented for this console — IOSU gatekeeps the crypto hardware. Note that is *not found*, not *proven absent*; the WiiUBrew `/dev/crypto` page could not be read while checking.
 
+### Updates: confirmed by the user, checked, staged, replaced on quit
+
+Research that shaped this (primary sources read 2026-10-05; what could not be read is stated):
+
+- Aroma runs `.wuhb` bundles from `sd:/wiiu/apps/`; Cobalt installs as `sd:/wiiu/apps/cobalt.wuhb` with its data in `sd:/wiiu/apps/cobalt/` (README). Aroma's own documentation host was not reachable from the build environment, so nothing here rests on it.
+- The Homebrew App Store (`fortheusers/hb-appstore`, built on `libget`) distributes through "repo JSON data and package zips ... designed to be statically hosted as files, with no explicit backend logic"; `repo.json` package entries carry `name`, `title`, `author`, `description`, `version` and updates are detected from `version`. Its metadata and checksum wiki, and `hb-app.store/api-info`, could not be read here. Cobalt is not published there from this repo (no registry publishing); the manifest below is deliberately simple enough to be mapped onto a `repo.json` entry by hand.
+- GitHub release assets are plain HTTPS downloads. `releases/latest/download/<asset>` redirects to the newest release's asset, so one request finds the manifest with no API rate limit or token.
+
+Rules:
+
+- Updates come from this repository's releases only. `src/update/update.c` refuses any asset URL that is not `https://github.com/ewanc26/cobalt/releases/download/v<version>/<name>`.
+- The user confirms. Opening Updates only checks; nothing is downloaded until A is pressed on the offered version. No silent or background updates.
+- Integrity: the manifest's SHA-256 is checked on the downloaded bytes in memory, then again on the file read back from the SD card, before the file may be called `.new`. This is integrity, not authenticity: it does not protect against a compromised release. The manifest's `signature` field is reserved; the key is the owner's (needs-owner #138). Never generate or commit a key.
+- Replacement happens at quit (`cobalt_app_destroy`), because Aroma has the running `.wuhb` mounted. Apply is two renames (installed to `.old`, `.new` to installed); `cobalt_update_recover` runs at startup and puts `.old` back if the installed file is missing. `.old` is kept until the new build has drawn a frame (`cobalt_update_view_tick`). A leftover `.part` or `.new` is deleted at startup.
+- No token is involved (public repo, unauthenticated), and nothing from the update path is logged beyond versions and outcomes.
+- `src/update/` is a local copy of the contract in wolfram#106 (manifest, version compare, SHA-256); delete it when Wolfram ships `wolfram/update.h`. Do not extend it. File replacement, UI and paths stay in Cobalt.
+- `tools/publish.sh` produces the updater's inputs: `cobalt-<version>.wuhb`, `.sha256`, and `update.json` from `tools/make-update-manifest.sh`. `make -C tests check` feeds that script's output to the real reader.
+- Verified on the host only. Real-console behaviour (redirect, renaming the mounted `.wuhb`, recovery) is open as #139.
+
 ### Assets and font
 
 `assets/` artwork is generated, not hand-drawn: `python3 tools/gen_assets.py` writes the 128×128 icon and both splash screens from a palette defined in that script (stdlib only — no Pillow or ImageMagick needed). Regenerate after a palette change rather than editing the PNGs.

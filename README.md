@@ -41,6 +41,7 @@ replace testing on the console.
 - App-password sign-in with an on-screen keyboard
 - Browser-based OAuth sign-in through a hosted Wolfram OAuth node: Cobalt shows a pairing link, you open it on a phone or computer, and the PDS handles your password and MFA
 - Persistent encrypted sessions and sign-out
+- Updates from this repository's releases, only when you ask and confirm
 - Home timeline with paging, reposts and threads
 - Posting, replies, quote posts and reply gates
 - Likes and reposts, including undo
@@ -131,6 +132,21 @@ therefore have Wolfram available.
 | `make cacert` | Refresh the bundled TLS trust store |
 | `make run` | Print the expected installation/push location |
 | `make clean` | Remove generated build and test output |
+
+## Updating
+
+Home, then Updates, checks this repository's latest GitHub release. If there is
+a newer one it shows the version and notes and does nothing until you press A.
+The download is checked against the SHA-256 published in the release before it
+is used, and it replaces `cobalt.wuhb` when you quit Cobalt; start it again from
+the Wii U Menu. The previous build is kept as
+`sd:/wiiu/apps/cobalt/update/cobalt.wuhb.old` until the new one has started, and
+if an update is interrupted the next launch puts it back.
+
+That checksum catches a corrupt or swapped download. It does not prove the
+release is mine, because there is no signing key yet. I have only run this on
+the host, not on a console. Installing a `.wuhb` by hand still works exactly as
+below.
 
 ## Installing
 

@@ -8,6 +8,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ## [Unreleased]
 
 ### Added
+- Updates, from the Home menu. Cobalt checks this repository's latest release, shows the version and notes, and downloads only when you press A. The file is checked against the SHA-256 in the release, replaces `cobalt.wuhb` when you quit, and the old build is kept until the new one has started; an interrupted update is repaired on the next launch. `tools/publish.sh` now attaches the `.sha256` and an `update.json` manifest to each release.
 - The footer prompts are tappable. Tapping a hint pill on the GamePad presses the button it names, so "A: thread" opens the thread and "Y: more" opens the post menu without reaching for the pad. A prompt naming a range or a chord (`Up/Down: choose`) stays inert rather than half-applying, and an overlay that covers the footer — the post menu, the image viewer — keeps the tap.
 
 - A full-size image viewer. The post menu grows a "View image" entry when the selected post carries pictures, and the picture opens contain-fitted to the whole surface, centred, on both the TV and the GamePad. The author's alt text is drawn beneath the image when there is one, a post of several photographs says "2 of 4" in the corner and cycles with Left/Right, and B, A or a tap closes back to the screen it was opened from. The viewer holds copies of the post's image list, so a background refresh cannot rewrite the pictures out from under the person looking at them.
