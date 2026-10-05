@@ -36,7 +36,7 @@ endif
 #---------------------------------------------------------------------------------
 TARGET		:=	cobalt
 BUILD		:=	build
-SOURCES		:=	src src/app src/audio src/ui src/input src/net src/atproto src/cache src/util
+SOURCES		:=	src src/app src/audio src/ui src/input src/net src/atproto src/cache src/update src/util
 DATA		:=
 INCLUDES	:=	src
 CONTENT		:=	romfs

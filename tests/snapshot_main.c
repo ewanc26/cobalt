@@ -130,11 +130,11 @@ open_home_item(int idx)
       /* The GamePad list steps one row at a time, TV or not. */
       const int start = cobalt_app_home_selection(g_app);
       frame(COBALT_BTN_DOWN); settle(2);
-      CHECK(cobalt_app_home_selection(g_app) == (start + 1) % 10);
+      CHECK(cobalt_app_home_selection(g_app) == (start + 1) % 11);
       frame(COBALT_BTN_UP); settle(2);
       CHECK(cobalt_app_home_selection(g_app) == start);
    }
-   for (int n = (idx - cobalt_app_home_selection(g_app) + 10) % 10; n > 0; n--) {
+   for (int n = (idx - cobalt_app_home_selection(g_app) + 10) % 11; n > 0; n--) {
       frame(COBALT_BTN_RIGHT);
       settle(2);
    }
@@ -291,7 +291,7 @@ main(int argc, char **argv)
 
    frame(COBALT_BTN_BACK);
    settle(10);
-   open_home_item(7);
+   open_home_item(8);
    settle(10);
    shoot("diagnostics");
 

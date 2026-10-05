@@ -35,5 +35,13 @@ if ! grep -q "libwolfram.a" build/cobalt.map; then
   echo "refusing to publish: libwolfram.a absent from build/cobalt.map — the protocol layer is missing" >&2
   exit 1
 fi
-gh release create "v$new" "dist/cobalt-$new.wuhb" --title "Cobalt $new" --notes "$notes" --verify-tag
+# The updater's inputs: the checksum next to the build and the manifest Cobalt
+# reads. Written from the .wuhb that is about to be attached, never from a
+# different build, and checked against the reader's own rules before upload.
+( cd dist && { sha256sum "cobalt-$new.wuhb" 2>/dev/null || shasum -a 256 "cobalt-$new.wuhb"; } >"cobalt-$new.wuhb.sha256" )
+printf '%s\n' "$notes" >dist/notes.txt
+tools/make-update-manifest.sh "$new" "dist/cobalt-$new.wuhb" dist/notes.txt >dist/update.json
+python3 -c 'import json,sys; m=json.load(open("dist/update.json")); assert m["asset"]["size"]>0 and len(m["asset"]["sha256"])==64' \
+  || { echo "refusing to publish: update.json is malformed" >&2; exit 1; }
+gh release create "v$new" "dist/cobalt-$new.wuhb" "dist/cobalt-$new.wuhb.sha256" dist/update.json --title "Cobalt $new" --notes "$notes" --verify-tag
 echo "Published v$new"
