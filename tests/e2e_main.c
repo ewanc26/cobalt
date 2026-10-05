@@ -4,6 +4,7 @@
  * refresh through the same entry points the UI uses. Not run by `make test`;
  * see `make e2e`.
  */
+#include "atproto/prefs.h"
 #include "atproto/session.h"
 #include "../../wolfram/test/mock_pds.h"
 
@@ -40,10 +41,50 @@ post_json(const char *n, const char *text)
    return b;
 }
 
+/* Muted-word matching is Wolfram's wf_mod_match_mute_words; these pin the
+ * behaviour Cobalt relies on, so a Wolfram change that breaks it shows here. */
+static void
+test_muted_words(void)
+{
+   cobalt_prefs p;
+   const char *tags[] = {"Spoilers"};
+
+   cobalt_prefs_clear(&p);
+   CHECK(!cobalt_prefs_text_is_muted(&p, "anything", NULL, 0));
+   CHECK(cobalt_prefs_add_word(&p, "cat", true, false));
+   CHECK(cobalt_prefs_text_is_muted(&p, "I like my Cat.", NULL, 0));
+   CHECK(cobalt_prefs_text_is_muted(&p, "cat", NULL, 0));
+   CHECK(!cobalt_prefs_text_is_muted(&p, "a category of things", NULL, 0));
+   CHECK(!cobalt_prefs_text_is_muted(&p, "concatenate", NULL, 0));
+
+   cobalt_prefs_clear(&p);
+   CHECK(cobalt_prefs_add_word(&p, "good morning", true, false));
+   CHECK(cobalt_prefs_text_is_muted(&p, "oh, GOOD MORNING all", NULL, 0));
+   CHECK(!cobalt_prefs_text_is_muted(&p, "good evening", NULL, 0));
+
+   cobalt_prefs_clear(&p);
+   CHECK(cobalt_prefs_add_word(&p, "#spoilers", false, true));
+   CHECK(cobalt_prefs_text_is_muted(&p, "text", tags, 1));
+   CHECK(!cobalt_prefs_text_is_muted(&p, "spoilers in text", NULL, 0));
+
+   /* And through the feed filter, which is what the timeline calls. */
+   static cobalt_feed feed;
+   memset(&feed, 0, sizeof(feed));
+   cobalt_prefs_clear(&p);
+   CHECK(cobalt_prefs_add_word(&p, "ban", true, false));
+   for (int i = 0; i < 4; i++) snprintf(feed.posts[i].text, sizeof(feed.posts[i].text), "post %d", i);
+   snprintf(feed.posts[1].text, sizeof(feed.posts[1].text), "a BAN here");
+   feed.count = 4;
+   CHECK(cobalt_prefs_filter_feed(&p, &feed, 1, false) == 1);
+   CHECK(feed.count == 3);
+   CHECK(strcmp(feed.posts[1].text, "post 2") == 0);
+}
+
 int
 main(int argc, char **argv)
 {
    (void) argc; (void) argv;
+   test_muted_words();
    /* Init reports a blocker on the host (no CA file, no console entropy, no
     * mbedTLS RNG hook). Those gate HTTPS on the console and are irrelevant to
     * plain HTTP against localhost; the worker runs regardless. */
