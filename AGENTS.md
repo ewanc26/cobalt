@@ -312,6 +312,17 @@ Consequences to design around:
 - **Cobalt now requires a Wolfram with `wf_xrpc_client_set_tls_rng()`.** An older checkout will fail to compile rather than silently building without the fix, which is the right way round.
 - **Worth reporting upstream.** The poll affects every Wii U homebrew using mbedTLS, not just Cobalt. No devkitPro issue for it was found. An honest upstream fix may have to be "fail" rather than "return tick bytes", since no PowerPC-reachable hardware RNG is documented for this console — IOSU gatekeeps the crypto hardware. Note that is *not found*, not *proven absent*; the WiiUBrew `/dev/crypto` page could not be read while checking.
 
+### Shared logic lives in Wolfram
+
+Protocol, OAuth, moderation, parsing, muted words, pagination of protocol results and the update manifest belong in Wolfram. Cobalt keeps platform UI, input and storage. The audit is cobalt#142; what it found and where each item stands:
+
+- **Muted words.** `cobalt_prefs_text_is_muted` calls `wf_mod_match_mute_words`. Do not reintroduce a matcher. Matching tests live in `tests/e2e_main.c`, because the unit binary has no SDK; without Wolfram the function returns false (there is no network to filter either).
+- **OAuth pairing.** `run_oauth()` is a local copy of the client half until wolfram#101 is released (cobalt#136).
+- **Update manifest, semver, SHA-256.** `src/update/selfupdate.c` is a local copy of wolfram#106.
+- **Time formatting.** `src/util/timefmt.c` duplicates Indigo's; filed as wolfram#116.
+
+`tools/check-shared-logic.sh` (CI job `shared-logic`) fails if the old matcher grows back or the pairing method names leave `session.c`. Its self-test has a deliberate violation per rule. When Wolfram takes something over, delete the local copy and tighten the allow-list in the same PR.
+
 ### Assets and font
 
 `assets/` artwork is generated, not hand-drawn: `python3 tools/gen_assets.py` writes the 128×128 icon and both splash screens from a palette defined in that script (stdlib only — no Pillow or ImageMagick needed). Regenerate after a palette change rather than editing the PNGs.

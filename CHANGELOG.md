@@ -19,6 +19,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 - The right stick navigates like the left: both sticks drive the D-pad directions, and letting go of one does not release a direction the other is still holding.
 
 ### Internal
+- Muted-word matching is Wolfram's now (`wf_mod_match_mute_words`) instead of a Cobalt copy. It follows the official client's rules: a single word matches whole words with punctuation trimmed ("cat." matches "cat", "cat's" no longer does), a phrase matches as a substring. `tools/check-shared-logic.sh` stops the copy coming back.
 - The image cache takes its slot and loader counts at creation (`cobalt_imagecache_create_sized`) rather than fixing them at compile time. The viewer's caches are two slots and one loader each — a person looks at one picture at a time — decoded at the surface's own height (720 on the TV, 480 on the GamePad), where a card thumbnail stays capped at 320.
 
 ## [0.5.0] - 2026-10-04

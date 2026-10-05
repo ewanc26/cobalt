@@ -53,7 +53,7 @@ OAuth on a console is not the AT Protocol browser flow running on the console. T
 | Custom feeds | partial, issue #135 | implemented | issue platinum#34 | Cobalt browses one compiled-in feed; Indigo reads the account's saved feeds |
 | Lists and members | implemented | implemented | issue platinum#34 | Read-only in both consoles |
 | Mute and block, with lists | implemented | implemented | issue platinum#35 | |
-| Muted words, hide reposts | implemented | implemented | issue platinum#35 | Same rules, kept as copies: see "Duplication" below |
+| Muted words, hide reposts | implemented | implemented | issue platinum#35 | Cobalt calls Wolfram's matcher; Indigo still carries a copy (indigo#20) |
 | Direct messages | issue #107 | issue indigo#22 | issue platinum#42 | Wolfram has `chat_typed.h`. |
 | Post to a thread (several posts at once) | issue #103 | issue indigo#22 | issue platinum#42 | |
 | Video poster and external-media embeds | issue #102 | issue indigo#22 | issue platinum#42 | Link cards are done. This row is the video poster frame and other external embeds. |
@@ -76,7 +76,7 @@ These are Wii U specific and have no row in the other clients.
 
 ## Duplication
 
-The same logic exists in more than one client, and shared logic belongs in Wolfram. The findings are in AGENTS.md ("Shared logic lives in Wolfram") and in the issues linked there. Wolfram already has `wf_mod_match_mute_words` for muted words, so that one is a replacement and not a new module.
+The same logic exists in more than one client, and shared logic belongs in Wolfram. The findings are in cobalt#142 and AGENTS.md ("Shared logic lives in Wolfram"). Wolfram already has `wf_mod_match_mute_words` for muted words, so that one is a replacement and not a new module.
 
 ## Keeping this honest
 
