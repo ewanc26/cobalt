@@ -109,11 +109,16 @@ Keep `atproto/` platform-agnostic where realistically possible — it's the part
 
 ## 7. Authentication
 
-Full ATProto OAuth (the browser-redirect-based flow used by Inkwell and modern Bluesky clients) is very likely **not practical** on Wii U homebrew — there's no good way to host a redirect target or reliably drive a full OAuth authorization-code flow through the console's limited browser/keyboard UX. Default assumption for Cobalt:
+Cobalt supports two sign-in flows. They are separate parity rows (`docs/PARITY.md`); keep both working and neither may regress the other.
 
-- Use **app passwords** (`com.atproto.server.createSession` with identifier + app password) as the primary auth method, entered via the Wii U's software keyboard (`swkbd`).
-- Store the resulting session/refresh token on the SD card, encrypted or at minimum not in plaintext next to other save data, and provide a clear "sign out" that wipes it.
-- If Ewan wants to explore a proper OAuth flow later (e.g. a device-code-style flow if any PDS supports one, or delegating auth to a paired phone/PC), treat that as a distinct, larger effort — don't block v1 on it.
+- **App password.** `com.atproto.server.createSession` through `wf_agent_login`, identifier and app password typed on Cobalt's own keyboard (§13). The session is stored encrypted on the SD card; "sign out" wipes it.
+- **OAuth, through a hosted Wolfram OAuth node.** An empty password selects it (`src/app/signin.c`, `run_oauth()` in `src/atproto/session.c`). The service field then holds the node's URL. The console posts the handle to `uk.ewancroft.oauth.begin`, shows the returned pairing URL and code, and polls `uk.ewancroft.oauth.poll` until the user has finished at their PDS on another device. The node holds the OAuth session and DPoP key; the console keeps only the node's bearer token. The contract is Wolfram's `docs/oauth-node.md`.
+
+Rules for both:
+
+- Tokens, passwords, pairing URLs and pairing codes never reach the log, a screen other than the pairing screen, or a commit.
+- Do not hand-write more of the pairing protocol in Cobalt. The client half is to move into Wolfram (wolfram#101, cobalt#136); until then `run_oauth()` is the only place the two method names may appear in `src/`.
+- Do not describe OAuth as impossible or not planned anywhere. `tools/check-parity.sh` fails CI if the README or §12 does.
 
 ## 8. Templates & Reference Repos to Build On
 
@@ -181,7 +186,7 @@ Cobalt follows the same commit conventions as Wolfram (see that repo's `CONTRIBU
 
 - **Legal/distribution grey area:** Wii U homebrew requires the end user to have already exploited their own console; Cobalt itself doesn't need to (and must not) include or facilitate that exploit. Keep the README's setup instructions scoped to "assuming you already have Aroma installed."
 - **TLS/crypto library availability:** confirm early which TLS portlib is realistically usable, since this gates all networking work. Don't build extensive networking code against an assumed library without confirming it builds and actually completes a TLS handshake against a real ATProto endpoint first.
-- **No OAuth (see §7):** app-password auth is a real limitation for users who've disabled password-based login on their account; be upfront about this in the README rather than treating it as a temporary gap.
+- **OAuth needs a node (see §7):** accounts that cannot use an app password can sign in only through a hosted Wolfram OAuth node, which someone has to run. Say so in the README rather than implying the console does OAuth itself.
 - **Text input ergonomics:** composing a post via the Wii U software keyboard is slow. Consider whether a companion approach (e.g. drafting via GamePad touch keyboard, which is generally faster than the swkbd overlay) is worth prioritising early.
 - **Small homebrew community:** fewer reference implementations to lean on than, say, 3DS homebrew. Budget extra time for reverse-engineering-adjacent debugging against WiiUBrew wiki documentation, which is itself community-maintained and occasionally incomplete.
 
@@ -221,11 +226,10 @@ Checked against the `wut-packages` and `pacman-packages` PKGBUILDs rather than a
 
 ### Parity with `bluesky-social/social-app`
 
-The stated goal is to go as far as the hardware allows. Some of it never will, and those should not be attempted:
+The stated goal is to go as far as the hardware allows. The full matrix, with what is done and what has an issue, is `docs/PARITY.md`. These rows are declined and should not be attempted without new evidence:
 
-| Not viable | Why |
+| Declined | Why |
 |---|---|
-| OAuth sign-in | §7 — nowhere to host a redirect target; app passwords are the ceiling, so accounts with 2FA cannot sign in at all |
 | Video | No decoder, and no realistic path to one at Espresso's clock |
 | Push notifications | No service the console can register with |
 | GIFs / animated media | Same decode problem as video, plus per-frame budget |
