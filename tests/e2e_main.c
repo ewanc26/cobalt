@@ -145,6 +145,41 @@ main(int argc, char **argv)
       wf_mock_pds_free(bad);
    }
 
+   /* OAuth through a node, driven by Wolfram's pairing client. A node that
+    * reports a terminal error ends the attempt with its message; one that
+    * completes yields a signed-in session for the handle it names. */
+   {
+      wf_mock_pds *node = NULL;
+      int node_port = 0;
+      char node_url[64];
+      CHECK(wf_mock_pds_start(&node, &node_port) == WF_OK);
+      snprintf(node_url, sizeof node_url, "http://127.0.0.1:%d", node_port);
+      wf_mock_pds_register(node, "uk.ewancroft.oauth.begin",
+         "{\"pair_code\":\"abc123\",\"pair_url\":\"https://auth.example.com/pair/abc123\"}");
+      wf_mock_pds_register(node, "uk.ewancroft.oauth.poll",
+         "{\"status\":\"error\",\"message\":\"This pairing request expired.\"}");
+      CHECK(cobalt_session_begin_oauth(node_url, "alice.test"));
+      CHECK(wait_job(&r));
+      CHECK(!r.ok);
+      CHECK(strstr(r.message, "expired") != NULL);
+      CHECK(cobalt_session_pair_url()[0] == '\0');
+
+      char done[512];
+      snprintf(done, sizeof done,
+         "{\"status\":\"complete\",\"token\":\"node-bearer\",\"handle\":\"alice.test\","
+         "\"did\":\"did:plc:abcdefghijklmnopqrstuvwx\",\"service\":\"%s\"}", node_url);
+      wf_mock_pds_register(node, "uk.ewancroft.oauth.poll", done);
+      CHECK(cobalt_session_begin_oauth(node_url, "alice.test"));
+      CHECK(wait_job(&r));
+      if (!r.ok) printf("oauth failed: %s\n", r.message);
+      CHECK(r.ok);
+      CHECK(cobalt_session_state() == COBALT_AUTH_SIGNED_IN);
+      CHECK(strcmp(cobalt_session_handle(), "alice.example.com") == 0);
+      CHECK(cobalt_session_pair_code()[0] == '\0');
+      wf_mock_pds_stop(node);
+      wf_mock_pds_free(node);
+   }
+
    CHECK(cobalt_session_begin_login(svc, "alice.test", "app-pass"));
    CHECK(wait_job(&r));
    if (!r.ok) printf("login failed: %s\n", r.message);
