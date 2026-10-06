@@ -73,7 +73,8 @@ WOLFRAM_CJSON := $(firstword $(wildcard \
 ifeq ($(HAVE_WOLFRAM),)
 $(error No Wolfram checkout at $(WOLFRAM_ROOT). Clone ewanc26/wolfram there, or set WOLFRAM_ROOT)
 endif
-WOLFRAM_UPDATE_SOURCES := $(WOLFRAM_ROOT)/src/update/update_core.c $(WOLFRAM_ROOT)/src/update/manifest.c
+WOLFRAM_UPDATE_SOURCES := $(WOLFRAM_ROOT)/src/update/update_core.c $(WOLFRAM_ROOT)/src/update/manifest.c \
+                         $(WOLFRAM_ROOT)/src/update/ed25519.c $(WOLFRAM_ROOT)/src/update/signature.c
 
 CFLAGS  := -std=gnu11 -g -O1 -Wall -Wextra -I$(SRC) -I$(WOLFRAM_ROOT)/include $(SDL_CFLAGS) $(CJSON_CFLAGS) $(CURL_CFLAGS) \
            $(IMAGE_CFLAGS) -include $(CURDIR)/host_sdl_compat.h

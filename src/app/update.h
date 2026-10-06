@@ -55,6 +55,7 @@ typedef struct {
    char message[160];
    char running[32];                /* the version of this build */
    cobalt_update_fetch_fn fetch;
+   unsigned char pubkey[WF_UPDATE_PUBLIC_KEY_LEN]; /* the release key; tests substitute their own */
    bool threaded;                   /* false runs jobs inline, for tests */
    bool committed;                  /* .old dropped after the first frame */
    SDL_mutex *lock;

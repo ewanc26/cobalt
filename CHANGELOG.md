@@ -11,6 +11,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 - Cobalt now builds against Wolfram v0.28.0 (was v0.27.0).
 
+### Added
+
+- Updates are signed. Each release's `update.json` gets a detached Ed25519 signature, `update.json.sig`, made by a GitHub Actions job with a key that exists only as a repository secret. Cobalt checks it against the public key built in before it reads the manifest, and refuses a release that has no signature or the wrong one, so a replaced release no longer passes on its SHA-256 alone. Wolfram's `wf_update_verify_signature` does the check. Releases up to 0.5.0 are unsigned ([#138](https://github.com/ewanc26/cobalt/issues/138)).
+
 ## [0.5.0] - 2026-10-06
 
 ### Changed
