@@ -342,6 +342,15 @@ Protocol, OAuth, moderation, parsing, muted words, pagination of protocol result
 
 `tools/check-shared-logic.sh` (CI job `shared-logic`) fails if the old matcher grows back or the pairing method names appear in `src/` at all. Its self-test has a deliberate violation per rule. When Wolfram takes something over, delete the local copy and tighten the allow-list in the same PR.
 
+### Homebrew App Store listing
+
+The listing is `tools/make-hbas-listing.py` output, validated by `tools/check-hbas-listing.py` (self-test breaks each rule), built by the `host-tests` job and uploaded as the `hbas-listing` artifact. Everything about it is in `docs/homebrew-app-store.md`, including what could not be verified (upstream's `pkgbuild.json` format is a documented TODO, categories and image sizes were taken from an existing package).
+
+- Never submit it. The pull request is made in the owner's name on `fortheusers/wiiu-hbas-repo`; the owner runs `tools/submit-hbas.sh` (needs-owner issue). Do not edit that script to push anywhere else, and never run it.
+- The `update` asset URL and `dest` are fixed by the check to the release layout and `/wiiu/apps/cobalt.wuhb`. If `tools/publish.sh`'s asset names change, change the generator, the check and its self-test together.
+- The package never carries `entropy.bin`: a shipped seed is identical on every console. First-run seeding (section 13) is what makes a store install usable, so it must keep working.
+- Do not claim the store auto-updates from GitHub releases; nothing read says so.
+
 ### Assets and font
 
 `assets/` artwork is generated, not hand-drawn: `python3 tools/gen_assets.py` writes the 128×128 icon and both splash screens from a palette defined in that script (stdlib only — no Pillow or ImageMagick needed). Regenerate after a palette change rather than editing the PNGs.
