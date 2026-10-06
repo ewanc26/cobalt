@@ -8,7 +8,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ## [Unreleased]
 
 ### Changed
-- Cobalt now builds against Wolfram v0.27.0 instead of its main branch, and the updater uses Wolfram's `wolfram/update.h` for the manifest, version comparison and SHA-256. My own copies of those are deleted, and a CI guard fails if they grow back. Behaviour is the same ([#170](https://github.com/ewanc26/cobalt/pull/170)).
+- Cobalt now builds against Wolfram v0.27.0 instead of its main branch, and the updater uses Wolfram's `wolfram/update.h` for the manifest, version comparison and SHA-256. My own copies of those are deleted, and a CI guard fails if they grow back. Behaviour is the same ([#170](https://github.com/ewanc26/cobalt/pull/172)).
 - Notifications now have a host test that the cursor and scroll survive opening a thread or profile and backing out, next to the timeline one. I could not reproduce the rewind in #110 on the host, so it stays open until it is confirmed on a console ([#169](https://github.com/ewanc26/cobalt/pull/169)).
 
 ### Fixed
