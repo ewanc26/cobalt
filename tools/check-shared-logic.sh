@@ -15,6 +15,8 @@ fails=0
 rules=(
   'whole_word|is_word_byte|-|wf_mod_match_mute_words (muted-word matching is Wolfram'"'"'s)'
   'uk\.ewancroft\.oauth\.|-|wf_oauth_pair_run from wolfram/oauth_pairing.h (the pairing contract is Wolfram'"'"'s)'
+  '0x428a2f98|-|wf_sha256_* from wolfram/update.h (SHA-256 is Wolfram'"'"'s)'
+  'parse_semver|cmp_pre|-|wf_update_compare_versions from wolfram/update.h (version comparison is Wolfram'"'"'s)'
 )
 
 for rule in "${rules[@]}"; do

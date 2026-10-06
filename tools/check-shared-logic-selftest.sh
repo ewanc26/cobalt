@@ -18,4 +18,9 @@ echo 'const char *m = "uk.ewancroft.oauth.begin";' > "$tmp/src/atproto/session.c
 expect fail "pairing method back in session.c"
 echo 'const char *m = "uk.ewancroft.oauth.poll";' > "$tmp/src/atproto/other.c"
 expect fail "pairing method elsewhere"
+echo 'static const unsigned K[1] = { 0x428a2f98 };' > "$tmp/src/atproto/sha.c"
+expect fail "SHA-256 grows back"
+echo 'int x;' > "$tmp/src/atproto/sha.c"
+echo 'static int parse_semver(const char *s) { return 0; }' > "$tmp/src/atproto/ver.c"
+expect fail "semver comparison grows back"
 [ "$bad" -eq 0 ] && echo "all shared-logic selftests passed" || exit 1

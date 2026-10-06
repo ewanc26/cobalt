@@ -58,7 +58,7 @@ OAuth on a console is not the AT Protocol browser flow running on the console. T
 | Post to a thread (several posts at once) | issue #103 | issue indigo#22 | issue platinum#42 | |
 | Video poster and external-media embeds | issue #102 | issue indigo#22 | issue platinum#42 | Link cards are done. This row is the video poster frame and other external embeds. |
 | Open a link on a phone via QR code | issue #101 | issue indigo#22 | issue platinum#42 | Needs a QR encoder; that is shared logic and belongs in Wolfram |
-| Auto-update from GitHub releases | implemented | issue indigo#23 | issue platinum#47 | Cobalt: Home, Updates (`src/app/update.c`, `src/update/`); confirm, SHA-256 checked, replaced on quit, previous build kept. Host-verified only; the console run is #139 and signing is #138. Shared core proposed as wolfram#106. |
+| Auto-update from GitHub releases | implemented | issue indigo#23 | issue platinum#47 | Cobalt: Home, Updates (`src/app/update.c`, `src/update/`); confirm, SHA-256 checked, replaced on quit, previous build kept. Host-verified only; the console run is #139 and signing is #138. Manifest, version comparison and SHA-256 are Wolfram's `wolfram/update.h` (wolfram#106, v0.27.0). |
 | Video and GIF playback | declined | declined | declined | Cobalt README: no decoder in the dependency and performance budget. This is a decision; I have not tried a decoder, so it is not recorded as impossible. |
 | Push notifications | declined | declined | declined | No push service a homebrew or Classic Mac application can register with; notifications are fetched when the screen is opened. |
 

@@ -813,91 +813,13 @@ test_prefs(void)
 
 /* --- self-update core --- */
 
-static void
-hex32(const unsigned char d[32], char out[65])
-{
-   for (int i = 0; i < 32; i++) {
-      snprintf(out + i * 2, 3, "%02x", d[i]);
-   }
-}
-
-static void
-sha_of(const char *text, size_t repeat, char out[65])
-{
-   cobalt_sha256 c;
-   unsigned char d[32];
-
-   cobalt_sha256_init(&c);
-   for (size_t i = 0; i < repeat; i++) {
-      cobalt_sha256_update(&c, text, strlen(text));
-   }
-   cobalt_sha256_final(&c, d);
-   hex32(d, out);
-}
-
-static void
-test_update_sha256(void)
-{
-   begin("sha-256 known answers (FIPS 180-4)");
-   char h[65];
-
-   sha_of("", 1, h);
-   CHECK_STR(h, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
-   sha_of("abc", 1, h);
-   CHECK_STR(h, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
-   sha_of("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", 1, h);
-   CHECK_STR(h, "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
-   /* One million 'a', fed in uneven pieces, crosses every block boundary case. */
-   sha_of("aaaaaaaaaa", 100000, h);
-   CHECK_STR(h, "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
-
-   unsigned char d[32], e[32];
-   CHECK(cobalt_sha256_from_hex("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", d));
-   CHECK(cobalt_sha256_from_hex("BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD", e));
-   CHECK(cobalt_sha256_equal(d, e));
-   e[31] ^= 1;
-   CHECK(!cobalt_sha256_equal(d, e));
-   CHECK(!cobalt_sha256_from_hex("ba78", d));
-   CHECK(!cobalt_sha256_from_hex("zz7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", d));
-   CHECK(!cobalt_sha256_from_hex(NULL, d));
-}
-
-static int
-vcmp(const char *a, const char *b)
-{
-   bool ok;
-   int c = cobalt_update_compare_versions(a, b, &ok);
-   return ok ? (c < 0 ? -1 : c > 0 ? 1 : 0) : 99;
-}
-
-static void
-test_update_versions(void)
-{
-   begin("update version comparison");
-
-   CHECK(vcmp("0.5.0", "0.5.0") == 0);
-   CHECK(vcmp("0.6.0", "0.5.0") == 1);
-   CHECK(vcmp("0.5.1", "0.5.0") == 1);
-   CHECK(vcmp("0.10.0", "0.9.9") == 1);   /* numeric, not lexical */
-   CHECK(vcmp("1.0.0", "0.99.99") == 1);
-   CHECK(vcmp("1.0.0-rc.1", "1.0.0") == -1);
-   CHECK(vcmp("1.0.0-rc.1", "1.0.0-rc.2") == -1);
-   CHECK(vcmp("1.0.0-rc.10", "1.0.0-rc.9") == 1);
-   CHECK(vcmp("1.0.0-alpha", "1.0.0-alpha.1") == -1);
-   CHECK(vcmp("1.0.0-1", "1.0.0-alpha") == -1);
-   CHECK(vcmp("v0.5.0", "0.5.0") == 99);   /* rejected, not stripped */
-   CHECK(vcmp("0.5", "0.5.0") == 99);
-   CHECK(vcmp("0.05.0", "0.5.0") == 99);
-   CHECK(vcmp("0.5.0.1", "0.5.0") == 99);
-   CHECK(vcmp("", "0.5.0") == 99);
-   CHECK(vcmp(NULL, "0.5.0") == 99);
-   CHECK(vcmp("0.5.0-", "0.5.0") == 99);
-}
-
 #define SHA_ABC "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 
+/* Parsing, versions and SHA-256 are Wolfram's and are tested there against shared
+ * vectors (test/vectors/update). What is Cobalt's, and tested here, is the policy
+ * it puts on a manifest: the app, the repository, the file layout. */
 static cobalt_update_status
-parse_manifest_text(const char *text, cobalt_update_manifest *m)
+parse_manifest_text(const char *text, wf_update_manifest *m)
 {
    return cobalt_update_parse_manifest(text, strlen(text), COBALT_UPDATE_WUHB_MAX, m);
 }
@@ -905,8 +827,8 @@ parse_manifest_text(const char *text, cobalt_update_manifest *m)
 static void
 test_update_manifest(void)
 {
-   begin("update manifest parsing");
-   cobalt_update_manifest m;
+   begin("update manifest policy");
+   wf_update_manifest m;
    const char *good =
       "{\"schema\":1,\"app\":\"cobalt\",\"version\":\"0.6.0\",\"notes\":\"Fixes.\","
       "\"asset\":{\"name\":\"cobalt-0.6.0.wuhb\",\"url\":"
@@ -915,26 +837,23 @@ test_update_manifest(void)
 
    CHECK(parse_manifest_text(good, &m) == COBALT_UPDATE_OK);
    CHECK_STR(m.version, "0.6.0");
-   CHECK_STR(m.name, "cobalt-0.6.0.wuhb");
-   CHECK(m.size == 1234);
-   CHECK(m.sha256[0] == 0xba && m.sha256[31] == 0xad);
+   CHECK_STR(m.asset.name, "cobalt-0.6.0.wuhb");
+   CHECK(m.asset.size == 1234);
+   CHECK(m.asset.sha256[0] == 0xba && m.asset.sha256[31] == 0xad);
 
    /* Every one of these is refused, and the output is left zeroed. */
    struct { const char *what; const char *from; const char *to; cobalt_update_status want; } bad[] = {
-      {"schema 2", "\"schema\":1", "\"schema\":2", COBALT_UPDATE_BAD_SCHEMA},
-      {"no schema", "\"schema\":1,", "", COBALT_UPDATE_BAD_SCHEMA},
-      {"other app", "\"app\":\"cobalt\"", "\"app\":\"indigo\"", COBALT_UPDATE_BAD_APP},
-      {"v-prefixed version", "\"version\":\"0.6.0\"", "\"version\":\"v0.6.0\"", COBALT_UPDATE_BAD_VERSION},
-      {"http url", "https://github.com", "http://github.com", COBALT_UPDATE_BAD_URL},
-      {"other host", "https://github.com/ewanc26", "https://evil.example/ewanc26", COBALT_UPDATE_BAD_URL},
-      {"other repo", "ewanc26/cobalt/releases/download", "someone/else/releases/download", COBALT_UPDATE_BAD_URL},
-      {"other tag", "download/v0.6.0/", "download/v0.5.0/", COBALT_UPDATE_BAD_URL},
-      {"name with a slash", "\"name\":\"cobalt-0.6.0.wuhb\"", "\"name\":\"../cobalt-0.6.0.wuhb\"", COBALT_UPDATE_BAD_FIELD},
-      {"zero size", "\"size\":1234", "\"size\":0", COBALT_UPDATE_BAD_SIZE},
-      {"oversize", "\"size\":1234", "\"size\":99999999999", COBALT_UPDATE_BAD_SIZE},
-      {"short sha", SHA_ABC, "ba7816bf", COBALT_UPDATE_BAD_FIELD},
-      {"non-hex sha", "ba7816bf8f", "zz7816bf8f", COBALT_UPDATE_BAD_FIELD},
-      {"sha as number", "\"sha256\":\"" SHA_ABC "\"", "\"sha256\":5", COBALT_UPDATE_BAD_FIELD},
+      {"schema 2", "\"schema\":1", "\"schema\":2", COBALT_UPDATE_BAD_MANIFEST},
+      {"other app", "\"app\":\"cobalt\"", "\"app\":\"indigo\"", COBALT_UPDATE_BAD_POLICY},
+      {"v-prefixed version", "\"version\":\"0.6.0\"", "\"version\":\"v0.6.0\"", COBALT_UPDATE_BAD_MANIFEST},
+      {"http url", "https://github.com", "http://github.com", COBALT_UPDATE_BAD_MANIFEST},
+      {"other host", "https://github.com/ewanc26", "https://evil.example/ewanc26", COBALT_UPDATE_BAD_POLICY},
+      {"other repo", "ewanc26/cobalt/releases/download", "someone/else/releases/download", COBALT_UPDATE_BAD_POLICY},
+      {"other tag", "download/v0.6.0/", "download/v0.5.0/", COBALT_UPDATE_BAD_POLICY},
+      {"name with a slash", "\"name\":\"cobalt-0.6.0.wuhb\"", "\"name\":\"../cobalt-0.6.0.wuhb\"", COBALT_UPDATE_BAD_POLICY},
+      {"zero size", "\"size\":1234", "\"size\":0", COBALT_UPDATE_BAD_MANIFEST},
+      {"oversize", "\"size\":1234", "\"size\":99999999999", COBALT_UPDATE_BAD_MANIFEST},
+      {"short sha", SHA_ABC, "ba7816bf", COBALT_UPDATE_BAD_MANIFEST},
    };
    for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
       char text[1024];
@@ -948,15 +867,9 @@ test_update_manifest(void)
       CHECK(st == bad[i].want);
       CHECK(m.version[0] == '\0');
    }
-   CHECK(parse_manifest_text("not json", &m) == COBALT_UPDATE_BAD_JSON);
-   CHECK(parse_manifest_text("", &m) == COBALT_UPDATE_BAD_JSON);
-   CHECK(parse_manifest_text("[]", &m) == COBALT_UPDATE_BAD_JSON);
+   CHECK(parse_manifest_text("not json", &m) == COBALT_UPDATE_BAD_MANIFEST);
+   CHECK(parse_manifest_text("", &m) == COBALT_UPDATE_BAD_MANIFEST);
 
-   /* A name that does not fit is an error, never a truncation. */
-   char longname[1100];
-   snprintf(longname, sizeof longname, "{\"schema\":1,\"app\":\"cobalt\",\"version\":\"0.6.0\","
-            "\"asset\":{\"name\":\"%0200d\",\"url\":\"x\",\"size\":1,\"sha256\":\"" SHA_ABC "\"}}", 7);
-   CHECK(parse_manifest_text(longname, &m) == COBALT_UPDATE_BAD_FIELD);
 }
 
 static bool
@@ -1003,7 +916,7 @@ test_update_staging(const char *root)
    write_file(p.installed, "OLD BUILD");
 
    unsigned char abc[32], other[32];
-   cobalt_sha256_from_hex(SHA_ABC, abc);
+   wf_sha256_from_hex(SHA_ABC, 64, abc);
    memcpy(other, abc, 32);
    other[0] ^= 0xff;
 
@@ -1187,7 +1100,7 @@ test_update_release_manifest(const char *manifest_path, const char *wuhb_path)
 {
    begin("release script manifest is accepted by the reader");
    char text[2048];
-   cobalt_update_manifest m;
+   wf_update_manifest m;
    unsigned char digest[32];
    FILE *f = fopen(manifest_path, "rb");
    size_t n = f ? fread(text, 1, sizeof text - 1, f) : 0;
@@ -1196,12 +1109,12 @@ test_update_release_manifest(const char *manifest_path, const char *wuhb_path)
    CHECK(n > 0);
    CHECK(parse_manifest_text(text, &m) == COBALT_UPDATE_OK);
    CHECK_STR(m.version, "9.9.9");
-   CHECK_STR(m.name, "cobalt-9.9.9.wuhb");
+   CHECK_STR(m.asset.name, "cobalt-9.9.9.wuhb");
    CHECK_STR(m.notes, "Fixed things.");
    CHECK(cobalt_sha256_file(wuhb_path, digest));
-   CHECK(cobalt_sha256_equal(digest, m.sha256));
+   CHECK(cobalt_sha256_equal(digest, m.asset.sha256));
    struct stat st;
-   CHECK(stat(wuhb_path, &st) == 0 && (unsigned long) st.st_size == m.size);
+   CHECK(stat(wuhb_path, &st) == 0 && (unsigned long) st.st_size == m.asset.size);
 }
 
 /* --- first-run seed from touch input --- */
@@ -2630,8 +2543,6 @@ main(int argc, char **argv)
    test_feed_embeds();
    test_feed_link_domain();
    test_prefs();
-   test_update_sha256();
-   test_update_versions();
    test_update_manifest();
    test_update_staging(root);
    test_update_view(root);

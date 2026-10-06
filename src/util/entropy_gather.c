@@ -12,11 +12,11 @@ void
 cobalt_gather_init(cobalt_gather *g, const void *extra, size_t extra_len)
 {
    memset(g, 0, sizeof(*g));
-   cobalt_sha256_init(&g->hash);
+   wf_sha256_init(&g->hash);
    /* A domain tag, so this hash cannot be confused with any other use. */
-   cobalt_sha256_update(&g->hash, "cobalt-seed-v1", 14);
+   wf_sha256_update(&g->hash, "cobalt-seed-v1", 14);
    if (extra && extra_len) {
-      cobalt_sha256_update(&g->hash, extra, extra_len);
+      wf_sha256_update(&g->hash, extra, extra_len);
    }
 }
 
@@ -51,7 +51,7 @@ cobalt_gather_add(cobalt_gather *g, int x, int y, uint32_t tick)
    rec[9] = (unsigned char) g->accepted;
    rec[10] = 0;
    rec[11] = 0;
-   cobalt_sha256_update(&g->hash, rec, sizeof(rec));
+   wf_sha256_update(&g->hash, rec, sizeof(rec));
 
    const int cell = (y / COBALT_GATHER_CELL) * cells_wide() + (x / COBALT_GATHER_CELL);
    if (!g->seen[cell]) {
@@ -84,7 +84,7 @@ bool
 cobalt_gather_finish(cobalt_gather *g, unsigned char seed[COBALT_ENTROPY_SEED_SIZE])
 {
    unsigned char digest[32];
-   cobalt_sha256 a, b;
+   wf_sha256 a, b;
    const bool done = cobalt_gather_done(g);
 
    if (!done) {
@@ -92,16 +92,16 @@ cobalt_gather_finish(cobalt_gather *g, unsigned char seed[COBALT_ENTROPY_SEED_SI
       memset(g, 0, sizeof(*g));
       return false;
    }
-   cobalt_sha256_final(&g->hash, digest);
+   wf_sha256_final(&g->hash, digest);
    /* Two domain-separated halves make the 64 bytes the seed file wants. */
-   cobalt_sha256_init(&a);
-   cobalt_sha256_update(&a, digest, 32);
-   cobalt_sha256_update(&a, "\x00", 1);
-   cobalt_sha256_final(&a, seed);
-   cobalt_sha256_init(&b);
-   cobalt_sha256_update(&b, digest, 32);
-   cobalt_sha256_update(&b, "\x01", 1);
-   cobalt_sha256_final(&b, seed + 32);
+   wf_sha256_init(&a);
+   wf_sha256_update(&a, digest, 32);
+   wf_sha256_update(&a, "\x00", 1);
+   wf_sha256_final(&a, seed);
+   wf_sha256_init(&b);
+   wf_sha256_update(&b, digest, 32);
+   wf_sha256_update(&b, "\x01", 1);
+   wf_sha256_final(&b, seed + 32);
    memset(digest, 0, sizeof(digest));
    memset(&a, 0, sizeof(a));
    memset(&b, 0, sizeof(b));

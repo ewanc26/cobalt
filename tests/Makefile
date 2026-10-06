@@ -67,7 +67,15 @@ WOLFRAM_CJSON := $(firstword $(wildcard \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.$(SOEXT) \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.a))
 
-CFLAGS  := -std=gnu11 -g -O1 -Wall -Wextra -I$(SRC) $(SDL_CFLAGS) $(CJSON_CFLAGS) $(CURL_CFLAGS) \
+# The updater and the entropy seed use wolfram/update.h, so the unit tests need a
+# Wolfram checkout (at least v0.27.0). They compile its update sources directly
+# rather than linking the whole library.
+ifeq ($(HAVE_WOLFRAM),)
+$(error No Wolfram checkout at $(WOLFRAM_ROOT). Clone ewanc26/wolfram there, or set WOLFRAM_ROOT)
+endif
+WOLFRAM_UPDATE_SOURCES := $(WOLFRAM_ROOT)/src/update/update_core.c $(WOLFRAM_ROOT)/src/update/manifest.c
+
+CFLAGS  := -std=gnu11 -g -O1 -Wall -Wextra -I$(SRC) -I$(WOLFRAM_ROOT)/include $(SDL_CFLAGS) $(CJSON_CFLAGS) $(CURL_CFLAGS) \
            $(IMAGE_CFLAGS) -include $(CURDIR)/host_sdl_compat.h
 LDLIBS  := $(SDL_LIBS) $(IMAGE_LIBS) $(CURL_LIBS) -lmbedcrypto -lm -lpthread
 
@@ -93,6 +101,7 @@ UNIT_SOURCES := \
 	$(SRC)/atproto/feed.c \
 	$(SRC)/atproto/prefs.c \
 	$(SRC)/update/selfupdate.c \
+	$(WOLFRAM_UPDATE_SOURCES) \
 	$(SRC)/app/update.c \
 	$(SRC)/app/entropyview.c \
 	$(SRC)/util/entropy_gather.c \

@@ -49,7 +49,7 @@ typedef bool (*cobalt_update_fetch_fn)(const char *url, size_t max_bytes,
 
 typedef struct {
    cobalt_update_state state;       /* read under `lock` */
-   cobalt_update_manifest manifest;
+   wf_update_manifest manifest;
    cobalt_update_paths paths;
    bool have_paths;
    char message[160];

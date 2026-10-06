@@ -1,13 +1,12 @@
 #pragma once
 
 /*
- * Self-update core: manifest parsing, version comparison, SHA-256 and the
- * staged file replacement. Pure C with no SDL, no network and no Wolfram, so all
- * of it is tested on the host.
+ * Self-update core: Cobalt's manifest policy and the staged file replacement.
+ * No SDL and no network, so all of it is tested on the host.
  *
- * This is a local implementation of the contract in ewanc26/wolfram#106. It is
- * meant to be deleted once Wolfram ships `wolfram/update.h`; keep it to that
- * contract and do not grow it.
+ * Manifest parsing, version comparison and SHA-256 are Wolfram's
+ * (`wolfram/update.h`, since v0.27.0). What stays here is the Wii U half:
+ * Cobalt's policy for the manifest and the staged file replacement.
  *
  * What it does and does not protect against. The SHA-256 comes from the same
  * GitHub release as the file, over HTTPS. That catches a corrupt or truncated
@@ -15,6 +14,8 @@
  * `signature` field is reserved for a detached signature; nothing verifies one
  * yet, because the signing key is the owner's to create (needs-owner).
  */
+
+#include "wolfram/update.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -32,62 +33,27 @@ extern "C" {
 #define COBALT_UPDATE_MANIFEST_MAX 16384
 #define COBALT_UPDATE_WUHB_MAX (24u * 1024u * 1024u)
 
-typedef struct {
-   char version[32];
-   char notes[512];
-   char name[96];
-   char url[320];
-   unsigned long size;
-   unsigned char sha256[32];
-} cobalt_update_manifest;
-
 typedef enum {
    COBALT_UPDATE_OK = 0,
-   COBALT_UPDATE_BAD_JSON,
-   COBALT_UPDATE_BAD_SCHEMA,
-   COBALT_UPDATE_BAD_FIELD,   /* missing, wrong type, or too long to fit */
-   COBALT_UPDATE_BAD_URL,     /* not https, or not under this repo's releases */
-   COBALT_UPDATE_BAD_VERSION,
-   COBALT_UPDATE_BAD_SIZE,    /* zero, or over the ceiling */
-   COBALT_UPDATE_BAD_APP      /* the manifest is for another product */
+   COBALT_UPDATE_BAD_MANIFEST, /* Wolfram refused the manifest (see docs/update.md there) */
+   COBALT_UPDATE_BAD_POLICY    /* wrong app, or not under this repo's releases */
 } cobalt_update_status;
 
 const char *cobalt_update_status_string(cobalt_update_status st);
 
 /*
- * Parse and validate update.json. Nothing is truncated: a field that does not
- * fit is an error. `max_size` is the largest asset the caller will download.
- * The asset URL must be under COBALT_UPDATE_ASSET_PREFIX and name
- * `v<version>/<name>`.
+ * Parse and validate update.json with Wolfram's wf_update_parse_manifest, under
+ * Cobalt's policy: app "cobalt", an asset URL under COBALT_UPDATE_ASSET_PREFIX
+ * and named `v<version>/<name>`, and at most `max_size` bytes. Nothing is
+ * truncated. Version comparison and download checksums are Wolfram's too
+ * (wf_update_compare_versions, wf_update_verify_*); use them directly.
  */
 cobalt_update_status cobalt_update_parse_manifest(const char *body, size_t len,
                                                   unsigned long max_size,
-                                                  cobalt_update_manifest *out);
-
-/*
- * Semver precedence for MAJOR.MINOR.PATCH[-pre]. Returns <0, 0, >0. A malformed
- * string sets *ok to false (when given) and returns 0; a leading "v" is
- * malformed, not stripped.
- */
-int cobalt_update_compare_versions(const char *a, const char *b, bool *ok);
-
-/* SHA-256, streaming. */
-typedef struct {
-   uint32_t state[8];
-   uint64_t bits;
-   unsigned char buf[64];
-   size_t used;
-} cobalt_sha256;
-
-void cobalt_sha256_init(cobalt_sha256 *c);
-void cobalt_sha256_update(cobalt_sha256 *c, const void *data, size_t len);
-void cobalt_sha256_final(cobalt_sha256 *c, unsigned char out[32]);
+                                                  wf_update_manifest *out);
 
 /* Constant-time comparison of two digests. */
 bool cobalt_sha256_equal(const unsigned char a[32], const unsigned char b[32]);
-
-/* 64 lowercase or uppercase hex characters to 32 bytes. False on anything else. */
-bool cobalt_sha256_from_hex(const char *hex, unsigned char out[32]);
 
 /* Digest of a file on disk. False if it cannot be read. */
 bool cobalt_sha256_file(const char *path, unsigned char out[32]);

@@ -27,7 +27,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "update/selfupdate.h"
+#include "wolfram/update.h"
 #include "util/entropy.h"
 
 #ifdef __cplusplus
@@ -43,7 +43,7 @@ extern "C" {
 #define COBALT_GATHER_CELL 32
 
 typedef struct {
-   cobalt_sha256 hash;
+   wf_sha256 hash;
    int accepted;
    int cells;
    bool have_last;
