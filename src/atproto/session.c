@@ -20,6 +20,7 @@
 #include <wolfram/graph_typed.h>
 #include <wolfram/list_typed.h>
 #include <wolfram/moderation_typed.h>
+#include <wolfram/oauth_pairing.h>
 #include <wolfram/session.h>
 #include <wolfram/thread_typed.h>
 #include <wolfram/threadgate_postgate.h>
@@ -657,6 +658,41 @@ run_login(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
    COBALT_LOGI("session: signed in as %s (%s)", s.handle, s.did);
 }
 
+/* Hooks for Wolfram's pairing driver. They run on this worker thread. */
+static void
+pair_on_code(const wf_oauth_pair_begin *begin, void *userdata)
+{
+   (void) userdata;
+   SDL_LockMutex(s.lock);
+   snprintf(s.pair_url, sizeof(s.pair_url), "%s", begin->pair_url);
+   snprintf(s.pair_code, sizeof(s.pair_code), "%s", begin->pair_code);
+   SDL_UnlockMutex(s.lock);
+}
+
+static int
+pair_cancel(void *userdata)
+{
+   (void) userdata;
+   /* Quitting mid-pairing stops polling instead of waiting out the window. */
+   SDL_LockMutex(s.lock);
+   const bool stop = s.stop;
+   SDL_UnlockMutex(s.lock);
+   return stop ? 1 : 0;
+}
+
+static void
+pair_sleep(unsigned ms, void *userdata)
+{
+   (void) userdata;
+   SDL_Delay(ms);
+}
+
+/*
+ * Browser sign-in through a hosted Wolfram OAuth node. The begin/poll contract,
+ * its parsing and the polling loop are Wolfram's (wolfram/oauth_pairing.h);
+ * Cobalt keeps only what is its own: showing the pairing URL and code, and
+ * turning the node's bearer into a session. The token is never logged.
+ */
 static void
 run_oauth(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
 {
@@ -674,135 +710,67 @@ run_oauth(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
       wf_xrpc_client_set_ca_bundle(client, s.ca_path);
    }
 
-   cJSON *body = cJSON_CreateObject();
-   if (!body || !cJSON_AddStringToObject(body, "handle", in->identifier)) {
-      cJSON_Delete(body);
-      wf_xrpc_client_free(client);
-      set_message(r, "Out of memory.");
-      return;
-   }
-   char *body_json = cJSON_PrintUnformatted(body);
-   cJSON_Delete(body);
-   if (!body_json) {
-      wf_xrpc_client_free(client);
-      set_message(r, "Out of memory.");
-      return;
-   }
+   wf_oauth_pair_hooks hooks;
+   memset(&hooks, 0, sizeof(hooks));
+   hooks.on_code = pair_on_code;
+   hooks.cancel = pair_cancel;
+   hooks.sleep_ms = pair_sleep;
 
-   wf_response response = {0};
-   wf_status st = wf_xrpc_procedure(client, "uk.ewancroft.oauth.begin",
-                                    body_json, &response);
-   free(body_json);
-   if (st != WF_OK) {
-      wf_response_free(&response);
-      wf_xrpc_client_free(client);
-      set_message(r, "The OAuth node could not start sign-in.");
-      return;
-   }
-
-   cJSON *begin = cJSON_ParseWithLength(response.body, response.body_len);
-   const cJSON *code = begin ? cJSON_GetObjectItemCaseSensitive(begin, "pair_code") : NULL;
-   const cJSON *url = begin ? cJSON_GetObjectItemCaseSensitive(begin, "pair_url") : NULL;
-   if (!begin || !cJSON_IsString(code) || !cJSON_IsString(url)) {
-      cJSON_Delete(begin);
-      wf_response_free(&response);
-      wf_xrpc_client_free(client);
-      set_message(r, "The OAuth node sent an invalid pairing response.");
-      return;
-   }
-
-   SDL_LockMutex(s.lock);
-   snprintf(s.pair_url, sizeof(s.pair_url), "%s", url->valuestring);
-   snprintf(s.pair_code, sizeof(s.pair_code), "%s", code->valuestring);
-   SDL_UnlockMutex(s.lock);
-
-   char code_copy[COBALT_OAUTH_CODE_MAX];
-   snprintf(code_copy, sizeof(code_copy), "%s", code->valuestring);
-   cJSON_Delete(begin);
-   wf_response_free(&response);
-
-   const int max_polls = 360;
-   for (int i = 0; i < max_polls; ++i) {
-      if (i != 0) SDL_Delay(1500);
-
-      wf_xrpc_param param = { "code", code_copy };
-      memset(&response, 0, sizeof(response));
-      st = wf_xrpc_query_params(client, "uk.ewancroft.oauth.poll",
-                                &param, 1, &response);
-      if (st != WF_OK) {
-         wf_response_free(&response);
-         continue;
-      }
-
-      cJSON *poll = cJSON_ParseWithLength(response.body, response.body_len);
-      const cJSON *status = poll ? cJSON_GetObjectItemCaseSensitive(poll, "status") : NULL;
-      if (status && cJSON_IsString(status) &&
-          strcmp(status->valuestring, "complete") == 0) {
-         const cJSON *token = cJSON_GetObjectItemCaseSensitive(poll, "token");
-         const cJSON *handle = cJSON_GetObjectItemCaseSensitive(poll, "handle");
-         const cJSON *did = cJSON_GetObjectItemCaseSensitive(poll, "did");
-         const cJSON *service = cJSON_GetObjectItemCaseSensitive(poll, "service");
-
-         if (!cJSON_IsString(token) || !cJSON_IsString(handle) ||
-             !cJSON_IsString(did) || !cJSON_IsString(service)) {
-            cJSON_Delete(poll);
-            wf_response_free(&response);
-            break;
-         }
-
-         teardown_wf();
-         s.wf = new_wf_agent(service->valuestring);
-         if (!s.wf) {
-            cJSON_Delete(poll);
-            wf_response_free(&response);
-            break;
-         }
-
-         st = wf_agent_set_bearer(s.wf, token->valuestring,
-                                  handle->valuestring, did->valuestring);
-         if (st == WF_OK) {
-            publish_session();
-            SDL_LockMutex(s.lock);
-            s.pair_url[0] = '\0';
-            s.pair_code[0] = '\0';
-            SDL_UnlockMutex(s.lock);
-            *state = COBALT_AUTH_SIGNED_IN;
-            r->ok = true;
-            snprintf(r->message, sizeof(r->message), "Signed in as %s", handle->valuestring);
-         } else {
-            teardown_wf();
-            set_message(r, "The OAuth node returned an unusable session.");
-         }
-
-         cJSON_Delete(poll);
-         wf_response_free(&response);
-         wf_xrpc_client_free(client);
-         return;
-      }
-
-      if (status && cJSON_IsString(status) &&
-          strcmp(status->valuestring, "error") == 0) {
-         const cJSON *message = cJSON_GetObjectItemCaseSensitive(poll, "message");
-         if (message && cJSON_IsString(message))
-            set_message(r, "%s", message->valuestring);
-         else
-            set_message(r, "OAuth sign-in failed.");
-         cJSON_Delete(poll);
-         wf_response_free(&response);
-         wf_xrpc_client_free(client);
-         return;
-      }
-
-      cJSON_Delete(poll);
-      wf_response_free(&response);
-   }
-
+   wf_oauth_pair_poll poll;
+   memset(&poll, 0, sizeof(poll));
+   const wf_status st = wf_oauth_pair_run(client, in->identifier, &hooks, &poll);
    wf_xrpc_client_free(client);
+
    SDL_LockMutex(s.lock);
    s.pair_url[0] = '\0';
    s.pair_code[0] = '\0';
    SDL_UnlockMutex(s.lock);
-   set_message(r, "The web sign-in request expired or could not be completed.");
+
+   switch (st) {
+      case WF_OK:
+         break;
+      case WF_ERR_AUTH:
+         if (poll.message[0]) {
+            set_message(r, "%s", poll.message);
+         } else {
+            set_message(r, "OAuth sign-in failed.");
+         }
+         wf_oauth_pair_poll_wipe(&poll);
+         return;
+      case WF_ERR_TIMEOUT:
+         set_message(r, "The web sign-in request expired. Start it again.");
+         return;
+      case WF_ERR_STATE:
+         set_message(r, "Sign-in was cancelled.");
+         return;
+      case WF_ERR_PARSE:
+         set_message(r, "The OAuth node sent a response Cobalt could not use.");
+         return;
+      default:
+         set_message(r, "The OAuth node could not start sign-in.");
+         return;
+   }
+
+   teardown_wf();
+   s.wf = new_wf_agent(poll.service);
+   if (!s.wf) {
+      wf_oauth_pair_poll_wipe(&poll);
+      set_message(r, "Could not create a session for the OAuth node.");
+      return;
+   }
+   const wf_status bearer = wf_agent_set_bearer(s.wf, poll.token, poll.handle, poll.did);
+   if (bearer != WF_OK) {
+      COBALT_LOGW("session: the node's session was refused (%d)", (int) bearer);
+      wf_oauth_pair_poll_wipe(&poll);
+      teardown_wf();
+      set_message(r, "The OAuth node returned an unusable session.");
+      return;
+   }
+   publish_session();
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+   snprintf(r->message, sizeof(r->message), "Signed in as %.160s", poll.handle);
+   wf_oauth_pair_poll_wipe(&poll);
 }
 
 static void
@@ -2647,8 +2615,14 @@ cobalt_session_begin_login(const char *service, const char *identifier,
 bool
 cobalt_session_begin_oauth(const char *oauth_node, const char *handle)
 {
+   bool available = cobalt_session_available();
+#ifdef COBALT_E2E_HOST
+   /* Host end-to-end only: the host has no trust store or console entropy, and
+    * talks plain HTTP to a localhost mock node. Never defined in a Wii U build. */
+   available = s.initialised;
+#endif
    if (!oauth_node || !oauth_node[0] || !handle || !handle[0] ||
-       cobalt_session_busy() || !cobalt_session_available()) {
+       cobalt_session_busy() || !available) {
       return false;
    }
 
