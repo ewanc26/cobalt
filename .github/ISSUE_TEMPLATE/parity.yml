@@ -1,8 +1,9 @@
 # Canonical in ewanc26/cobalt; drift-checked in every repo (tools/repo_sync.py forms check).
-name: Documentation
-description: Docs that are missing, wrong or unclear.
+name: Parity gap
+description: Something one client does that another doesn't, or does differently.
 labels:
-- documentation
+- enhancement
+- parity
 body:
 - type: markdown
   attributes:
@@ -32,23 +33,23 @@ body:
   validations:
     required: true
 - type: textarea
-  id: where
+  id: gap
   attributes:
-    label: Where
-    description: The file or page, e.g. README.md or docs/oauth.md.
+    label: The gap
+    description: What the other client does, and what this one does instead. Link the code in both.
   validations:
     required: true
 - type: textarea
-  id: wrong
+  id: want
   attributes:
-    label: What's wrong
-    description: What it says now, or what is missing.
+    label: What I want
+    description: Match it, deliberately differ (and why), or move the shared part into Wolfram.
   validations:
     required: true
 - type: textarea
-  id: should
+  id: verified
   attributes:
-    label: What it should say
-    description: 'And the source for it: code, spec or lexicon.'
+    label: How it was compared
+    description: Host, emulator or hardware, and which versions.
   validations:
     required: true

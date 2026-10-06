@@ -1,8 +1,9 @@
 # Canonical in ewanc26/cobalt; drift-checked in every repo (tools/repo_sync.py forms check).
-name: Documentation
-description: Docs that are missing, wrong or unclear.
+name: Needs the owner
+description: 'Something only the owner can supply: a credential, a hardware result, a decision, money or an irreversible action.'
 labels:
-- documentation
+- chore
+- needs-owner
 body:
 - type: markdown
   attributes:
@@ -31,24 +32,29 @@ body:
       # areas:end
   validations:
     required: true
-- type: textarea
-  id: where
+- type: dropdown
+  id: kind
   attributes:
-    label: Where
-    description: The file or page, e.g. README.md or docs/oauth.md.
+    label: What's needed
+    options:
+    - A credential or secret
+    - A hardware result
+    - A decision
+    - A repository setting
+    - Money or an irreversible action
   validations:
     required: true
 - type: textarea
-  id: wrong
+  id: ask
   attributes:
-    label: What's wrong
-    description: What it says now, or what is missing.
+    label: Exactly what I need
+    description: 'Concrete enough to do in one sitting: the command, the setting, the test on the device.'
   validations:
     required: true
 - type: textarea
-  id: should
+  id: blocked
   attributes:
-    label: What it should say
-    description: 'And the source for it: code, spec or lexicon.'
+    label: What it blocks
+    description: Issues and PRs waiting on it, and what carries on meanwhile.
   validations:
     required: true

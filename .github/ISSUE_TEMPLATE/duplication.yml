@@ -1,8 +1,9 @@
 # Canonical in ewanc26/cobalt; drift-checked in every repo (tools/repo_sync.py forms check).
-name: Documentation
-description: Docs that are missing, wrong or unclear.
+name: 'Duplication: move to Wolfram'
+description: Logic copied between repos that belongs in Wolfram.
 labels:
-- documentation
+- refactor
+- duplication
 body:
 - type: markdown
   attributes:
@@ -32,23 +33,30 @@ body:
   validations:
     required: true
 - type: textarea
-  id: where
+  id: copies
   attributes:
-    label: Where
-    description: The file or page, e.g. README.md or docs/oauth.md.
+    label: The copies
+    description: Each repo, file and line range, and whether they already differ.
   validations:
     required: true
 - type: textarea
-  id: wrong
+  id: api
   attributes:
-    label: What's wrong
-    description: What it says now, or what is missing.
+    label: The Wolfram API I want
+    description: Header, functions, and whether it must build for consoles or C89.
   validations:
     required: true
 - type: textarea
-  id: should
+  id: vectors
   attributes:
-    label: What it should say
-    description: 'And the source for it: code, spec or lexicon.'
+    label: Shared test vectors
+    description: What a vectors file under test/vectors/ should cover, so every copy can be checked against it.
+  validations:
+    required: true
+- type: textarea
+  id: adoption
+  attributes:
+    label: Adoption
+    description: Which consumers drop their copy, and what they keep.
   validations:
     required: true
