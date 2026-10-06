@@ -971,7 +971,21 @@ test_update_staging(const char *root)
    remove(p.staged);
 }
 
+/* A throwaway key made for these tests: its private half was deleted after it signed the
+ * two manifests below, so no key material is in the repository. Cobalt's real key is
+ * never used here. */
+#define TEST_PUBKEY_HEX "8ae366e58408504443fb8c68fd88771d453e678d7342ed6273e0d7ca7e7605cb"
+#define TEST_SIG_9_9_9 \
+   "bf66f053a7e3f81e53838b301a4a03a3170712694f3c28f45e58e5c4a7763864" \
+   "d5b0535c6858cbe2358d4126406154c8be2bdb2f9ad83a7d5ba84301c9b5080a"
+#define TEST_SIG_0_5_0 \
+   "1f167ee066832b8d405146ba25ecf70b0cf3432c6a52b63ccd65d4f6eef83775" \
+   "292cfd921a972908ecba01c0763264c8e80adbb4055b5c7fabb2df17cfdd8e04"
+
 static const char *s_fake_wuhb = "abc";
+static bool s_fake_sig_present = true;
+static bool s_fake_sig_tampered = false;
+static bool s_fake_manifest_tampered = false;
 static int s_fake_fetches = 0;
 static bool s_fake_manifest_ok = true;
 static const char *s_fake_version = "9.9.9";
@@ -990,7 +1004,19 @@ fake_fetch(const char *url, size_t max_bytes, unsigned char **data, size_t *size
                "\"name\":\"cobalt-%s.wuhb\",\"url\":\"" COBALT_UPDATE_ASSET_PREFIX "v%s/cobalt-%s.wuhb\","
                "\"size\":3,\"sha256\":\"" SHA_ABC "\"}}",
                s_fake_version, s_fake_version, s_fake_version, s_fake_version);
+      if (s_fake_manifest_tampered) {
+         /* one byte different from what was signed */
+         body[strlen(body) - 3] = 'x';
+      }
       text = body;
+   } else if (strcmp(url, COBALT_UPDATE_SIGNATURE_URL) == 0) {
+      if (!s_fake_sig_present) return false;
+      text = strcmp(s_fake_version, "0.5.0") == 0 ? TEST_SIG_0_5_0 : TEST_SIG_9_9_9;
+      if (s_fake_sig_tampered) {
+         snprintf(body, sizeof body, "%s", text);
+         body[10] = body[10] == '0' ? '1' : '0';
+         text = body;
+      }
    } else {
       text = s_fake_wuhb;
       if (strlen(text) > max_bytes) return false;
@@ -1016,6 +1042,7 @@ test_update_view(const char *root)
    cobalt_update_view_init(&v);
    v.threaded = false;
    v.fetch = fake_fetch;
+   CHECK(wf_sha256_from_hex(TEST_PUBKEY_HEX, 64, v.pubkey) == WF_OK);
    snprintf(v.running, sizeof v.running, "0.5.0");
    cobalt_update_view_startup(&v, data);
    CHECK(v.have_paths);
@@ -1028,13 +1055,13 @@ test_update_view(const char *root)
    s_fake_wuhb = "abc";
    cobalt_update_view_open(&v);
    CHECK(cobalt_update_view_state(&v) == COBALT_UPDATE_AVAILABLE);
-   CHECK(s_fake_fetches == 1);
+   CHECK(s_fake_fetches == 2); /* update.json and update.json.sig, nothing else */
    CHECK(!cobalt_update_has_staged(&v.paths));
 
    /* B leaves without downloading. */
    in.pressed[COBALT_BTN_BACK] = true;
    CHECK(cobalt_update_view_update(&v, &in) == COBALT_UPDATE_VIEW_BACK);
-   CHECK(s_fake_fetches == 1);
+   CHECK(s_fake_fetches == 2);
    in.pressed[COBALT_BTN_BACK] = false;
 
    /* Quitting with nothing confirmed changes nothing. */
@@ -1065,6 +1092,7 @@ test_update_view(const char *root)
    cobalt_update_view_init(&v2);
    v2.threaded = false;
    v2.fetch = fake_fetch;
+   CHECK(wf_sha256_from_hex(TEST_PUBKEY_HEX, 64, v2.pubkey) == WF_OK);
    snprintf(v2.running, sizeof v2.running, "0.5.0");
    cobalt_update_view_startup(&v2, data);
    cobalt_update_view_open(&v2);
@@ -1089,6 +1117,43 @@ test_update_view(const char *root)
    CHECK(cobalt_update_view_state(&v2) == COBALT_UPDATE_FAILED);
    s_fake_manifest_ok = true;
    s_fake_version = "9.9.9";
+
+   /* An unsigned release, a damaged signature, a manifest changed after it was
+    * signed and a signature under another key are all refused; nothing is fetched
+    * beyond the two small files, so nothing can be staged. */
+   s_fake_sig_present = false;
+   s_fake_fetches = 0;
+   in.pressed[COBALT_BTN_CONFIRM] = true;
+   cobalt_update_view_update(&v2, &in);
+   in.pressed[COBALT_BTN_CONFIRM] = false;
+   CHECK(cobalt_update_view_state(&v2) == COBALT_UPDATE_FAILED);
+   CHECK(s_fake_fetches == 2);
+   s_fake_sig_present = true;
+   s_fake_sig_tampered = true;
+   in.pressed[COBALT_BTN_CONFIRM] = true;
+   cobalt_update_view_update(&v2, &in);
+   in.pressed[COBALT_BTN_CONFIRM] = false;
+   CHECK(cobalt_update_view_state(&v2) == COBALT_UPDATE_FAILED);
+   s_fake_sig_tampered = false;
+   s_fake_manifest_tampered = true;
+   in.pressed[COBALT_BTN_CONFIRM] = true;
+   cobalt_update_view_update(&v2, &in);
+   in.pressed[COBALT_BTN_CONFIRM] = false;
+   CHECK(cobalt_update_view_state(&v2) == COBALT_UPDATE_FAILED);
+   CHECK(!cobalt_update_has_staged(&v2.paths));
+   s_fake_manifest_tampered = false;
+   /* Cobalt's real key does not accept a manifest signed by the test key. */
+   cobalt_update_public_key(v2.pubkey);
+   in.pressed[COBALT_BTN_CONFIRM] = true;
+   cobalt_update_view_update(&v2, &in);
+   in.pressed[COBALT_BTN_CONFIRM] = false;
+   CHECK(cobalt_update_view_state(&v2) == COBALT_UPDATE_FAILED);
+   /* ... and with the right key it is accepted again, so the refusals above were the signature. */
+   CHECK(wf_sha256_from_hex(TEST_PUBKEY_HEX, 64, v2.pubkey) == WF_OK);
+   in.pressed[COBALT_BTN_CONFIRM] = true;
+   cobalt_update_view_update(&v2, &in);
+   in.pressed[COBALT_BTN_CONFIRM] = false;
+   CHECK(cobalt_update_view_state(&v2) == COBALT_UPDATE_AVAILABLE);
 
    cobalt_update_view_destroy(&v2);
    cobalt_update_view_destroy(&v);
