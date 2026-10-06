@@ -66,6 +66,8 @@ void cobalt_app_destroy(cobalt_app *app);
 int cobalt_app_home_selection(const cobalt_app *app);
 cobalt_screen cobalt_app_screen(const cobalt_app *app);
 /* Timeline cursor and first drawn card, so tests can check they survive a detour. */
+void cobalt_app_view_position(const cobalt_app *app, cobalt_screen screen, int *selected,
+                              int *scroll);
 void cobalt_app_timeline_position(const cobalt_app *app, int *selected, int *scroll);
 
 /* The open menu, for tests that tap its rows. NULL when no menu is up. */
