@@ -1,8 +1,8 @@
 # Canonical in ewanc26/cobalt; drift-checked in every repo (tools/repo_sync.py forms check).
-name: Documentation
-description: Docs that are missing, wrong or unclear.
+name: Chore
+description: 'Maintenance that is none of the other kinds: dependencies, tooling, housekeeping.'
 labels:
-- documentation
+- chore
 body:
 - type: markdown
   attributes:
@@ -32,23 +32,16 @@ body:
   validations:
     required: true
 - type: textarea
-  id: where
+  id: what
   attributes:
-    label: Where
-    description: The file or page, e.g. README.md or docs/oauth.md.
+    label: What needs doing
+    description: Concretely.
   validations:
     required: true
 - type: textarea
-  id: wrong
+  id: why
   attributes:
-    label: What's wrong
-    description: What it says now, or what is missing.
+    label: Why now
+    description: What happens if it waits.
   validations:
-    required: true
-- type: textarea
-  id: should
-  attributes:
-    label: What it should say
-    description: 'And the source for it: code, spec or lexicon.'
-  validations:
-    required: true
+    required: false

@@ -1,8 +1,8 @@
 # Canonical in ewanc26/cobalt; drift-checked in every repo (tools/repo_sync.py forms check).
-name: Documentation
-description: Docs that are missing, wrong or unclear.
+name: Refactor
+description: Restructuring with no change in behaviour.
 labels:
-- documentation
+- refactor
 body:
 - type: markdown
   attributes:
@@ -32,23 +32,23 @@ body:
   validations:
     required: true
 - type: textarea
-  id: where
+  id: what
   attributes:
-    label: Where
-    description: The file or page, e.g. README.md or docs/oauth.md.
+    label: What I want to restructure
+    description: Files, modules or types.
   validations:
     required: true
 - type: textarea
-  id: wrong
+  id: why
   attributes:
-    label: What's wrong
-    description: What it says now, or what is missing.
+    label: Why
+    description: What the current shape costs.
   validations:
     required: true
 - type: textarea
-  id: should
+  id: safety
   attributes:
-    label: What it should say
-    description: 'And the source for it: code, spec or lexicon.'
+    label: How I'll know nothing changed
+    description: The tests that pin current behaviour, or the ones to add first.
   validations:
     required: true

@@ -13,6 +13,10 @@ Cobalt follows the flow the whole stack shares. Wolfram holds the canonical writ
 
 `CI gate` in `ci.yml` aggregates `host-tests`, `wuhb` and `parity`, so a new gating job is added to its `needs` list and nothing else.
 
+## Issue forms and labels
+
+The forms in `.github/ISSUE_TEMPLATE/` and `.github/labels.yml` are Wolfram's, and `flow / labels and metadata` fails if they drift. Cobalt does not carry `tools/repo_sync.py`, because it would be a second copy to keep in step. To refresh the forms, run it from a Wolfram checkout: `python3 <wolfram>/tools/repo_sync.py forms apply --repo ewanc26/cobalt --canon <wolfram>/.github/ISSUE_TEMPLATE`. Only the area options are Cobalt's, and they come from `.github/labels.yml`.
+
 ## Merging
 
 Rebase merge only. Every commit lands on `main` as I wrote it, so each one builds and passes tests on its own, and review fixes are real `fix(scope): ...` commits. Cobalt's earlier history used merge commits; that stopped when the stack settled on rebase merging, which keeps one convention across the five repositories and keeps `main` linear.
