@@ -19,8 +19,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          n=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq 'length')
-          [ "$n" -gt 0 ] || { echo "::error::$GITHUB_SHA reached main without a pull request"; exit 1; }
+          # GitHub links a rebase-merged commit to its pull request a few
+          # seconds after the push, so a single immediate look can miss it.
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            n=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq 'length')
+            [ "$n" -gt 0 ] && exit 0
+            sleep 10
+          done
+          echo "::error::$GITHUB_SHA reached main without a pull request"; exit 1
 
   shared-logic:
     # Logic that belongs in Wolfram must not grow back in src/.
