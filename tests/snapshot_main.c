@@ -244,6 +244,23 @@ main(int argc, char **argv)
       settle(40);
       CHECK(cobalt_app_popup(g_app) == NULL);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE);
+      /* The profile's More menu carries what X, Y and + used to do (cobalt#109). */
+      {
+         frame(COBALT_BTN_ALT_Y); settle(5);
+         const cobalt_popup *p = cobalt_app_popup(g_app);
+         CHECK(p != NULL && p->open);
+         bool followers = false, following = false, tab = false;
+         for (int i = 0; p && i < p->count; i++) {
+            followers |= p->items[i].kind == COBALT_POPUP_FOLLOWERS;
+            following |= p->items[i].kind == COBALT_POPUP_FOLLOWING;
+            tab |= p->items[i].kind == COBALT_POPUP_TAB;
+         }
+         CHECK(followers && following && tab);
+         shoot("profile-menu");
+         frame(COBALT_BTN_BACK); settle(5);
+         CHECK(cobalt_app_popup(g_app) == NULL);
+         CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE);
+      }
       frame(COBALT_BTN_BACK);
       settle(10);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
@@ -288,6 +305,23 @@ main(int argc, char **argv)
    open_home_item(5);
    settle(40);
    shoot("notifications");
+
+   /* Y opens the More menu here as it does on the timeline (cobalt#109). */
+   {
+      frame(COBALT_BTN_ALT_Y); settle(5);
+      const cobalt_popup *p = cobalt_app_popup(g_app);
+      CHECK(p != NULL && p->open && p->count >= 2);
+      bool has_profile = false, has_refresh = false;
+      for (int i = 0; p && i < p->count; i++) {
+         has_profile |= p->items[i].kind == COBALT_POPUP_PROFILE;
+         has_refresh |= p->items[i].kind == COBALT_POPUP_REFRESH;
+      }
+      CHECK(has_profile && has_refresh);
+      shoot("notifications-menu");
+      frame(COBALT_BTN_BACK); settle(5);
+      CHECK(cobalt_app_popup(g_app) == NULL);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_NOTIFICATIONS);
+   }
 
    /* Opening a notification's thread or profile and backing out keeps the cursor
     * and scroll (cobalt#110). */

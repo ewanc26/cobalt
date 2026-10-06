@@ -919,7 +919,7 @@ open_post_menu(cobalt_app *app, const cobalt_post *post, bool in_thread)
                                                          : COBALT_POPUP_TAG,
                        label, f->target);
    }
-   if (!in_thread) {
+   if (app->screen == COBALT_SCREEN_TIMELINE) {
       cobalt_popup_add(&app->popup, COBALT_POPUP_COMPOSE, "New post", "");
       cobalt_popup_add(&app->popup, COBALT_POPUP_REFRESH, "Refresh timeline", "");
    }
@@ -940,6 +940,49 @@ open_post_menu(cobalt_app *app, const cobalt_post *post, bool in_thread)
                           post->uri);
       }
    }
+}
+
+/* The profile's More menu (cobalt#109): the post's own actions when the cursor is
+ * on a post, then the account's lists and tab, which used to be X, Y and +. */
+static void
+open_profile_menu(cobalt_app *app)
+{
+   const cobalt_post *post = cobalt_profile_view_selected_post(&app->profile);
+   if (post) {
+      open_post_menu(app, post, false);
+   } else {
+      cobalt_popup_open(&app->popup, "More");
+      app->popup_screen = app->screen;
+      app->popup_in_thread = false;
+   }
+   const cobalt_profile *profile = cobalt_session_profile();
+   char label[COBALT_POPUP_LABEL_MAX];
+   if (profile->did[0]) {
+      cobalt_popup_add(&app->popup, COBALT_POPUP_FOLLOWERS, "Followers", "");
+      cobalt_popup_add(&app->popup, COBALT_POPUP_FOLLOWING, "Following", "");
+   }
+   snprintf(label, sizeof(label), "Show %s",
+            cobalt_profile_tab_name(cobalt_profile_tab_next(cobalt_session_profile_tab(),
+                                                            profile->is_self)));
+   cobalt_popup_add(&app->popup, COBALT_POPUP_TAB, label, "");
+}
+
+/* A notification's More menu: who it is from, and the post it is about. */
+static void
+open_notification_menu(cobalt_app *app, const cobalt_notification *item)
+{
+   char label[COBALT_POPUP_LABEL_MAX];
+   cobalt_popup_open(&app->popup, "More");
+   app->popup_screen = app->screen;
+   app->popup_in_thread = false;
+   if (item->actor_did[0]) {
+      snprintf(label, sizeof(label), "View profile %s", item->handle[0] ? item->handle : item->actor);
+      cobalt_popup_add(&app->popup, COBALT_POPUP_PROFILE, label, item->actor_did);
+   }
+   if (item->subject_uri[0]) {
+      cobalt_popup_add(&app->popup, COBALT_POPUP_THREAD, "Open post", item->subject_uri);
+   }
+   cobalt_popup_add(&app->popup, COBALT_POPUP_REFRESH, "Refresh notifications", "");
 }
 
 static void
@@ -993,7 +1036,9 @@ popup_choose(cobalt_app *app, int index)
           * that moved the selection cannot make the viewer show a different
           * post's pictures than the menu named. */
          const cobalt_post *post = NULL;
-         if (app->popup_in_thread) {
+         if (app->popup_screen == COBALT_SCREEN_PROFILE) {
+            post = cobalt_profile_view_selected_post(&app->profile);
+         } else if (app->popup_in_thread) {
             const cobalt_thread *conv = cobalt_session_thread();
             if (app->thread.selected < conv->count) {
                post = &conv->posts[app->thread.selected];
@@ -1030,8 +1075,42 @@ popup_choose(cobalt_app *app, int index)
          break;
       case COBALT_POPUP_REFRESH:
          cobalt_popup_close(&app->popup);
-         if (!cobalt_session_busy() && cobalt_session_begin_feed_current(false)) {
+         if (cobalt_session_busy()) {
+            break;
+         }
+         if (app->popup_screen == COBALT_SCREEN_NOTIFICATIONS) {
+            if (cobalt_session_begin_notifications(false)) {
+               cobalt_notify_view_rewind(&app->notify);
+            }
+         } else if (cobalt_session_begin_feed_current(false)) {
             cobalt_timeline_rewind(&app->timeline);
+         }
+         break;
+      case COBALT_POPUP_THREAD:
+         if (cobalt_session_begin_thread(it->arg)) {
+            cobalt_thread_view_reset(&app->thread);
+            app->thread_return = app->popup_screen;
+            app->screen = COBALT_SCREEN_THREAD;
+            cobalt_popup_close(&app->popup);
+         }
+         break;
+      case COBALT_POPUP_FOLLOWERS:
+      case COBALT_POPUP_FOLLOWING:
+         app->follows_profile_return = app->profile_return;
+         cobalt_graph_view_open_follows(&app->graph,
+                                        it->kind == COBALT_POPUP_FOLLOWERS
+                                           ? COBALT_GRAPH_FOLLOWERS
+                                           : COBALT_GRAPH_FOLLOWING,
+                                        cobalt_session_profile()->did);
+         app->screen = COBALT_SCREEN_FOLLOWS_LIST;
+         cobalt_popup_close(&app->popup);
+         break;
+      case COBALT_POPUP_TAB:
+         cobalt_popup_close(&app->popup);
+         if (!cobalt_session_busy() &&
+             cobalt_session_begin_profile_tab(cobalt_profile_tab_next(
+                cobalt_session_profile_tab(), cobalt_session_profile()->is_self))) {
+            cobalt_profile_view_rewind(&app->profile);
          }
          break;
       case COBALT_POPUP_DELETE:
@@ -1168,17 +1247,8 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                app->thread_return = COBALT_SCREEN_PROFILE;
                app->screen = COBALT_SCREEN_THREAD;
                break;
-            case COBALT_PROFILE_VIEW_OPEN_FOLLOWERS:
-               app->follows_profile_return = app->profile_return;
-               cobalt_graph_view_open_follows(&app->graph, COBALT_GRAPH_FOLLOWERS,
-                                              cobalt_session_profile()->did);
-               app->screen = COBALT_SCREEN_FOLLOWS_LIST;
-               break;
-            case COBALT_PROFILE_VIEW_OPEN_FOLLOWING:
-               app->follows_profile_return = app->profile_return;
-               cobalt_graph_view_open_follows(&app->graph, COBALT_GRAPH_FOLLOWING,
-                                              cobalt_session_profile()->did);
-               app->screen = COBALT_SCREEN_FOLLOWS_LIST;
+            case COBALT_PROFILE_VIEW_MENU:
+               open_profile_menu(app);
                break;
             case COBALT_PROFILE_VIEW_STAY:
             default:
@@ -1275,6 +1345,13 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                app->profile_return = COBALT_SCREEN_NOTIFICATIONS;
                app->screen = COBALT_SCREEN_PROFILE;
                break;
+            case COBALT_NOTIFY_MENU: {
+               const cobalt_notifications *list = cobalt_session_notifications();
+               if (app->notify.selected < list->count) {
+                  open_notification_menu(app, &list->items[app->notify.selected]);
+               }
+               break;
+            }
             case COBALT_NOTIFY_STAY:
             default:
                break;
