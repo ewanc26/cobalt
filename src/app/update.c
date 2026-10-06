@@ -136,8 +136,7 @@ do_check(cobalt_update_view *v)
 {
    unsigned char *body = NULL;
    size_t len = 0;
-   cobalt_update_manifest m;
-   bool ok;
+   wf_update_manifest m;
 
    if (!v->fetch(COBALT_UPDATE_MANIFEST_URL, COBALT_UPDATE_MANIFEST_MAX, &body, &len)) {
       set_state(v, COBALT_UPDATE_FAILED, "Could not reach GitHub. Check the network and try again.");
@@ -151,8 +150,9 @@ do_check(cobalt_update_view *v)
       set_state(v, COBALT_UPDATE_FAILED, "The update information was not usable.");
       return;
    }
-   const int c = cobalt_update_compare_versions(m.version, v->running, &ok);
-   if (!ok) {
+   int bad = 0;
+   const int c = wf_update_compare_versions(m.version, v->running, &bad);
+   if (bad) {
       set_state(v, COBALT_UPDATE_FAILED, "The update information was not usable.");
       return;
    }
@@ -172,7 +172,7 @@ do_install(cobalt_update_view *v)
 {
    unsigned char *data = NULL;
    size_t len = 0;
-   cobalt_update_manifest m;
+   wf_update_manifest m;
 
    SDL_LockMutex(v->lock);
    m = v->manifest;
@@ -182,16 +182,16 @@ do_install(cobalt_update_view *v)
       set_state(v, COBALT_UPDATE_FAILED, "Cobalt does not know where it is installed.");
       return;
    }
-   if (!v->fetch(m.url, m.size, &data, &len)) {
+   if (!v->fetch(m.asset.url, m.asset.size, &data, &len)) {
       set_state(v, COBALT_UPDATE_FAILED, "The download failed. Nothing was changed.");
       return;
    }
-   if (len != m.size) {
+   if (len != m.asset.size) {
       free(data);
       set_state(v, COBALT_UPDATE_FAILED, "The download was the wrong size. Nothing was changed.");
       return;
    }
-   const cobalt_stage_result r = cobalt_update_stage(&v->paths, data, len, m.sha256);
+   const cobalt_stage_result r = cobalt_update_stage(&v->paths, data, len, m.asset.sha256);
    free(data);
    switch (r) {
       case COBALT_STAGE_OK:
@@ -315,7 +315,7 @@ cobalt_update_view_draw(cobalt_update_view *v, cobalt_render *r, int top)
    const cobalt_metrics *m = cobalt_render_metrics(r);
    char line[256];
    cobalt_update_state st;
-   cobalt_update_manifest man;
+   wf_update_manifest man;
    char msg[sizeof(v->message)];
 
    SDL_LockMutex(v->lock);
@@ -351,7 +351,7 @@ cobalt_update_view_draw(cobalt_update_view *v, cobalt_render *r, int top)
          break;
       case COBALT_UPDATE_AVAILABLE:
          snprintf(line, sizeof(line), "Version %s is available (%lu KB).", man.version,
-                  (man.size + 1023) / 1024);
+                  (man.asset.size + 1023) / 1024);
          cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, line, x, y, w, 2, COBALT_COLOUR_ACCENT_TEXT);
          y += lh * 2;
          if (man.notes[0]) {

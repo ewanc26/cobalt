@@ -86,7 +86,7 @@ else
 endif
 
 ifeq ($(wildcard $(WOLFRAM_LIB)),)
-$(warning *** Wolfram is not built at $(WOLFRAM_LIB) -- building WITHOUT protocol support. Every ATProto call will fail at runtime. To fix: build Wolfram for Wii U first (see the comment above WOLFRAM_ROOT), then re-run make. ***)
+$(error *** Wolfram is not built at $(WOLFRAM_LIB). Cobalt needs it: the protocol, OAuth pairing, muted words and the updater all live there. Build Wolfram for Wii U first (see the comment above WOLFRAM_ROOT), then re-run make. ***)
 endif
 
 #---------------------------------------------------------------------------------
