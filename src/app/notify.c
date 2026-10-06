@@ -90,6 +90,10 @@ cobalt_notify_view_update(cobalt_notify_view *view, const cobalt_input *in)
       view->scroll = 0;
    }
 
+   if (!busy && cobalt_input_pressed(in, COBALT_BTN_ALT_Y)) {
+      return COBALT_NOTIFY_MENU;
+   }
+
    /* Bounded before indexing, matching the other two list screens. */
    if (!busy && view->selected < list->count &&
        cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
@@ -284,5 +288,5 @@ cobalt_notify_view_draw(cobalt_notify_view *view, cobalt_render *r,
    }
 
    cobalt_draw_hints(r, cobalt_session_busy() ? "Working..."
-                                          : "A: open   +: refresh");
+                                          : "A: open   Y: more   +: refresh");
 }
