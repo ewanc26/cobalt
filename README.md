@@ -124,6 +124,8 @@ start it again. I have not measured how much randomness a scribble carries, so
 treat that as better than nothing rather than as a proof; `make bundle` is still
 the better way. I have only run this on the host, not on a console.
 
+I have prepared a [Homebrew App Store listing](docs/homebrew-app-store.md) but it is not submitted yet, so Cobalt is not in the store at the moment.
+
 Cobalt can also be loaded in Cemu for development. Cemu is useful for broad
 application and UI checks, but it does not reproduce every GamePad, networking,
 TLS or hardware condition of a real Wii U.
