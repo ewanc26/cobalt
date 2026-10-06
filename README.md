@@ -140,10 +140,15 @@ the Wii U Menu. The previous build is kept as
 `sd:/wiiu/apps/cobalt/update/cobalt.wuhb.old` until the new one has started, and
 if an update is interrupted the next launch puts it back.
 
-That checksum catches a corrupt or swapped download. It does not prove the
-release is mine, because there is no signing key yet. I have only run this on
-the host, not on a console. Installing a `.wuhb` by hand still works exactly as
-above.
+Each release's `update.json` is signed. A GitHub Actions job signs it with an
+Ed25519 key that exists only as a repository secret and attaches
+`update.json.sig`; Cobalt checks that signature against the public key built in
+(`src/update/update_key.h`) before it reads the manifest, and refuses a release
+that has no signature or a wrong one. The manifest carries the file's SHA-256,
+so the signature covers the download too. Releases up to 0.5.0 are not signed,
+so an older Cobalt that predates this check still takes them on the SHA-256
+alone. I have only run this on the host, not on a console. Installing a `.wuhb`
+by hand still works exactly as above.
 
 ## Using
 

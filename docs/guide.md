@@ -90,7 +90,7 @@ Muted accounts and Blocked accounts (A on one undoes it), the post language sett
 
 ## Updates
 
-Updates asks GitHub whether there is a newer Cobalt. If there is, it shows the version and the notes and waits. A downloads it, the file is checked against its published checksum, and it replaces Cobalt when you quit; start it again from the Wii U Menu. The old copy is kept until the new one has started. It never updates by itself. See the README for what that checksum does and does not prove.
+Updates asks GitHub whether there is a newer Cobalt. If there is, it shows the version and the notes and waits. A downloads it, the file is checked against its published checksum, and it replaces Cobalt when you quit; start it again from the Wii U Menu. The old copy is kept until the new one has started. It never updates by itself. The release's manifest is signed and Cobalt refuses one that is not; see the README.
 
 ## Diagnostics
 

@@ -1,0 +1,56 @@
+name: sign-release
+
+# Signs a published release's update.json and attaches the detached signature,
+# update.json.sig, which Cobalt checks before it trusts the manifest. The
+# private key is the repository secret UPDATE_SIGNING_KEY (an Ed25519 PEM); it
+# is written to a 0600 file in the runner's temp directory, used once and
+# removed, and is never printed. The signature is verified here against the
+# public key committed in src/update/update_key.h before it is uploaded, so a
+# wrong or rotated secret fails the job instead of publishing a signature
+# nobody accepts. Until this job has run, a release has no signature and
+# Cobalt refuses it, which is the safe direction.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to (re-)sign, e.g. v0.6.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: src/update/update_key.h
+          sparse-checkout-cone-mode: false
+      - name: Sign update.json
+        run: |
+          set -euo pipefail
+          [ -n "$UPDATE_SIGNING_KEY" ] || { echo "::error::UPDATE_SIGNING_KEY is not set"; exit 1; }
+          umask 077
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern update.json --dir "$work"
+          printf '%s\n' "$UPDATE_SIGNING_KEY" > "$work/key.pem"
+          openssl pkeyutl -sign -rawin -inkey "$work/key.pem" -in "$work/update.json" -out "$work/sig.bin"
+          xxd -p -c 256 "$work/sig.bin" > "$work/update.json.sig"
+          rm -f "$work/key.pem"
+          # Verify against the committed public key (raw 32 bytes -> SPKI DER -> PEM).
+          pub="$(sed -n 's/.*"\([0-9a-f]\{64\}\)".*/\1/p' src/update/update_key.h)"
+          [ "${#pub}" = 64 ] || { echo "::error::no public key in src/update/update_key.h"; exit 1; }
+          { printf '302a300506032b6570032100'; printf '%s' "$pub"; } | xxd -r -p > "$work/pub.der"
+          openssl pkey -pubin -inform DER -in "$work/pub.der" -out "$work/pub.pem"
+          openssl pkeyutl -verify -rawin -pubin -inkey "$work/pub.pem" -in "$work/update.json" -sigfile "$work/sig.bin"
+          gh release upload "$TAG" "$work/update.json.sig" --repo "$GITHUB_REPOSITORY" --clobber
+          echo "signed update.json for $TAG and verified it against src/update/update_key.h"

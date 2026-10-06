@@ -1,5 +1,7 @@
 #include "update/selfupdate.h"
 
+#include "update/update_key.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -10,8 +12,29 @@ cobalt_update_status_string(cobalt_update_status st)
       case COBALT_UPDATE_OK:       return "ok";
       case COBALT_UPDATE_BAD_MANIFEST: return "the update manifest was refused";
       case COBALT_UPDATE_BAD_POLICY:  return "the update points outside Cobalt's releases";
+      case COBALT_UPDATE_BAD_SIGNATURE: return "the update is not signed by Cobalt's release key";
    }
    return "unknown";
+}
+
+bool
+cobalt_update_public_key(unsigned char out[WF_UPDATE_PUBLIC_KEY_LEN])
+{
+   /* 64 hex characters decode to 32 bytes: the same shape as a SHA-256. */
+   return strlen(COBALT_UPDATE_PUBLIC_KEY_HEX) == 64 &&
+          wf_sha256_from_hex(COBALT_UPDATE_PUBLIC_KEY_HEX, 64, out) == WF_OK;
+}
+
+cobalt_update_status
+cobalt_update_verify_manifest(const char *body, size_t len, const char *sig, size_t sig_len,
+                              const unsigned char pk[WF_UPDATE_PUBLIC_KEY_LEN])
+{
+   if (!body || len == 0 || len > COBALT_UPDATE_MANIFEST_MAX || !sig || !pk) {
+      return COBALT_UPDATE_BAD_SIGNATURE;
+   }
+   return wf_update_verify_signature(body, len, sig, sig_len, pk) == WF_OK
+             ? COBALT_UPDATE_OK
+             : COBALT_UPDATE_BAD_SIGNATURE;
 }
 
 static bool

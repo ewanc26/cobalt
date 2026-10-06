@@ -8,11 +8,13 @@
  * (`wolfram/update.h`, since v0.27.0). What stays here is the Wii U half:
  * Cobalt's policy for the manifest and the staged file replacement.
  *
- * What it does and does not protect against. The SHA-256 comes from the same
- * GitHub release as the file, over HTTPS. That catches a corrupt or truncated
- * download and a swapped asset, not a compromised release. The manifest's
- * `signature` field is reserved for a detached signature; nothing verifies one
- * yet, because the signing key is the owner's to create (needs-owner).
+ * What it protects against. The SHA-256 in the manifest catches a corrupt or
+ * truncated download and a swapped asset. The manifest itself is signed: each
+ * release carries `update.json.sig`, a detached Ed25519 signature over the
+ * exact bytes of update.json, made in CI with a key that is only a GitHub
+ * secret. Cobalt checks it against the public key in update_key.h BEFORE it
+ * parses the manifest, and refuses a release that has no signature or a wrong
+ * one. The signature covers the SHA-256, so it covers the download too.
  */
 
 #include "wolfram/update.h"
@@ -30,13 +32,18 @@ extern "C" {
    "https://github.com/ewanc26/cobalt/releases/latest/download/update.json"
 #define COBALT_UPDATE_ASSET_PREFIX "https://github.com/ewanc26/cobalt/releases/download/"
 
+#define COBALT_UPDATE_SIGNATURE_URL \
+   "https://github.com/ewanc26/cobalt/releases/latest/download/update.json.sig"
+#define COBALT_UPDATE_SIGNATURE_MAX 256
+
 #define COBALT_UPDATE_MANIFEST_MAX 16384
 #define COBALT_UPDATE_WUHB_MAX (24u * 1024u * 1024u)
 
 typedef enum {
    COBALT_UPDATE_OK = 0,
    COBALT_UPDATE_BAD_MANIFEST, /* Wolfram refused the manifest (see docs/update.md there) */
-   COBALT_UPDATE_BAD_POLICY    /* wrong app, or not under this repo's releases */
+   COBALT_UPDATE_BAD_POLICY,   /* wrong app, or not under this repo's releases */
+   COBALT_UPDATE_BAD_SIGNATURE /* not signed by Cobalt's release key */
 } cobalt_update_status;
 
 const char *cobalt_update_status_string(cobalt_update_status st);
@@ -51,6 +58,19 @@ const char *cobalt_update_status_string(cobalt_update_status st);
 cobalt_update_status cobalt_update_parse_manifest(const char *body, size_t len,
                                                   unsigned long max_size,
                                                   wf_update_manifest *out);
+
+/* Decode COBALT_UPDATE_PUBLIC_KEY_HEX. False if the constant is malformed. */
+bool cobalt_update_public_key(unsigned char out[WF_UPDATE_PUBLIC_KEY_LEN]);
+
+/*
+ * Check `body` (the exact bytes of update.json) against `sig` (the contents of
+ * update.json.sig) under `pk`. COBALT_UPDATE_OK only if it verifies; anything
+ * else, including malformed signature text, is COBALT_UPDATE_BAD_SIGNATURE.
+ * Call it before cobalt_update_parse_manifest and refuse on anything but OK.
+ */
+cobalt_update_status cobalt_update_verify_manifest(
+   const char *body, size_t len, const char *sig, size_t sig_len,
+   const unsigned char pk[WF_UPDATE_PUBLIC_KEY_LEN]);
 
 /* Constant-time comparison of two digests. */
 bool cobalt_sha256_equal(const unsigned char a[32], const unsigned char b[32]);

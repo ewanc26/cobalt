@@ -44,6 +44,10 @@ cobalt_update_view_init(cobalt_update_view *v)
    v->threaded = true;
    v->lock = SDL_CreateMutex();
    snprintf(v->running, sizeof(v->running), "%s", COBALT_VERSION);
+   if (!cobalt_update_public_key(v->pubkey)) {
+      /* Cannot happen with a well-formed update_key.h; an all-zero key verifies nothing. */
+      memset(v->pubkey, 0, sizeof(v->pubkey));
+   }
 }
 
 static void
@@ -135,15 +139,33 @@ static void
 do_check(cobalt_update_view *v)
 {
    unsigned char *body = NULL;
+   unsigned char *sig = NULL;
    size_t len = 0;
+   size_t sig_len = 0;
    wf_update_manifest m;
 
    if (!v->fetch(COBALT_UPDATE_MANIFEST_URL, COBALT_UPDATE_MANIFEST_MAX, &body, &len)) {
       set_state(v, COBALT_UPDATE_FAILED, "Could not reach GitHub. Check the network and try again.");
       return;
    }
-   cobalt_update_status st = cobalt_update_parse_manifest((const char *) body, len,
-                                                          COBALT_UPDATE_WUHB_MAX, &m);
+   /* The signature is checked on the bytes as downloaded, before anything is parsed. A
+    * release that has not been signed (yet) is refused, not trusted on its SHA-256. */
+   if (!v->fetch(COBALT_UPDATE_SIGNATURE_URL, COBALT_UPDATE_SIGNATURE_MAX, &sig, &sig_len)) {
+      free(body);
+      COBALT_LOGW("update: no signature for the latest release; refusing it");
+      set_state(v, COBALT_UPDATE_FAILED, "The latest release is not signed, so it was not used.");
+      return;
+   }
+   cobalt_update_status st = cobalt_update_verify_manifest((const char *) body, len,
+                                                           (const char *) sig, sig_len, v->pubkey);
+   free(sig);
+   if (st != COBALT_UPDATE_OK) {
+      free(body);
+      COBALT_LOGW("update: manifest refused: %s", cobalt_update_status_string(st));
+      set_state(v, COBALT_UPDATE_FAILED, "The update was not signed by Cobalt's key, so it was not used.");
+      return;
+   }
+   st = cobalt_update_parse_manifest((const char *) body, len, COBALT_UPDATE_WUHB_MAX, &m);
    free(body);
    if (st != COBALT_UPDATE_OK) {
       COBALT_LOGW("update: manifest refused: %s", cobalt_update_status_string(st));
