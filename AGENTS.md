@@ -351,6 +351,10 @@ The listing is `tools/make-hbas-listing.py` output, validated by `tools/check-hb
 - The package never carries `entropy.bin`: a shipped seed is identical on every console. First-run seeding (section 13) is what makes a store install usable, so it must keep working.
 - Do not claim the store auto-updates from GitHub releases; nothing read says so.
 
+### The user guide
+
+`docs/guide.md` is written from the code (`src/app/*.c`), one section per screen. Its screenshots come from `tools/make-guide-images.py` (host snapshot renderer, fixture data, TV frames); regenerate them with `make -C tests snapshot` then the script when a screen changes visibly. `tools/check-guide.py` (with a self-test) fails CI if an image is missing or a Home menu entry is not mentioned. When you change a button binding, change the guide in the same PR; nothing checks the binding text. The snapshot harness's `profile` frame currently shows the Feeds screen, so there is no profile screenshot (cobalt#166).
+
 ### Assets and font
 
 `assets/` artwork is generated, not hand-drawn: `python3 tools/gen_assets.py` writes the 128×128 icon and both splash screens from a palette defined in that script (stdlib only — no Pillow or ImageMagick needed). Regenerate after a palette change rather than editing the PNGs.

@@ -168,6 +168,8 @@ Aroma keeps the HOME button for itself, so Cobalt never sees it. Quit from
 Cobalt's own Home menu instead. The same menu switches between TV + GamePad and
 Off-TV Play.
 
+The [user guide](docs/guide.md) goes through each screen with screenshots.
+
 ## Authentication and storage
 
 Cobalt signs in with a Bluesky app password, through
