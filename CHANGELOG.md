@@ -8,7 +8,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ## [Unreleased]
 
 ### Fixed
-- OAuth sign-in through a node can actually finish. The very last step, handing the node's session to Wolfram, was refused for every valid account by a Wolfram bug (wolfram#124), so Cobalt said "The OAuth node returned an unusable session." every time. I found it with the end-to-end test this change adds ([#157](https://github.com/ewanc26/cobalt/pull/157)).
+- OAuth sign-in through a node can actually finish. The very last step, handing the node's session to Wolfram, was refused for every valid account by a Wolfram bug (wolfram#124), so Cobalt said "The OAuth node returned an unusable session." every time. I found it with the end-to-end test this change adds ([#162](https://github.com/ewanc26/cobalt/pull/162)).
 
 ### Added
 - A first-run seed. If there is no `entropy.bin` (a `.wuhb` installed without `make bundle`), Cobalt asks me to scribble on the GamePad, builds a seed from the touches, saves it and asks for a restart, instead of silently refusing to go online ([#156](https://github.com/ewanc26/cobalt/pull/156)).
@@ -19,7 +19,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 - Browser-based AT Protocol OAuth sign-in through the hosted Wolfram OAuth node, with a short-lived pairing link that can be opened on another device. The PDS handles the account password and MFA; Cobalt never sees them. ([#128](https://github.com/ewanc26/cobalt/pull/128))
 
 ### Changed
-- The OAuth pairing (begin, poll, the waiting loop) is Wolfram's `wf_oauth_pair_run` now, not Cobalt's own copy. A node that forgets the pairing ends the attempt at once instead of being polled for nine minutes, and quitting while it waits stops it ([#157](https://github.com/ewanc26/cobalt/pull/157)).
+- The OAuth pairing (begin, poll, the waiting loop) is Wolfram's `wf_oauth_pair_run` now, not Cobalt's own copy. A node that forgets the pairing ends the attempt at once instead of being polled for nine minutes, and quitting while it waits stops it ([#162](https://github.com/ewanc26/cobalt/pull/162)).
 - The README has a Using section with the controls, the build requirements now sit under Building, and the storage section no longer says app passwords are the only way to sign in. ([#153](https://github.com/ewanc26/cobalt/pull/153))
 - A new mark: a cut stone replaces the ring-C on the icon and both splash screens, and the README has a logo and badges to match the other repositories. Both come from one generator, `tools/gen_assets.py`. ([#144](https://github.com/ewanc26/cobalt/pull/144))
 - The docs no longer say OAuth is not planned. Cobalt has had browser OAuth sign-in through a Wolfram OAuth node since the OAuth sign-in change (#128, never released on its own); the README, AGENTS.md and the sign-in header comment now say so, and `docs/PARITY.md` records both sign-in flows as separate rows next to Indigo and Platinum. ([#137](https://github.com/ewanc26/cobalt/pull/137))
