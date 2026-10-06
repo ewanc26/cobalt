@@ -68,7 +68,7 @@ WOLFRAM_CJSON := $(firstword $(wildcard \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.a))
 
 # The updater and the entropy seed use wolfram/update.h, so the unit tests need a
-# Wolfram checkout (at least v0.27.0). They compile its update sources directly
+# Wolfram checkout (at least v0.28.0). They compile its update sources directly
 # rather than linking the whole library.
 ifeq ($(HAVE_WOLFRAM),)
 $(error No Wolfram checkout at $(WOLFRAM_ROOT). Clone ewanc26/wolfram there, or set WOLFRAM_ROOT)

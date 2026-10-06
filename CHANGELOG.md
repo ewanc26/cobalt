@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Changed
+
+- Cobalt now builds against Wolfram v0.28.0 (was v0.27.0).
+
 ## [0.5.0] - 2026-10-06
 
 ### Changed
