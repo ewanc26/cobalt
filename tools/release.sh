@@ -4,7 +4,8 @@
 # 1. Branches release/<version> from a clean, up-to-date main.
 # 2. Bumps src/util/version.h and the README, and turns the CHANGELOG's
 #    [Unreleased] section into the new version.
-# 3. Runs the host tests, opens a PR and (with --merge) squash-merges it.
+# 3. Runs the host tests, opens a PR and (with --merge) waits for green CI and
+#    rebase-merges it, as every PR in the stack is merged.
 # 4. Tags the merge commit, builds the .wuhb from it and publishes a GitHub
 #    release with the CHANGELOG notes and the .wuhb attached.
 #
@@ -61,13 +62,23 @@ make test
 if [ $dry = 1 ]; then echo "dry run: leaving release/$new uncommitted"; exit 0; fi
 
 git add src/util/version.h README.md CHANGELOG.md
-git commit -q -m "Release $new"
+git commit -q -m "chore(release): bump version to $new" -m "Co-Authored-By: ${RELEASE_COAUTHOR:-release.sh <noreply@github.com>}"
 git push -q -u origin "release/$new"
-pr=$(gh pr create --title "Release $new" --body "Release $new. Notes are in CHANGELOG.md.")
+pr=$(gh pr create --title "chore(release): v$new" --body "## What this changes
+Release $new: version bump and the CHANGELOG section for it.
+
+## Verification
+\`make test\` ran on the host before this PR was opened. Not hardware-tested; the release notes say so.
+
+## Docs
+CHANGELOG.md.")
 if [ $merge = 0 ]; then
   echo "Review and merge $pr, then run: tools/publish.sh $new"; exit 0
 fi
-gh pr merge "$pr" --squash --delete-branch
+# Never merge red: wait for the PR's checks (CI gate and the flow checks).
+sleep 10
+gh pr checks "$pr" --watch --fail-fast || { echo "CI is not green on $pr; not merging" >&2; exit 1; }
+gh pr merge "$pr" --rebase --delete-branch
 git checkout -q main && git pull -q --ff-only origin main
 
 tools/publish.sh "$new"
