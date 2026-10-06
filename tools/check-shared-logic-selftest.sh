@@ -15,7 +15,7 @@ echo 'static int is_word_byte(int c) { return c; }' > "$tmp/src/atproto/prefs.c"
 expect fail "muted-word matcher grows back"
 echo 'int x;' > "$tmp/src/atproto/prefs.c"
 echo 'const char *m = "uk.ewancroft.oauth.begin";' > "$tmp/src/atproto/session.c"
-expect pass "pairing method in the one allowed file"
+expect fail "pairing method back in session.c"
 echo 'const char *m = "uk.ewancroft.oauth.poll";' > "$tmp/src/atproto/other.c"
 expect fail "pairing method elsewhere"
 [ "$bad" -eq 0 ] && echo "all shared-logic selftests passed" || exit 1

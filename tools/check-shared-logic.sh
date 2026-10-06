@@ -14,7 +14,7 @@ fails=0
 # pattern | allowed file (or "-" for none) | what to use instead
 rules=(
   'whole_word|is_word_byte|-|wf_mod_match_mute_words (muted-word matching is Wolfram'"'"'s)'
-  'uk\.ewancroft\.oauth\.|src/atproto/session.c|the Wolfram pairing client once wolfram#101 is released (cobalt#136)'
+  'uk\.ewancroft\.oauth\.|-|wf_oauth_pair_run from wolfram/oauth_pairing.h (the pairing contract is Wolfram'"'"'s)'
 )
 
 for rule in "${rules[@]}"; do
