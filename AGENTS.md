@@ -327,7 +327,7 @@ Rules:
 - Integrity: the manifest's SHA-256 is checked on the downloaded bytes in memory, then again on the file read back from the SD card, before the file may be called `.new`. This is integrity, not authenticity: it does not protect against a compromised release. The manifest's `signature` field is reserved; the key is the owner's (needs-owner #138). Never generate or commit a key.
 - Replacement happens at quit (`cobalt_app_destroy`), because Aroma has the running `.wuhb` mounted. Apply is two renames (installed to `.old`, `.new` to installed); `cobalt_update_recover` runs at startup and puts `.old` back if the installed file is missing. `.old` is kept until the new build has drawn a frame (`cobalt_update_view_tick`). A leftover `.part` or `.new` is deleted at startup.
 - No token is involved (public repo, unauthenticated), and nothing from the update path is logged beyond versions and outcomes.
-- The core is `src/update/selfupdate.c`, not `update.c`: devkitPro's flat object directory collides on basenames, and `src/app/update.c` already exists (the same trap as `profile.c`). It is a local copy of the contract in wolfram#106 (manifest, version compare, SHA-256); delete it when Wolfram ships `wolfram/update.h`. Do not extend it. File replacement, UI and paths stay in Cobalt.
+- The core is `src/update/selfupdate.c`, not `update.c`: devkitPro's flat object directory collides on basenames, and `src/app/update.c` already exists (the same trap as `profile.c`). Manifest parsing, version comparison and SHA-256 are Wolfram's (`wolfram/update.h`, since v0.27.0); this file keeps Cobalt's manifest policy (app, repository, file layout) and the file replacement. Do not re-grow the shared parts. CI builds Wolfram at the tag `v0.27.0` (`ref:` in `.github/workflows/ci.yml`, twice); bump it deliberately, in its own commit, once Wolfram announces a release. The unit tests compile Wolfram's `src/update/*.c` from the sibling checkout, so they need Wolfram v0.27.0 or newer.
 - `tools/publish.sh` produces the updater's inputs: `cobalt-<version>.wuhb`, `.sha256`, and `update.json` from `tools/make-update-manifest.sh`. `make -C tests check` feeds that script's output to the real reader.
 - Verified on the host only. Real-console behaviour (redirect, renaming the mounted `.wuhb`, recovery) is open as #139.
 
@@ -337,7 +337,7 @@ Protocol, OAuth, moderation, parsing, muted words, pagination of protocol result
 
 - **Muted words.** `cobalt_prefs_text_is_muted` calls `wf_mod_match_mute_words`. Do not reintroduce a matcher. Matching tests live in `tests/e2e_main.c`, because the unit binary has no SDK; without Wolfram the function returns false (there is no network to filter either).
 - **OAuth pairing.** Wolfram's `wf_oauth_pair_run`; Cobalt keeps only the hooks and the session hand-off (cobalt#136).
-- **Update manifest, semver, SHA-256.** `src/update/selfupdate.c` is a local copy of wolfram#106.
+- **Update manifest, semver, SHA-256.** `wolfram/update.h` (wolfram#106, Wolfram v0.27.0). Cobalt's copy is deleted; the guard fails if SHA-256 or semver comparison grows back.
 - **Time formatting.** `src/util/timefmt.c` duplicates Indigo's; filed as wolfram#116.
 
 `tools/check-shared-logic.sh` (CI job `shared-logic`) fails if the old matcher grows back or the pairing method names appear in `src/` at all. Its self-test has a deliberate violation per rule. When Wolfram takes something over, delete the local copy and tighten the allow-list in the same PR.

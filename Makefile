@@ -81,12 +81,14 @@ ifneq ($(wildcard $(WOLFRAM_LIB)),)
 				$(WOLFRAM_BUILD)/_deps/cjson-build/libcjson.a \
 				$(WOLFRAM_BUILD)/_deps/libcbor-build/src/libcbor.a
 else
-	WOLFRAM_CFLAGS	:=
+	# The updater includes wolfram/update.h either way, so the headers are found
+	# even when the library is not built.
+	WOLFRAM_CFLAGS	:=	-I$(WOLFRAM_ROOT)/include
 	WOLFRAM_LIBS	:=
 endif
 
 ifeq ($(wildcard $(WOLFRAM_LIB)),)
-$(warning *** Wolfram is not built at $(WOLFRAM_LIB) -- building WITHOUT protocol support. Every ATProto call will fail at runtime. To fix: build Wolfram for Wii U first (see the comment above WOLFRAM_ROOT), then re-run make. ***)
+$(warning *** Wolfram is not built at $(WOLFRAM_LIB) -- building WITHOUT protocol support. Every ATProto call will fail at runtime, and the updater will not link (it uses wolfram/update.h). To fix: build Wolfram for Wii U first (see the comment above WOLFRAM_ROOT), then re-run make. ***)
 endif
 
 #---------------------------------------------------------------------------------
