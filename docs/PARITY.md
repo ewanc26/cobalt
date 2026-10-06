@@ -20,8 +20,8 @@ The two flows have different dependencies, so they are two rows.
 | Flow | Cobalt | Indigo | Platinum | Evidence |
 |---|---|---|---|---|
 | App password | implemented | implemented | issue platinum#38 | Cobalt: `src/app/signin.c`, the login job in `src/atproto/session.c`; host and mock-PDS tests. Platinum's bridge is OAuth-only. |
-| OAuth | implemented | implemented | implemented | Cobalt: `run_oauth()` in `src/atproto/session.c` through a Wolfram OAuth node (`docs/oauth-node.md` in Wolfram). An empty password in the form selects it. Host test covers the form's choice only (`tests/test_main.c`); the pairing exchange is not tested on the host and is not verified by me anywhere. Platinum's bridge pairs differently (its own Node protocol). |
-| Pairing client shared in Wolfram | issue #136 | issue indigo#20 | n/a | Both consoles carry their own copy of the begin/poll client; wolfram#101 is the shared one. |
+| OAuth | implemented | implemented | implemented | Cobalt: `run_oauth()` in `src/atproto/session.c` through a Wolfram OAuth node (`docs/oauth-node.md` in Wolfram). An empty password in the form selects it. The pairing exchange (begin, a terminal error, completion into a session) has an e2e test against a mock node (`tests/e2e_main.c`); that test found wolfram#124, which had stopped the last step since 0.5.0. Not verified on a console by me. Platinum's bridge pairs differently (its own Node protocol). |
+| Pairing client shared in Wolfram | implemented | issue indigo#20 | n/a | Cobalt calls `wf_oauth_pair_run` (wolfram#101); covered by an e2e test against a mock node. |
 
 OAuth on a console is not the AT Protocol browser flow running on the console. The node holds the OAuth session and the DPoP key; the console holds a bearer token for the node and never sees the account password, MFA or a refresh token. The token is not logged.
 
