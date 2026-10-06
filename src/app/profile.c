@@ -97,14 +97,10 @@ cobalt_profile_view_update(cobalt_profile_view *view, const cobalt_input *in)
       return COBALT_PROFILE_VIEW_STAY;
    }
 
-   if (profile->loaded && cobalt_input_pressed(in, COBALT_BTN_MENU)) {
-      if (cobalt_session_begin_profile_tab(cobalt_profile_tab_next(
-             cobalt_session_profile_tab(), profile->is_self))) {
-         view->selected = HEADER_ROW;
-         view->scroll = 0;
-         view->last_visible = -1;
-      }
-      return COBALT_PROFILE_VIEW_STAY;
+   /* Followers, following, the tab and, on a post, the post's own actions live
+    * in the More menu, the same Y as the timeline and thread (cobalt#109). */
+   if (profile->loaded && cobalt_input_pressed(in, COBALT_BTN_ALT_Y)) {
+      return COBALT_PROFILE_VIEW_MENU;
    }
 
    if (view->selected == HEADER_ROW) {
@@ -112,14 +108,6 @@ cobalt_profile_view_update(cobalt_profile_view *view, const cobalt_input *in)
        * Right), just mapped to follow/mute/block instead of open/like/repost.
        * None apply to your own profile, and the session layer refuses them
        * there too. */
-      if (profile->loaded && profile->did[0]) {
-         if (cobalt_input_pressed(in, COBALT_BTN_ALT_X)) {
-            return COBALT_PROFILE_VIEW_OPEN_FOLLOWERS;
-         }
-         if (cobalt_input_pressed(in, COBALT_BTN_ALT_Y)) {
-            return COBALT_PROFILE_VIEW_OPEN_FOLLOWING;
-         }
-      }
       if (profile->loaded && !profile->is_self) {
          if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
             cobalt_session_begin_follow();
@@ -353,7 +341,7 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
    }
 
    char hint_text[160];
-   snprintf(hint_text, sizeof(hint_text), "[%s]  +: tab   X: followers   Y: following   A/Left/Right: act",
+   snprintf(hint_text, sizeof(hint_text), "[%s]  Y: more   A/Left/Right: act",
             cobalt_profile_tab_name(cobalt_session_profile_tab()));
    cobalt_draw_hints(r, cobalt_session_busy() ? "Working..." : hint_text);
 }

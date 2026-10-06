@@ -71,7 +71,7 @@ These are Wii U specific and have no row in the other clients.
 | GamePad touch coverage of the popup and header pills | issue #112 | |
 | TV layout uses the extra space | issue #111 | |
 | Remember scroll position when returning from a thread or profile | partial #110 | The timeline keeps its cursor and scroll across a thread and across a profile, and notifications across a thread or profile; snapshot checks in `tests/snapshot_main.c` assert it on the host. I could not reproduce a rewind and have not seen it on a console, so issue #110 stays open for the owner to confirm. |
-| More menu unified with the thread and profile screens | issue #109 | |
+| More menu unified with the thread and profile screens | implemented | Y opens it on the timeline, thread, notifications and profile. The profile's X, Y and + moved into it; notifications get profile, post and refresh. Snapshot checks in `tests/snapshot_main.c`; search results are the timeline screen and already had it. Host only. |
 | User guide with controls per screen and screenshots | implemented | `docs/guide.md`, checked by `tools/check-guide.py`. |
 | First on-console acceptance pass | issue #24 | Needs the owner's console. |
 

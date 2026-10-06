@@ -28,6 +28,7 @@ typedef enum {
    COBALT_NOTIFY_BACK,
    COBALT_NOTIFY_OPEN_THREAD,
    COBALT_NOTIFY_OPEN_PROFILE,
+   COBALT_NOTIFY_MENU,
 } cobalt_notify_action;
 
 typedef struct {
