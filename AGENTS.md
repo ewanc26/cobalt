@@ -112,12 +112,12 @@ Keep `atproto/` platform-agnostic where realistically possible — it's the part
 Cobalt supports two sign-in flows. They are separate parity rows (`docs/PARITY.md`); keep both working and neither may regress the other.
 
 - **App password.** `com.atproto.server.createSession` through `wf_agent_login`, identifier and app password typed on Cobalt's own keyboard (§13). The session is stored encrypted on the SD card; "sign out" wipes it.
-- **OAuth, through a hosted Wolfram OAuth node.** An empty password selects it (`src/app/signin.c`, `run_oauth()` in `src/atproto/session.c`). The service field then holds the node's URL. The console posts the handle to `uk.ewancroft.oauth.begin`, shows the returned pairing URL and code, and polls `uk.ewancroft.oauth.poll` until the user has finished at their PDS on another device. The node holds the OAuth session and DPoP key; the console keeps only the node's bearer token. The contract is Wolfram's `docs/oauth-node.md`.
+- **OAuth, through a hosted Wolfram OAuth node.** An empty password selects it (`src/app/signin.c`, `run_oauth()` in `src/atproto/session.c`). The service field then holds the node's URL. `run_oauth()` calls Wolfram's `wf_oauth_pair_run` (`wolfram/oauth_pairing.h`), which owns the begin/poll contract, the parsing and the loop; Cobalt supplies hooks that show the pairing URL and code, stop polling when the app quits, and sleep, then turns the node's bearer into a session and wipes the poll result. The node holds the OAuth session and DPoP key; the console keeps only the node's bearer token. The contract is Wolfram's `docs/oauth-node.md`.
 
 Rules for both:
 
 - Tokens, passwords, pairing URLs and pairing codes never reach the log, a screen other than the pairing screen, or a commit.
-- Do not hand-write more of the pairing protocol in Cobalt. The client half is to move into Wolfram (wolfram#101, cobalt#136); until then `run_oauth()` is the only place the two method names may appear in `src/`.
+- Do not hand-write any of the pairing protocol in Cobalt. The method names must not appear in `src/`; `tools/check-shared-logic.sh` fails if they do.
 - Do not describe OAuth as impossible or not planned anywhere. `tools/check-parity.sh` fails CI if the README or §12 does.
 
 ## 8. Templates & Reference Repos to Build On
@@ -336,11 +336,11 @@ Rules:
 Protocol, OAuth, moderation, parsing, muted words, pagination of protocol results and the update manifest belong in Wolfram. Cobalt keeps platform UI, input and storage. The audit is cobalt#142; what it found and where each item stands:
 
 - **Muted words.** `cobalt_prefs_text_is_muted` calls `wf_mod_match_mute_words`. Do not reintroduce a matcher. Matching tests live in `tests/e2e_main.c`, because the unit binary has no SDK; without Wolfram the function returns false (there is no network to filter either).
-- **OAuth pairing.** `run_oauth()` is a local copy of the client half until wolfram#101 is released (cobalt#136).
+- **OAuth pairing.** Wolfram's `wf_oauth_pair_run`; Cobalt keeps only the hooks and the session hand-off (cobalt#136).
 - **Update manifest, semver, SHA-256.** `src/update/selfupdate.c` is a local copy of wolfram#106.
 - **Time formatting.** `src/util/timefmt.c` duplicates Indigo's; filed as wolfram#116.
 
-`tools/check-shared-logic.sh` (CI job `shared-logic`) fails if the old matcher grows back or the pairing method names leave `session.c`. Its self-test has a deliberate violation per rule. When Wolfram takes something over, delete the local copy and tighten the allow-list in the same PR.
+`tools/check-shared-logic.sh` (CI job `shared-logic`) fails if the old matcher grows back or the pairing method names appear in `src/` at all. Its self-test has a deliberate violation per rule. When Wolfram takes something over, delete the local copy and tighten the allow-list in the same PR.
 
 ### Assets and font
 

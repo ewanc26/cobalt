@@ -7,6 +7,9 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Fixed
+- OAuth sign-in through a node can actually finish. Since 0.5.0 the very last step, handing the node's session to Wolfram, was refused for every valid account by a Wolfram bug (wolfram#124), so Cobalt said "The OAuth node returned an unusable session." every time. I found it with the end-to-end test this change adds ([#157](https://github.com/ewanc26/cobalt/pull/157)).
+
 ### Added
 - Updates, from the Home menu. Cobalt checks this repository's latest release, shows the version and notes, and downloads only when you press A. The file is checked against the SHA-256 in the release, replaces `cobalt.wuhb` when you quit, and the old build is kept until the new one has started; an interrupted update is repaired on the next launch. `tools/publish.sh` now attaches the `.sha256` and an `update.json` manifest to each release.
 - The footer prompts are tappable. Tapping a hint pill on the GamePad presses the button it names, so "A: thread" opens the thread and "Y: more" opens the post menu without reaching for the pad. A prompt naming a range or a chord (`Up/Down: choose`) stays inert rather than half-applying, and an overlay that covers the footer — the post menu, the image viewer — keeps the tap.
@@ -16,6 +19,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 - Who liked or reposted a post. The post menu grows "Liked by (N)" and "Reposted by (N)" entries when the post has either, opening the same avatar-row list the followers screen uses — A opens a profile, B returns to the screen the menu was opened from. Likes and reposts share one list (only one is on screen at a time), fetched through Wolfram's `getLikes`/`getRepostedBy` with the same paging as the other actor lists.
 
 ### Changed
+- The OAuth pairing (begin, poll, the waiting loop) is Wolfram's `wf_oauth_pair_run` now, not Cobalt's own copy. A node that forgets the pairing ends the attempt at once instead of being polled for nine minutes, and quitting while it waits stops it ([#157](https://github.com/ewanc26/cobalt/pull/157)).
 - A new mark: a cut stone replaces the ring-C on the icon and both splash screens, and the README has a logo and badges to match the other repositories. Both come from one generator, `tools/gen_assets.py`.
 - The docs no longer say OAuth is not planned. Cobalt has had browser OAuth sign-in through a Wolfram OAuth node since 0.5.0; the README, AGENTS.md and the sign-in header comment now say so, and `docs/PARITY.md` records both sign-in flows as separate rows next to Indigo and Platinum.
 - The right stick navigates like the left: both sticks drive the D-pad directions, and letting go of one does not release a direction the other is still holding.
