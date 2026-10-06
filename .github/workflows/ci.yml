@@ -76,6 +76,19 @@ jobs:
       - name: Snapshots
         working-directory: cobalt
         run: make -C tests snapshot
+      - name: Homebrew App Store listing
+        # The store folder is generated from the release layout and the
+        # snapshots above, and checked; tools/submit-hbas.sh downloads this
+        # artifact for the tagged commit. Its own self-test breaks each rule.
+        working-directory: cobalt
+        run: |
+          tools/check-hbas-listing-selftest.sh
+          python3 tools/make-hbas-listing.py --screenshots tests/build/snapshot --out dist/hbas
+          python3 tools/check-hbas-listing.py dist/hbas
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hbas-listing
+          path: cobalt/dist/hbas
       - uses: actions/upload-artifact@v4
         if: always()
         with:
