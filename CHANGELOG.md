@@ -7,6 +7,9 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Changed
+- Notifications now have a host test that the cursor and scroll survive opening a thread or profile and backing out, next to the timeline one. I could not reproduce the rewind in #110 on the host, so it stays open until it is confirmed on a console ([#169](https://github.com/ewanc26/cobalt/pull/169)).
+
 ### Fixed
 - OAuth sign-in through a node can actually finish. The very last step, handing the node's session to Wolfram, was refused for every valid account by a Wolfram bug (wolfram#124), so Cobalt said "The OAuth node returned an unusable session." every time. I found it with the end-to-end test this change adds ([#162](https://github.com/ewanc26/cobalt/pull/162)).
 

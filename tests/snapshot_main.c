@@ -289,6 +289,22 @@ main(int argc, char **argv)
    settle(40);
    shoot("notifications");
 
+   /* Opening a notification's thread or profile and backing out keeps the cursor
+    * and scroll (cobalt#110). */
+   {
+      int sel0, scr0, sel1, scr1;
+      frame(COBALT_BTN_DOWN); settle(3);
+      cobalt_app_view_position(g_app, COBALT_SCREEN_NOTIFICATIONS, &sel0, &scr0);
+      frame(COBALT_BTN_CONFIRM); settle(30);
+      if (cobalt_app_screen(g_app) != COBALT_SCREEN_NOTIFICATIONS) {
+         frame(COBALT_BTN_BACK); settle(10);
+      }
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_NOTIFICATIONS);
+      cobalt_app_view_position(g_app, COBALT_SCREEN_NOTIFICATIONS, &sel1, &scr1);
+      printf("notifications position %d/%d -> %d/%d\n", sel0, scr0, sel1, scr1);
+      CHECK(sel1 == sel0 && scr1 == scr0);
+   }
+
    frame(COBALT_BTN_BACK);
    settle(10);
    open_home_item(8);

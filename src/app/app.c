@@ -319,14 +319,42 @@ cobalt_app_screen(const cobalt_app *app)
 }
 
 void
-cobalt_app_timeline_position(const cobalt_app *app, int *selected, int *scroll)
+cobalt_app_view_position(const cobalt_app *app, cobalt_screen screen, int *selected,
+                         int *scroll)
 {
+   int sel = 0;
+   int scr = 0;
+
+   if (app) {
+      switch (screen) {
+         case COBALT_SCREEN_TIMELINE:
+            sel = app->timeline.selected;
+            scr = app->timeline.scroll;
+            break;
+         case COBALT_SCREEN_NOTIFICATIONS:
+            sel = app->notify.selected;
+            scr = app->notify.scroll;
+            break;
+         case COBALT_SCREEN_PROFILE:
+            sel = app->profile.selected;
+            scr = app->profile.scroll;
+            break;
+         default:
+            break;
+      }
+   }
    if (selected) {
-      *selected = app ? app->timeline.selected : 0;
+      *selected = sel;
    }
    if (scroll) {
-      *scroll = app ? app->timeline.scroll : 0;
+      *scroll = scr;
    }
+}
+
+void
+cobalt_app_timeline_position(const cobalt_app *app, int *selected, int *scroll)
+{
+   cobalt_app_view_position(app, COBALT_SCREEN_TIMELINE, selected, scroll);
 }
 
 const cobalt_popup *
