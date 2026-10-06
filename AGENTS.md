@@ -203,9 +203,7 @@ Cobalt follows the same commit conventions as Wolfram (see that repo's `CONTRIBU
 
 Treat steps 1–2 as blocking for everything else — if networking doesn't reliably work on real hardware, nothing downstream matters yet.
 
-**Where this stands:** steps 1–5 are written, plus threads, likes, reposts and composing from step 6's neighbourhood. All of it passes the host checks. **None of it has been through a hardware pass.**
-
-That is a deliberate departure from the rule above, made on Ewan's instruction to keep building, and the risk it was guarding against grows with every increment: the first console run now has to settle the TLS handshake, `SDL_CreateThread` under the Wii U SDL port, `createSession`, the timeline, the thread view, and record writes all at once. If it goes badly, bisecting will be slow. A hardware pass is worth more than the next feature.
+**Where this stands:** Ewan reports Cobalt installed and running on his Wii U with the core Bluesky workflow usable end to end (README "Status", his commit 1727b3c, 2026-10-05). That owner report is the hardware status; it wins over anything older in this file. It is a statement about the core workflow as of that commit, not a per-feature acceptance record: features added since (the updater, the first-run seed screen, and anything later) have only host and CI coverage until Ewan says otherwise, and every PR must keep saying exactly which it is. Hardware results arrive from Ewan only; open console checks are tracked in issues labelled `needs-owner` (#24, #139).
 
 Step 4 (the GamePad/Off-TV split) was satisfied structurally from the start rather than as a later step: every screen lays itself out per surface.
 
@@ -712,9 +710,8 @@ checkout with no changes). The devkitPPC compiler was used directly to compile
 `search.o` and `app.o` in isolation and both succeeded with no errors or
 warnings; the touched Wolfram-side header (`actor_typed.h`) was not modified.
 The host test harness (`make -C tests`) also could not run — no host SDL2
-dev package in this environment either. Per §10 and §12's own "None of it has
-been through a hardware pass" note, **none of this has been run on the
-actual console**, same standing caveat as the rest of the roadmap since step 5.
+dev package in this environment either. At the time of writing, **none of this had been run on the
+actual console** (§12 records the later hardware status).
 
 *(Update, later pass: `wiiu-sdl2_image` was installed into this dev
 environment and a `src/app/profile.c` / `src/atproto/profile.c` object-name
