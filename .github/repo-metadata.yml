@@ -15,4 +15,4 @@ repo:
   description: "A Bluesky client for Nintendo Wii U."
   homepage: ""
   topics: [at-protocol, atproto, bluesky, nintendo, retrocomputing, social-networking, wii-u]
-  enforce_live: false
+  enforce_live: true
