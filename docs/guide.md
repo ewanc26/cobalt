@@ -12,7 +12,7 @@ I have not walked through all of this on my console since I wrote it down, so if
 | A | Open or choose the highlighted thing. |
 | B | Back. On the keyboard screens B types a backspace instead; leave with the keyboard's Cancel key. |
 | X | A second action: new post on the timeline, quote on a thread, followers on a profile. |
-| Y | The "More" menu for the highlighted post, or following on a profile. |
+| Y | The "More" menu for the highlighted post, notification or profile row. |
 | + | Refresh, or on a profile, the next tab. |
 | GamePad touch | Tap what you would press. Rows, the Back pill in the corner and the footer prompts are all tappable. |
 
@@ -72,11 +72,11 @@ You type on Cobalt's own keyboard: move with the D-pad or tap on the GamePad. Po
 
 ![Notifications](screenshots/notifications.png)
 
-Replies, mentions, quotes, likes, reposts and follows. A opens the post or the follower's profile. + refreshes.
+Replies, mentions, quotes, likes, reposts and follows. A opens the post or the follower's profile. Y opens the More menu: the account's profile, the post, and refresh. + also refreshes.
 
 ## Profiles
 
-A on a name or avatar opens a profile. On the header row: A follows or unfollows, Left mutes, Right blocks (none of these on your own profile), X lists followers and Y who they follow. + cycles the tabs: posts, replies, media and, on your own profile, likes. Posts work like the timeline.
+A on a name or avatar opens a profile. On the header row: A follows or unfollows, Left mutes, Right blocks (none of these on your own profile). Y opens the More menu on any row. It lists followers, following and the next tab (posts, replies, media and, on your own profile, likes) and, on a post, the same entries as on the timeline. Posts work like the timeline.
 
 ## Search, feeds and lists
 
