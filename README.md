@@ -95,14 +95,6 @@ For networked AT Protocol features, you need one of two ways to sign in:
   open the pairing link Cobalt shows on another device. Someone has to run the
   node; Cobalt does not do OAuth on the console itself.
 
-Building Cobalt requires:
-
-- devkitPro with devkitPPC and the WUT SDK
-- the Wii U SDL2, SDL2_ttf and SDL2_image portlibs
-- Wii U curl and mbedTLS
-- a sibling checkout of [Wolfram](https://github.com/ewanc26/wolfram)
-- OpenSSL for generating the per-installation entropy seed
-
 ## Installing
 
 The normal WUHB installation is:
@@ -143,10 +135,35 @@ release is mine, because there is no signing key yet. I have only run this on
 the host, not on a console. Installing a `.wuhb` by hand still works exactly as
 above.
 
+## Using
+
+Cobalt starts on the Home menu. Sign in from there; [Requirements](#requirements)
+covers the two ways in. Every screen names its own controls in the footer, and on
+the GamePad each of those prompts is also a button you can tap. The ones that mean
+the same thing everywhere:
+
+| Control | Does |
+|---|---|
+| D-pad up and down | move the selection |
+| D-pad left | like the selected post |
+| D-pad right | repost the selected post |
+| A | open or confirm |
+| B | back |
+| Y | the selected post's menu: the author's profile, its images, quote, who liked or reposted it |
+| X | write a new post from the timeline |
+| + | reload the timeline |
+| Touch | select a row, or press a footer prompt |
+
+Aroma keeps the HOME button for itself, so Cobalt never sees it. Quit from
+Cobalt's own Home menu instead. The same menu switches between TV + GamePad and
+Off-TV Play.
+
 ## Authentication and storage
 
-Cobalt authenticates with Bluesky app passwords through
-`com.atproto.server.createSession`.
+Cobalt signs in with a Bluesky app password, through
+`com.atproto.server.createSession`, or through OAuth on a Wolfram OAuth node,
+as described under [Requirements](#requirements). Either way, the session it
+gets back is stored the same way.
 
 Persistent state is kept under:
 
@@ -175,6 +192,16 @@ The seed is rotated on boot. A missing seed prevents network authentication
 rather than silently falling back to weaker randomness.
 
 ## Building
+
+### Requirements
+
+- devkitPro with devkitPPC and the WUT SDK
+- the Wii U SDL2, SDL2_ttf and SDL2_image portlibs
+- Wii U curl and mbedTLS
+- a sibling checkout of [Wolfram](https://github.com/ewanc26/wolfram)
+- OpenSSL for generating the per-installation entropy seed
+
+### Building Wolfram and Cobalt
 
 Build Wolfram for Wii U first, then build Cobalt:
 
