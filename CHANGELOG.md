@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-06
+
 ### Changed
 - The More menu (Y) now works on notifications and on profiles, not only on the timeline and a thread. On a profile it replaces X, Y and +, so followers, following and the next tab are menu entries and the footer is shorter; on a post it also has the post's own entries. On a notification it offers the profile, the post and refresh ([#173](https://github.com/ewanc26/cobalt/pull/173)).
 - Cobalt now builds against Wolfram v0.27.0 instead of its main branch, and the updater uses Wolfram's `wolfram/update.h` for the manifest, version comparison and SHA-256. My own copies of those are deleted, and a CI guard fails if they grow back. Behaviour is the same ([#172](https://github.com/ewanc26/cobalt/pull/172)).
@@ -115,7 +117,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/ewanc26/cobalt/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/ewanc26/cobalt/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/ewanc26/cobalt/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/ewanc26/cobalt/compare/v0.3.0...v0.3.1
