@@ -9,35 +9,23 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Added
 - A first-run seed. If there is no `entropy.bin` (a `.wuhb` installed without `make bundle`), Cobalt asks me to scribble on the GamePad, builds a seed from the touches, saves it and asks for a restart, instead of silently refusing to go online ([#156](https://github.com/ewanc26/cobalt/pull/156)).
-- Updates, from the Home menu. Cobalt checks this repository's latest release, shows the version and notes, and downloads only when you press A. The file is checked against the SHA-256 in the release, replaces `cobalt.wuhb` when you quit, and the old build is kept until the new one has started; an interrupted update is repaired on the next launch. `tools/publish.sh` now attaches the `.sha256` and an `update.json` manifest to each release.
-- The footer prompts are tappable. Tapping a hint pill on the GamePad presses the button it names, so "A: thread" opens the thread and "Y: more" opens the post menu without reaching for the pad. A prompt naming a range or a chord (`Up/Down: choose`) stays inert rather than half-applying, and an overlay that covers the footer — the post menu, the image viewer — keeps the tap.
-
-- A full-size image viewer. The post menu grows a "View image" entry when the selected post carries pictures, and the picture opens contain-fitted to the whole surface, centred, on both the TV and the GamePad. The author's alt text is drawn beneath the image when there is one, a post of several photographs says "2 of 4" in the corner and cycles with Left/Right, and B, A or a tap closes back to the screen it was opened from. The viewer holds copies of the post's image list, so a background refresh cannot rewrite the pictures out from under the person looking at them.
-
-- Who liked or reposted a post. The post menu grows "Liked by (N)" and "Reposted by (N)" entries when the post has either, opening the same avatar-row list the followers screen uses — A opens a profile, B returns to the screen the menu was opened from. Likes and reposts share one list (only one is on screen at a time), fetched through Wolfram's `getLikes`/`getRepostedBy` with the same paging as the other actor lists.
+- Updates, from the Home menu. Cobalt checks this repository's latest release, shows the version and notes, and downloads only when you press A. The file is checked against the SHA-256 in the release, replaces `cobalt.wuhb` when you quit, and the old build is kept until the new one has started; an interrupted update is repaired on the next launch. `tools/publish.sh` now attaches the `.sha256` and an `update.json` manifest to each release. ([#140](https://github.com/ewanc26/cobalt/pull/140))
+- The footer prompts are tappable. Tapping a hint pill on the GamePad presses the button it names, so "A: thread" opens the thread and "Y: more" opens the post menu without reaching for the pad. A prompt naming a range or a chord (`Up/Down: choose`) stays inert rather than half-applying, and an overlay that covers the footer — the post menu, the image viewer — keeps the tap. ([#129](https://github.com/ewanc26/cobalt/pull/129))
+- A full-size image viewer. The post menu grows a "View image" entry when the selected post carries pictures, and the picture opens contain-fitted to the whole surface, centred, on both the TV and the GamePad. The author's alt text is drawn beneath the image when there is one, a post of several photographs says "2 of 4" in the corner and cycles with Left/Right, and B, A or a tap closes back to the screen it was opened from. The viewer holds copies of the post's image list, so a background refresh cannot rewrite the pictures out from under the person looking at them. ([#132](https://github.com/ewanc26/cobalt/pull/132))
+- Who liked or reposted a post. The post menu grows "Liked by (N)" and "Reposted by (N)" entries when the post has either, opening the same avatar-row list the followers screen uses — A opens a profile, B returns to the screen the menu was opened from. Likes and reposts share one list (only one is on screen at a time), fetched through Wolfram's `getLikes`/`getRepostedBy` with the same paging as the other actor lists. ([#132](https://github.com/ewanc26/cobalt/pull/132))
+- Browser-based AT Protocol OAuth sign-in through the hosted Wolfram OAuth node, with a short-lived pairing link that can be opened on another device. The PDS handles the account password and MFA; Cobalt never sees them. ([#128](https://github.com/ewanc26/cobalt/pull/128))
 
 ### Changed
-- The README has a Using section with the controls, the build requirements now sit under Building, and the storage section no longer says app passwords are the only way to sign in.
-- A new mark: a cut stone replaces the ring-C on the icon and both splash screens, and the README has a logo and badges to match the other repositories. Both come from one generator, `tools/gen_assets.py`.
-- The docs no longer say OAuth is not planned. Cobalt has had browser OAuth sign-in through a Wolfram OAuth node since 0.5.0; the README, AGENTS.md and the sign-in header comment now say so, and `docs/PARITY.md` records both sign-in flows as separate rows next to Indigo and Platinum.
-- The right stick navigates like the left: both sticks drive the D-pad directions, and letting go of one does not release a direction the other is still holding.
-
-### Internal
-- The change flow is the stack's shared one, adopted from Wolfram: a PR template, the `flow` workflow (branch, title, description and commit checks, a drift check and the README style check), a `CI gate` job, and rebase-merge-only. Cobalt adds a check that code changes carry a changelog line and a doc change, a guard that turns a push to `main` without a PR red, and release gating: a `v*` tag must be on `main` with green CI, and `tools/publish.sh` refuses a commit whose CI is not green.
-- Muted-word matching is Wolfram's now (`wf_mod_match_mute_words`) instead of a Cobalt copy. It follows the official client's rules: a single word matches whole words with punctuation trimmed ("cat." matches "cat", "cat's" no longer does), a phrase matches as a substring. `tools/check-shared-logic.sh` stops the copy coming back.
+- The README has a Using section with the controls, the build requirements now sit under Building, and the storage section no longer says app passwords are the only way to sign in. ([#153](https://github.com/ewanc26/cobalt/pull/153))
+- A new mark: a cut stone replaces the ring-C on the icon and both splash screens, and the README has a logo and badges to match the other repositories. Both come from one generator, `tools/gen_assets.py`. ([#144](https://github.com/ewanc26/cobalt/pull/144))
+- The docs no longer say OAuth is not planned. Cobalt has had browser OAuth sign-in through a Wolfram OAuth node since the OAuth sign-in change (#128, never released on its own); the README, AGENTS.md and the sign-in header comment now say so, and `docs/PARITY.md` records both sign-in flows as separate rows next to Indigo and Platinum. ([#137](https://github.com/ewanc26/cobalt/pull/137))
+- The right stick navigates like the left: both sticks drive the D-pad directions, and letting go of one does not release a direction the other is still holding. ([#132](https://github.com/ewanc26/cobalt/pull/132))
+- The change flow is the stack's shared one, adopted from Wolfram: a PR template, the `flow` workflow (branch, title, description and commit checks, a drift check and the README style check), a `CI gate` job, and rebase-merge-only. Cobalt adds a check that code changes carry a changelog line and a doc change, a guard that turns a push to `main` without a PR red, and release gating: a `v*` tag must be on `main` with green CI, and `tools/publish.sh` refuses a commit whose CI is not green. ([#149](https://github.com/ewanc26/cobalt/pull/149))
+- Muted-word matching is Wolfram's now (`wf_mod_match_mute_words`) instead of a Cobalt copy. It follows the official client's rules: a single word matches whole words with punctuation trimmed ("cat." matches "cat", "cat's" no longer does), a phrase matches as a substring. `tools/check-shared-logic.sh` stops the copy coming back. ([#152](https://github.com/ewanc26/cobalt/pull/152))
 - AGENTS.md no longer says Cobalt has one hardcoded custom feed. It reads the account's saved feeds, as it has for a while ([#154](https://github.com/ewanc26/cobalt/pull/154)).
-- The image cache takes its slot and loader counts at creation (`cobalt_imagecache_create_sized`) rather than fixing them at compile time. The viewer's caches are two slots and one loader each — a person looks at one picture at a time — decoded at the surface's own height (720 on the TV, 480 on the GamePad), where a card thumbnail stays capped at 320.
-
-## [0.5.0] - 2026-10-04
-
-### Added
-- Browser-based AT Protocol OAuth sign-in through the hosted Wolfram OAuth node, with a short-lived pairing link that can be opened on another device. The PDS handles the account password and MFA; Cobalt never sees them.
-
-### Changed
-- OAuth-node sessions use Wolfram's DPoP-backed upstream session instead of storing PDS refresh credentials on the Wii U.
-
-### Internal
-- Added a unified hosted OAuth node to the Wolfram SDK and wired Cobalt to it as a thin console client.
+- The image cache takes its slot and loader counts at creation (`cobalt_imagecache_create_sized`) rather than fixing them at compile time. The viewer's caches are two slots and one loader each — a person looks at one picture at a time — decoded at the surface's own height (720 on the TV, 480 on the GamePad), where a card thumbnail stays capped at 320. ([#132](https://github.com/ewanc26/cobalt/pull/132))
+- OAuth-node sessions use Wolfram's DPoP-backed upstream session instead of storing PDS refresh credentials on the Wii U. ([#128](https://github.com/ewanc26/cobalt/pull/128))
+- A unified hosted OAuth node was added to the Wolfram SDK, and Cobalt is wired to it as a thin console client. ([#128](https://github.com/ewanc26/cobalt/pull/128))
 
 ## [0.4.0] - 2026-10-03
 
@@ -116,8 +104,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.5.0...HEAD
-[0.5.0]: https://github.com/ewanc26/cobalt/compare/v0.4.0...v0.5.0
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/ewanc26/cobalt/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/ewanc26/cobalt/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/ewanc26/cobalt/compare/v0.3.0...v0.3.1
