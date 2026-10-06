@@ -1,8 +1,8 @@
 # Canonical in ewanc26/cobalt; drift-checked in every repo (tools/repo_sync.py forms check).
-name: Documentation
-description: Docs that are missing, wrong or unclear.
+name: Bug
+description: 'Something in the code is wrong: a crash, wrong output, a build failure, a protocol mismatch.'
 labels:
-- documentation
+- bug
 body:
 - type: markdown
   attributes:
@@ -32,23 +32,31 @@ body:
   validations:
     required: true
 - type: textarea
+  id: what
+  attributes:
+    label: What I found
+    description: What happens, and what I expected instead.
+  validations:
+    required: true
+- type: textarea
+  id: repro
+  attributes:
+    label: How to reproduce it
+    description: Steps, inputs and the smallest code that shows it.
+  validations:
+    required: true
+- type: textarea
   id: where
   attributes:
-    label: Where
-    description: The file or page, e.g. README.md or docs/oauth.md.
+    label: Where it happens
+    description: 'Commit or version, platform (host, emulator, hardware: say which), build options.'
   validations:
     required: true
 - type: textarea
-  id: wrong
+  id: evidence
   attributes:
-    label: What's wrong
-    description: What it says now, or what is missing.
+    label: Evidence
+    description: Logs, CI run links, output. Never paste tokens or keys.
+    render: text
   validations:
-    required: true
-- type: textarea
-  id: should
-  attributes:
-    label: What it should say
-    description: 'And the source for it: code, spec or lexicon.'
-  validations:
-    required: true
+    required: false
