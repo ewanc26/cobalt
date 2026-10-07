@@ -15,8 +15,8 @@ for m in re.finditer(r"!\[[^\]]*\]\(([^)]+)\)", text):
     p = os.path.join(os.path.dirname(guide), m.group(1))
     if not os.path.isfile(p):
         errs.append("image missing: %s" % m.group(1))
-# The home menu is the guide's table of contents: every entry in app.c must be named.
-app = open(os.path.join(ROOT, "src/app/app.c")).read()
+# The home menu is the guide's table of contents: every entry in app_home.c must be named.
+app = open(os.path.join(ROOT, "src/app/app_home.c")).read()
 block = app[app.index("menu_label(int index)"):app.index("menu_hint(int index)")]
 labels = re.findall(r'case ACTION_\w+:\s+return (?:signed_in\(\) \? )?"([^"]+)"', block)
 for label in labels:
