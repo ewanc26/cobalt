@@ -1227,28 +1227,21 @@ upload_attachment(const char *path, const char *alt)
    return embed;
 }
 
-/* Reply-gate on a new top-level post. A failure here does not roll the post
- * back — it exists, just ungated, which is the safer failure than silently
- * dropping it. `gate` is 0 for none, 1 followed/mentioned, 2 nobody. */
+/* Reply-gate on a new top-level post (the rules are Wolfram's). A failure here
+ * does not roll the post back — it exists, just ungated, which is the safer
+ * failure than silently dropping it. `gate` is a cobalt_reply_gate: 0 none,
+ * 1 followed/mentioned, 2 nobody. */
 static void
 apply_reply_gate(int gate, const char *post_uri)
 {
-   if (gate == 0 || !post_uri || !post_uri[0]) {
+   if (!post_uri || !post_uri[0]) {
       return;
    }
-   const char *allow_json =
-      (gate == 2) ? "[]" /* nobody */
-                  : "[{\"$type\":\"app.bsky.feed.threadgate#followingRule\"},"
-                    "{\"$type\":\"app.bsky.feed.threadgate#mentionRule\"}]";
-   wf_agent_post_result gate_result;
-   memset(&gate_result, 0, sizeof(gate_result));
-   const wf_status gate_status =
-      wf_agent_create_threadgate(s.wf, post_uri, allow_json, NULL, 0, &gate_result);
-   if (gate_status != WF_OK) {
-      COBALT_LOGW("session: threadgate failed (%d) for %s", (int) gate_status,
-                  post_uri);
+   const wf_status st = wf_agent_set_reply_gate(s.wf, post_uri, (wf_reply_gate) gate);
+   if (st != WF_OK) {
+      COBALT_LOGW("session: reply gate failed (%d) for %s", (int) st,
+                  post_uri ? post_uri : "(no uri)");
    }
-   wf_agent_post_result_free(&gate_result);
 }
 
 static void

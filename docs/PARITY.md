@@ -45,7 +45,7 @@ OAuth on a console is not the AT Protocol browser flow running on the console. T
 | Link cards | implemented | implemented | issue platinum#32 | |
 | Who liked or reposted a post | implemented | implemented | issue platinum#36 | |
 | Compose, reply, quote | implemented | implemented | partial, issue platinum#27 | Platinum posts only |
-| Attach an image when composing | implemented | issue indigo#19 | issue platinum#33 | Cobalt: `wf_agent_upload_blob_ex`, picker in `src/app/compose.c` |
+| Attach an image when composing | implemented | partial, issue indigo#19 | issue platinum#33 | Cobalt: `wf_agent_upload_blob_ex`, picker in `src/app/compose.c` |
 | Reply gates | implemented | implemented | issue platinum#29 | |
 | Like and repost, with undo | implemented | implemented | issue platinum#28 | |
 | Delete your own post | implemented | issue indigo#22 | issue platinum#42 | Cobalt: `confirm_delete` in `src/app/thread.h` |

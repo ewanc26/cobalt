@@ -18,6 +18,7 @@ rules=(
   '0x428a2f98|-|wf_sha256_* from wolfram/update.h (SHA-256 is Wolfram'"'"'s)'
   'parse_semver|cmp_pre|-|wf_update_compare_versions from wolfram/update.h (version comparison is Wolfram'"'"'s)'
   'image/jpeg|-|wf_attach_mime / wf_agent_upload_image_file from wolfram/attach.h (attachment types, limit and upload are Wolfram'"'"'s)'
+  'threadgate#followingRule|-|wf_agent_set_reply_gate from wolfram/threadgate_postgate.h (the reply-gate rules are Wolfram'"'"'s)'
   'days_from_civil|civil_from_days|-|wf_time_* from wolfram/time.h (RFC 3339 and relative time are Wolfram'"'"'s)'
 )
 

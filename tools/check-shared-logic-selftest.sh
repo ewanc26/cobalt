@@ -29,4 +29,7 @@ expect fail "civil-date conversion grows back"
 echo 'int x;' > "$tmp/src/atproto/t.c"
 echo 'const char *m = "image/jpeg";' > "$tmp/src/atproto/mime.c"
 expect fail "attachment MIME mapping grows back"
+echo 'int x;' > "$tmp/src/atproto/mime.c"
+echo 'const char *m = "app.bsky.feed.threadgate#followingRule";' > "$tmp/src/atproto/gate.c"
+expect fail "reply-gate rules grow back"
 [ "$bad" -eq 0 ] && echo "all shared-logic selftests passed" || exit 1

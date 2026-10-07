@@ -342,6 +342,7 @@ Protocol, OAuth, moderation, parsing, muted words, pagination of protocol result
 - **Time formatting.** `wolfram/time.h` (`wf_time_parse_rfc3339`, `wf_time_format_rfc3339`, `wf_time_relative`). Cobalt keeps only the clock, in `src/util/clock.c`; the guard fails if a civil-date conversion grows back.
 - **Muted words.** `wolfram/muted_words.h` (`wf_muted_list`, v0.31.0). `src/atproto/prefs.c` holds the list and the hide-reposts rule and applies both to a feed.
 - **Image attachments.** `wolfram/attach.h` (v0.33.0): the type and size filter, the folder scan and the upload to an image embed. `src/app/compose.c` only draws the picker; the guard fails if the MIME mapping grows back.
+- **Reply gates.** `wf_agent_set_reply_gate` (`wolfram/threadgate_postgate.h`, v0.34.0); `apply_reply_gate` in `session.c` only logs a failure.
 - **Failure kinds.** `wolfram/failure.h`; `describe_failure` in `session.c` only chooses the wording.
 
 `tools/check-shared-logic.sh` (CI job `shared-logic`) fails if the old matcher grows back or the pairing method names appear in `src/` at all. Its self-test has a deliberate violation per rule. When Wolfram takes something over, delete the local copy and tighten the allow-list in the same PR.
