@@ -56,7 +56,8 @@ base=$(gh repo view "$UPSTREAM" --json defaultBranchRef --jq .defaultBranchRef.n
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 gh repo clone "$me/wiiu-hbas-repo" "$work/repo" -- --depth 1 --branch "$base" -q
 cd "$work/repo"
-git remote add upstream "https://github.com/$UPSTREAM.git"
+# gh adds an `upstream` remote when it clones a fork, so only add it when it is missing.
+git remote get-url upstream >/dev/null 2>&1 || git remote add upstream "https://github.com/$UPSTREAM.git"
 git fetch -q --depth 1 upstream "$base" && git reset -q --hard "upstream/$base"
 
 if [ -d packages/Cobalt ]; then verb="Update"; else verb="Add"; fi
