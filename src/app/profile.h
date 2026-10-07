@@ -16,6 +16,7 @@
 #include "atproto/feed.h"
 #include "atproto/actor_profile.h"
 #include "input/input.h"
+#include "ui/listnav.h"
 #include "ui/render.h"
 
 #include <stdbool.h>
@@ -32,14 +33,7 @@ typedef enum {
 } cobalt_profile_action;
 
 typedef struct {
-   int selected;   /* 0 is the header card, 1.. are posts */
-   int scroll;
-   int last_visible;
-
-   SDL_Rect hit[COBALT_FEED_MAX_POSTS + 1];
-   int hit_index[COBALT_FEED_MAX_POSTS + 1];
-   int hit_count;
-   bool hit_valid;
+   cobalt_listnav nav;   /* row 0 is the header card, 1.. are posts */
 } cobalt_profile_view;
 
 void cobalt_profile_view_init(cobalt_profile_view *view);
