@@ -14,7 +14,7 @@
 A native AT Protocol / Bluesky client for the Nintendo Wii U, built as Aroma
 homebrew with devkitPro/WUT and SDL2.
 
-**Version 0.6.0**
+**Version 0.7.0**
 
 Cobalt exists because I looked at a Wii U's weak little PowerPC tri-core and
 decided that, somehow, it was going to post to Bluesky.
