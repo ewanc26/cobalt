@@ -19,8 +19,8 @@ The two flows have different dependencies, so they are two rows.
 
 | Flow | Cobalt | Indigo | Platinum | Evidence |
 |---|---|---|---|---|
-| App password | implemented | implemented | implemented | Cobalt: `src/app/signin.c`, the login job in `src/atproto/session.c`; host and mock-PDS tests. Platinum: `bridge/src/auth/app-password.ts` and `macos9/apppw.c`. |
-| OAuth | implemented | implemented | implemented | Cobalt: `run_oauth()` in `src/atproto/session.c` through a Wolfram OAuth node (`docs/oauth-node.md` in Wolfram). An empty password in the form selects it. The pairing exchange (begin, a terminal error, completion into a session) has an e2e test against a mock node (`tests/e2e_main.c`); that test found wolfram#124, which had stopped the last step since 0.5.0. Not verified on a console by me. Platinum's bridge pairs differently (its own Node protocol). |
+| App password | implemented | implemented | implemented | Cobalt: `src/app/signin.c`, the login job in `src/atproto/session_auth.c`; host and mock-PDS tests. Platinum: `bridge/src/auth/app-password.ts` and `macos9/apppw.c`. |
+| OAuth | implemented | implemented | implemented | Cobalt: `run_oauth()` in `src/atproto/session_auth.c` through a Wolfram OAuth node (`docs/oauth-node.md` in Wolfram). An empty password in the form selects it. The pairing exchange (begin, a terminal error, completion into a session) has an e2e test against a mock node (`tests/e2e_main.c`); that test found wolfram#124, which had stopped the last step since 0.5.0. Not verified on a console by me. Platinum's bridge pairs differently (its own Node protocol). |
 | Pairing client shared in Wolfram | implemented | implemented | n/a | Cobalt calls `wf_oauth_pair_run` (wolfram#101); covered by an e2e test against a mock node. |
 
 OAuth on a console is not the AT Protocol browser flow running on the console. The node holds the OAuth session and the DPoP key; the console holds a bearer token for the node and never sees the account password, MFA or a refresh token. The token is not logged.
@@ -50,7 +50,7 @@ OAuth on a console is not the AT Protocol browser flow running on the console. T
 | Like and repost, with undo | implemented | implemented | issue platinum#28 | |
 | Delete your own post | implemented | issue indigo#22 | issue platinum#42 | Cobalt: `confirm_delete` in `src/app/thread.h` |
 | Actor search, post search | implemented | implemented | issue platinum#34 | |
-| Custom feeds | implemented | implemented | issue platinum#34 | Both read the account's saved feeds. Cobalt: `run_saved_feeds` in `src/atproto/session.c`; B from a feed goes Home, not back to the picker. |
+| Custom feeds | implemented | implemented | issue platinum#34 | Both read the account's saved feeds. Cobalt: `run_saved_feeds` in `src/atproto/session_lists.c`; B from a feed goes Home, not back to the picker. |
 | Lists and members | implemented | implemented | issue platinum#34 | Read-only in both consoles |
 | Mute and block, with lists | implemented | implemented | issue platinum#35 | |
 | Muted words, hide reposts | implemented | implemented | issue platinum#35 | Both call Wolfram's `wf_muted_list` |
