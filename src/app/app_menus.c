@@ -226,6 +226,8 @@ cobalt_app_popup_choose(cobalt_app *app, int index)
       case COBALT_POPUP_FOLLOWERS:
       case COBALT_POPUP_FOLLOWING:
          app->follows_profile_return = app->profile_return;
+         app->follows_profile_selected = app->profile.nav.selected;
+         app->follows_profile_scroll = app->profile.nav.scroll;
          cobalt_graph_view_open_follows(&app->graph,
                                         it->kind == COBALT_POPUP_FOLLOWERS
                                            ? COBALT_GRAPH_FOLLOWERS
