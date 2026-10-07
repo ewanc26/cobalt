@@ -51,6 +51,9 @@ typedef struct {
    bool touch_ended;
    int touch_x;
    int touch_y;
+   /* The touch that just ended was a drag, not a tap. Set with touch_ended; a
+    * drag is never also a tap, so cobalt_input_tapped is false for it. */
+   bool touch_dragged;
 
    bool quit_requested;
 } cobalt_input;
@@ -78,7 +81,19 @@ cobalt_input_held(const cobalt_input *in, cobalt_button btn)
    return in->held[btn];
 }
 
-/* True if a touch was released inside `rect` this frame (GamePad coords). */
+/*
+ * Scroll a list by touch: move `*selected` by the whole rows a finger dragged
+ * along the screen has covered this frame (up is forward, down is back),
+ * clamped to 0..count-1. One row is the average height of the rows drawn last
+ * frame (`hit`, `hit_count`; NULL or 0 for a default), so the list follows the
+ * finger at about its speed whatever the card heights. Call once per frame,
+ * from the screen that owns the list.
+ */
+void cobalt_input_drag_list(const cobalt_input *in, int *selected, int count,
+                            const SDL_Rect *hit, int hit_count);
+
+/* True if a touch was released inside `rect` this frame (GamePad coords). A drag
+ * that happens to end there is not a tap. */
 bool cobalt_input_tapped(const cobalt_input *in, const SDL_Rect *rect);
 
 #ifdef __cplusplus

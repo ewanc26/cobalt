@@ -2503,6 +2503,66 @@ axis_event(cobalt_input *in, SDL_GameControllerAxis axis, int value)
 }
 
 static void
+finger_event(cobalt_input *in, Uint32 type, float x, float y)
+{
+   SDL_Event e;
+   memset(&e, 0, sizeof(e));
+   e.type = type;
+   e.tfinger.x = x;
+   e.tfinger.y = y;
+   cobalt_input_handle_event(in, &e);
+}
+
+static void
+test_touch_drag_scrolls_a_list(void)
+{
+   begin("a touch drag scrolls a list by rows; a tap is still a tap");
+   cobalt_input in;
+   SDL_Rect hit[3] = { {0, 0, 100, 100}, {0, 100, 100, 100}, {0, 200, 100, 100} };
+   int selected = 0;
+   const float px = 1.0f / (float) COBALT_DRC_HEIGHT;
+
+   cobalt_input_init(&in);
+
+   /* A tap: no drag, a release inside the rect is a tap, the list does not move. */
+   finger_event(&in, SDL_FINGERDOWN, 0.1f, 50.0f * px);
+   cobalt_input_drag_list(&in, &selected, 10, hit, 3);
+   CHECK(selected == 0);
+   finger_event(&in, SDL_FINGERUP, 0.1f, 50.0f * px);
+   CHECK(in.touch_ended && !in.touch_dragged);
+   CHECK(cobalt_input_tapped(&in, &hit[0]));
+
+   /* Dragging up by two rows' height (100 px each) moves forward two, and the
+    * release is not a tap even though it ends inside a row. */
+   cobalt_input_begin_frame(&in, 0);
+   finger_event(&in, SDL_FINGERDOWN, 0.1f, 250.0f * px);
+   finger_event(&in, SDL_FINGERMOTION, 0.1f, 150.0f * px);
+   cobalt_input_drag_list(&in, &selected, 10, hit, 3);
+   CHECK(selected == 1);
+   finger_event(&in, SDL_FINGERMOTION, 0.1f, 50.0f * px);
+   cobalt_input_drag_list(&in, &selected, 10, hit, 3);
+   CHECK(selected == 2);
+   finger_event(&in, SDL_FINGERUP, 0.1f, 50.0f * px);
+   CHECK(in.touch_ended && in.touch_dragged);
+   CHECK(!cobalt_input_tapped(&in, &hit[0]));
+
+   /* Dragging down goes back, never past the first row; a long drag up stops at
+    * the last row; with no touch or no rows nothing moves. */
+   cobalt_input_begin_frame(&in, 0);
+   CHECK(!in.touch_dragged);
+   cobalt_input_drag_list(&in, &selected, 10, hit, 3);
+   CHECK(selected == 2);
+   finger_event(&in, SDL_FINGERDOWN, 0.1f, 50.0f * px);
+   finger_event(&in, SDL_FINGERMOTION, 0.1f, 470.0f * px);
+   cobalt_input_drag_list(&in, &selected, 10, NULL, 0);
+   CHECK(selected == 0);
+   finger_event(&in, SDL_FINGERMOTION, 0.1f, 0.0f);
+   cobalt_input_drag_list(&in, &selected, 3, hit, 3);
+   CHECK(selected >= 0 && selected <= 2);
+   finger_event(&in, SDL_FINGERUP, 0.1f, 0.0f);
+}
+
+static void
 test_both_sticks_navigate(void)
 {
    begin("both sticks act as a D-pad");
@@ -2626,6 +2686,7 @@ main(int argc, char **argv)
    test_pinned_prepend();
    test_compose();
    test_both_sticks_navigate();
+   test_touch_drag_scrolls_a_list();
    test_popup_touch();
    test_post_refuses_partial_refs();
    test_notification_wording();
