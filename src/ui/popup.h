@@ -11,6 +11,8 @@
 #include "ui/render.h"
 #include "ui/theme.h"
 
+#include <wolfram/qr.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -54,6 +56,12 @@ typedef struct {
    bool text_mode;
    char text[COBALT_POPUP_ARG_MAX];
 
+   /* The text as a QR code (Wolfram's encoder), so a phone can scan a link the
+    * console cannot open. qr_size is 0 when the text is not a link or did not
+    * encode. Row-major, 1 for a dark module, no quiet zone. */
+   int qr_size;
+   uint8_t qr[WF_QR_MAX_SIZE * WF_QR_MAX_SIZE];
+
    SDL_Rect panel;
    SDL_Rect hit[COBALT_POPUP_MAX];
    bool hit_valid;
@@ -64,6 +72,9 @@ void cobalt_popup_add(cobalt_popup *p, cobalt_popup_kind kind, const char *label
                       const char *arg);
 void cobalt_popup_show_text(cobalt_popup *p, const char *title, const char *text);
 void cobalt_popup_close(cobalt_popup *p);
+
+/* Whether `text` is a web link, which is what the text page shows as a QR code. */
+bool cobalt_popup_text_is_link(const char *text);
 
 /* Returns the chosen index, -1 while nothing was chosen, -2 when closed. */
 int cobalt_popup_update(cobalt_popup *p, const cobalt_input *in);

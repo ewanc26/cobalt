@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Added
+
+- A link's page in the More menu now also shows the address as a QR code, so it can be scanned from a phone. ([#101](https://github.com/ewanc26/cobalt/issues/101))
+
 ### Changed
 
 - Timestamps, muted-word matching and failure classification now come from Wolfram v0.31.0 (`wf_time_*`, `wf_muted_list`, `wf_failure_classify`); Cobalt's own copies are deleted. A server-side failure now says the server had a problem instead of reporting a refused request. ([#186](https://github.com/ewanc26/cobalt/pull/186))
