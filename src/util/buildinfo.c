@@ -21,9 +21,6 @@
 #endif
 
 const char *cobalt_version(void) { return COBALT_VERSION; }
-const char *cobalt_build_commit(void) { return COBALT_BUILD_COMMIT; }
-int cobalt_build_number(void) { return COBALT_BUILD_NUMBER; }
-const char *cobalt_build_date(void) { return COBALT_BUILD_DATE; }
 
 const char *
 cobalt_build_describe(void)
