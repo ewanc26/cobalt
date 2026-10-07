@@ -4,6 +4,7 @@
 #ifdef COBALT_HAS_WOLFRAM
 #include <wolfram/feed_typed.h>
 #include <wolfram/post_view_typed.h>
+#include <wolfram/time.h>
 #include <wolfram/thread_typed.h>
 #endif
 
@@ -527,8 +528,8 @@ fill_record(cobalt_post *post, const cJSON *record_json, const char *indexed_at,
 
    const char *created = rec.created_at ? rec.created_at : indexed_at;
    int64_t epoch = 0;
-   if (created && cobalt_time_parse_rfc3339(created, &epoch) && now > 0) {
-      cobalt_time_relative(epoch, now, post->age, sizeof(post->age));
+   if (created && wf_time_parse_rfc3339(created, &epoch) == WF_OK && now > 0) {
+      wf_time_relative(epoch, now, post->age, sizeof(post->age));
    } else {
       /* An unparseable timestamp, or a console with no usable clock. Blank is
        * honest; a wrong age is not. */

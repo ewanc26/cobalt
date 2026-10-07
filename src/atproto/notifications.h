@@ -16,7 +16,7 @@
  */
 
 #include "atproto/feed.h"
-#include "util/timefmt.h"
+#include "util/clock.h"
 
 #include <stdbool.h>
 #include <stddef.h>
