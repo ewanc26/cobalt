@@ -72,19 +72,29 @@ cobalt_session_run_login(const cobalt_job_input *in, cobalt_job_result *r, cobal
 {
    cobalt_session_teardown_agent();
 
+   const char *entry = cobalt_session_entry_service(in->service);
    SDL_LockMutex(g_session.lock);
-   snprintf(g_session.service, sizeof(g_session.service), "%s", in->service);
+   snprintf(g_session.service, sizeof(g_session.service), "%s", entry);
    SDL_UnlockMutex(g_session.lock);
-
-   g_session.wf = new_wf_agent(in->service);
+   g_session.wf = new_wf_agent(entry);
    g_session.prefs_loaded = false;
    if (!g_session.wf) {
       cobalt_session_set_message(r, "Could not create the client.");
       return;
    }
 
-   COBALT_LOGI("session: createSession at %s", in->service);
-   wf_status status = wf_agent_login(g_session.wf, in->identifier, in->password);
+   /* The account's PDS is discovered from its handle, so the user never has to
+    * name the host it lives on (wf_agent_login_discovered). */
+   COBALT_LOGI("session: discovering the PDS for %s", in->identifier);
+   char *pds = NULL;
+   wf_status status = wf_agent_login_discovered(g_session.wf, in->identifier, in->password, &pds);
+   if (status == WF_OK && pds) {
+      COBALT_LOGI("session: signed in at %s", pds);
+      SDL_LockMutex(g_session.lock);
+      snprintf(g_session.service, sizeof(g_session.service), "%s", pds);
+      SDL_UnlockMutex(g_session.lock);
+   }
+   free(pds);
    if (status != WF_OK) {
       COBALT_LOGW("session: login failed (%d)", (int) status);
       cobalt_session_describe_failure(r, status, COBALT_JOB_LOGIN);

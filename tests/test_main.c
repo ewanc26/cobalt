@@ -1230,6 +1230,10 @@ test_feed_link_domain(void)
       CHECK(cobalt_post_has_card(&post));
    }
 
+   begin("sign-in starts from the typed host, or the default when empty");
+   CHECK(strcmp(cobalt_session_entry_service(""), cobalt_session_default_service()) == 0);
+   CHECK(strcmp(cobalt_session_entry_service("https://pds.example"), "https://pds.example") == 0);
+
    begin("link card domain extraction");
 
    char out[64];
