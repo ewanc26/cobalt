@@ -32,4 +32,7 @@ expect fail "attachment MIME mapping grows back"
 echo 'int x;' > "$tmp/src/atproto/mime.c"
 echo 'const char *m = "app.bsky.feed.threadgate#followingRule";' > "$tmp/src/atproto/gate.c"
 expect fail "reply-gate rules grow back"
+echo 'int x;' > "$tmp/src/atproto/gate.c"
+echo 'const char *m = "savedFeedsPrefV2";' > "$tmp/src/atproto/feeds.c"
+expect fail "saved-feeds walk grows back"
 [ "$bad" -eq 0 ] && echo "all shared-logic selftests passed" || exit 1
