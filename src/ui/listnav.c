@@ -25,6 +25,26 @@ cobalt_listnav_rewind(cobalt_listnav *nav)
    nav->last_visible = -1;
 }
 
+void
+cobalt_listnav_restore(cobalt_listnav *nav, int selected, int scroll)
+{
+   if (!nav) {
+      return;
+   }
+   if (selected < 0) {
+      selected = 0;
+   }
+   if (scroll < 0) {
+      scroll = 0;
+   }
+   if (scroll > selected) {
+      scroll = selected;
+   }
+   nav->selected = selected;
+   nav->scroll = scroll;
+   nav->last_visible = -1;
+}
+
 int
 cobalt_listnav_move(cobalt_listnav *nav, const cobalt_input *in, int count)
 {
