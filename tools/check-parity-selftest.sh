@@ -13,7 +13,7 @@ run pass "real files" "$P" "$R" "$A"
 
 sed 's/| App password | implemented/| App password | done/' "$P" > "$tmp/p1"
 run fail "unknown state word" "$tmp/p1" "$R" "$A"
-sed 's/issue platinum#38/issue platinum/' "$P" > "$tmp/p2"
+sed 's/issue platinum#31/issue platinum/' "$P" > "$tmp/p2"
 run fail "issue cell with no reference" "$tmp/p2" "$R" "$A"
 sed 's/^| OAuth | implemented/| OAuth | issue #1/' "$P" > "$tmp/p3"
 run fail "OAuth marked as a gap" "$tmp/p3" "$R" "$A"
