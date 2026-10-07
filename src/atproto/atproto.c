@@ -243,12 +243,6 @@ cobalt_atproto_sdk_version(void)
 
 #endif /* COBALT_HAS_WOLFRAM */
 
-cobalt_atproto_status
-cobalt_atproto_get_status(void)
-{
-   return s_status;
-}
-
 const char *
 cobalt_atproto_status_string(void)
 {
