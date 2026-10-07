@@ -56,6 +56,7 @@ replace testing on the console.
 - Profiles, follows and unfollows
 - Followers, following and profile tabs
 - Pinned posts
+- Links shown as a QR code (Wolfram's encoder), so a phone can open what the console cannot
 - Avatars
 - Post, reply and quote images with alt text
 - A full-size image viewer, from the post menu, on both screens

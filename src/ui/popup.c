@@ -2,6 +2,7 @@
 #include "ui/theme.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static void
@@ -48,6 +49,49 @@ cobalt_popup_show_text(cobalt_popup *p, const char *title, const char *text)
    cobalt_popup_open(p, title);
    p->text_mode = true;
    copy_utf8(p->text, sizeof(p->text), text);
+
+   if (cobalt_popup_text_is_link(p->text)) {
+      uint8_t *modules = NULL;
+      int size = 0;
+      if (wf_qr_encode(p->text, WF_QR_ECC_M, &modules, &size) == WF_OK && modules) {
+         memcpy(p->qr, modules, (size_t) size * (size_t) size);
+         p->qr_size = size;
+      }
+      free(modules);
+   }
+}
+
+bool
+cobalt_popup_text_is_link(const char *text)
+{
+   return text && (strncmp(text, "http://", 7) == 0 || strncmp(text, "https://", 8) == 0);
+}
+
+/* Largest whole-pixel module that fits `room` pixels with the four-module quiet
+ * zone, at most `cap`; 0 when even one pixel per module does not fit. */
+static int
+qr_module_px(const cobalt_popup *p, int room, int cap)
+{
+   int px = p->qr_size > 0 ? room / (p->qr_size + 8) : 0;
+   return px > cap ? cap : px;
+}
+
+static void
+draw_qr(cobalt_render *r, const cobalt_popup *p, int module_px, int x, int y)
+{
+   const int quiet = 4 * module_px;
+   const int side = p->qr_size * module_px + 2 * quiet;
+   const SDL_Rect paper = { x, y, side, side };
+   cobalt_fill_rect(r, &paper, (SDL_Color) { 0xFF, 0xFF, 0xFF, 0xFF });
+   for (int row = 0; row < p->qr_size; row++) {
+      for (int col = 0; col < p->qr_size; col++) {
+         if (p->qr[row * p->qr_size + col]) {
+            const SDL_Rect m = { x + quiet + col * module_px, y + quiet + row * module_px,
+                                 module_px, module_px };
+            cobalt_fill_rect(r, &m, (SDL_Color) { 0, 0, 0, 0xFF });
+         }
+      }
+   }
 }
 
 void
@@ -144,12 +188,21 @@ cobalt_popup_draw(cobalt_popup *p, cobalt_render *r, cobalt_surface_id surface)
    if (max_rows < 1) {
       max_rows = 1;
    }
+   /* A link's QR code takes whatever the two text lines leave, up to 6px modules. */
+   int qr_px = 0;
+   if (p->text_mode && p->qr_size > 0) {
+      qr_px = qr_module_px(p, max_h - fixed - rows * row_h, 6);
+      if (qr_px < 1) {
+         qr_px = 0;
+      }
+   }
+   const int qr_side = qr_px ? (p->qr_size + 8) * qr_px : 0;
    int shown = rows < max_rows ? rows : max_rows;
    int first = 0;
    if (!p->text_mode && p->selected >= shown) {
       first = p->selected - shown + 1;
    }
-   const int h = fixed + shown * row_h;
+   const int h = fixed + shown * row_h + (qr_side ? qr_side + pad : 0);
    p->panel = (SDL_Rect) { (m->width - w) / 2, (m->height - h) / 2, w, h };
    cobalt_draw_tile(r, &p->panel, 0.0f);
 
@@ -164,6 +217,9 @@ cobalt_popup_draw(cobalt_popup *p, cobalt_render *r, cobalt_surface_id surface)
    if (p->text_mode) {
       cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, p->text, p->panel.x + pad, y,
                                w - 2 * pad, 2, COBALT_COLOUR_TEXT);
+      if (qr_side) {
+         draw_qr(r, p, qr_px, p->panel.x + (w - qr_side) / 2, y + 2 * row_h + pad / 2);
+      }
    } else {
       for (int i = first; i < p->count && i < first + shown; i++) {
          SDL_Rect row = { p->panel.x + pad / 2, y, w - pad, row_h };
