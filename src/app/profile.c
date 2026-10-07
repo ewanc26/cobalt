@@ -80,6 +80,8 @@ cobalt_profile_view_update(cobalt_profile_view *view, const cobalt_input *in)
     * the cursor past the end. The header always exists, so `rows` is at least
     * one and the cursor never clamps to -1 here. */
    cobalt_list_clamp(&view->selected, &view->scroll, rows);
+   cobalt_input_drag_list(in, &view->selected, rows, view->hit_valid ? view->hit : NULL,
+                          view->hit_count);
 
    if (view->selected < view->scroll) {
       view->scroll = view->selected;
