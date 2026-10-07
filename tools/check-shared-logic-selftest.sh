@@ -35,4 +35,7 @@ expect fail "reply-gate rules grow back"
 echo 'int x;' > "$tmp/src/atproto/gate.c"
 echo 'const char *m = "savedFeedsPrefV2";' > "$tmp/src/atproto/feeds.c"
 expect fail "saved-feeds walk grows back"
+echo 'int x;' > "$tmp/src/atproto/feeds.c"
+echo 'const char *f = "posts_with_replies";' > "$tmp/src/atproto/tab.c"
+expect fail "profile-tab filters grow back"
 [ "$bad" -eq 0 ] && echo "all shared-logic selftests passed" || exit 1

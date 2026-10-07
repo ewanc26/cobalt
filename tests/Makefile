@@ -68,7 +68,7 @@ WOLFRAM_CJSON := $(firstword $(wildcard \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.a))
 
 # The updater and the entropy seed use wolfram/update.h, and the touch input uses
-# wolfram/drag.h, so the unit tests need a Wolfram checkout (at least v0.36.0).
+# wolfram/drag.h, so the unit tests need a Wolfram checkout (at least v0.36.2).
 # They compile those sources directly rather than linking the whole library.
 ifeq ($(HAVE_WOLFRAM),)
 $(error No Wolfram checkout at $(WOLFRAM_ROOT). Clone ewanc26/wolfram there, or set WOLFRAM_ROOT)
@@ -77,7 +77,7 @@ WOLFRAM_SOURCES := $(WOLFRAM_ROOT)/src/update/update_core.c $(WOLFRAM_ROOT)/src/
                    $(WOLFRAM_ROOT)/src/update/ed25519.c $(WOLFRAM_ROOT)/src/update/signature.c \
                    $(WOLFRAM_ROOT)/src/drag.c $(WOLFRAM_ROOT)/src/failure.c \
                    $(WOLFRAM_ROOT)/src/time.c $(WOLFRAM_ROOT)/src/agent/muted_words.c \
-                   $(WOLFRAM_ROOT)/src/agent/moderation.c $(WOLFRAM_ROOT)/src/qr.c $(WOLFRAM_ROOT)/src/attach.c $(WOLFRAM_ROOT)/src/util.c
+                   $(WOLFRAM_ROOT)/src/agent/moderation.c $(WOLFRAM_ROOT)/src/qr.c $(WOLFRAM_ROOT)/src/attach.c $(WOLFRAM_ROOT)/src/agent/profile_tab.c $(WOLFRAM_ROOT)/src/util.c
 # time.c's datetime check is C++, so it is built apart and the link needs the C++ runtime.
 WOLFRAM_CXX_OBJ := $(OUT)/wf_syntax.o
 CXXRT := $(if $(filter Darwin,$(shell uname -s)),-lc++,-lstdc++)
