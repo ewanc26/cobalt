@@ -20,7 +20,7 @@ cobalt_thread_view_init(cobalt_thread_view *view)
       return;
    }
    memset(view, 0, sizeof(*view));
-   view->last_visible = -1;
+   cobalt_listnav_init(&view->nav);
 }
 
 void
@@ -29,11 +29,9 @@ cobalt_thread_view_reset(cobalt_thread_view *view)
    if (!view) {
       return;
    }
-   view->selected = 0;
+   cobalt_listnav_rewind(&view->nav);
    view->text_scroll = 0;
    view->text_for = 0;
-   view->scroll = 0;
-   view->last_visible = -1;
    view->centred = false;
    view->confirm_delete = false;
 }
@@ -72,8 +70,8 @@ cobalt_thread_view_update(cobalt_thread_view *view, const cobalt_input *in)
     * than at fetch time means it survives the request completing after the
     * screen was already showing. */
    if (!view->centred && !busy) {
-      view->selected = thread->focus;
-      view->scroll = thread->focus;
+      view->nav.selected = thread->focus;
+      view->nav.scroll = thread->focus;
       view->centred = true;
    }
 
@@ -84,38 +82,38 @@ cobalt_thread_view_update(cobalt_thread_view *view, const cobalt_input *in)
     * meet `selected`, so an out-of-range cursor renders an empty list that
     * takes one press of UP per row to escape.
     */
-   cobalt_list_clamp(&view->selected, &view->scroll, thread->count);
-   cobalt_input_drag_list(in, &view->selected, thread->count, view->hit_valid ? view->hit : NULL,
-                          view->hit_count);
+   cobalt_list_clamp(&view->nav.selected, &view->nav.scroll, thread->count);
+   cobalt_input_drag_list(in, &view->nav.selected, thread->count, view->nav.hit_valid ? view->nav.hit : NULL,
+                          view->nav.hit_count);
 
    /* Down and Up read through a long post before leaving it. */
    const int text_max = view->text_total - view->text_window;
    if (cobalt_input_pressed(in, COBALT_BTN_DOWN)) {
       if (view->text_scroll < text_max) {
          view->text_scroll++;
-      } else if (view->selected < thread->count - 1) {
-         view->selected++;
+      } else if (view->nav.selected < thread->count - 1) {
+         view->nav.selected++;
       }
    }
    if (cobalt_input_pressed(in, COBALT_BTN_UP)) {
       if (view->text_scroll > 0) {
          view->text_scroll--;
-      } else if (view->selected > 0) {
-         view->selected--;
+      } else if (view->nav.selected > 0) {
+         view->nav.selected--;
       }
    }
-   if (view->selected != view->text_for) {
-      view->text_for = view->selected;
+   if (view->nav.selected != view->text_for) {
+      view->text_for = view->nav.selected;
       view->text_scroll = 0;
       view->text_total = 0;
       view->text_window = 0;
    }
 
-   if (view->hit_valid && in->touch_ended) {
-      for (int i = 0; i < view->hit_count; i++) {
-         if (cobalt_input_tapped(in, &view->hit[i])) {
-            view->selected = view->hit_index[i];
-            view->text_for = view->selected;
+   if (view->nav.hit_valid && in->touch_ended) {
+      for (int i = 0; i < view->nav.hit_count; i++) {
+         if (cobalt_input_tapped(in, &view->nav.hit[i])) {
+            view->nav.selected = view->nav.hit_index[i];
+            view->text_for = view->nav.selected;
             view->text_scroll = 0;
             view->text_total = 0;
             view->text_window = 0;
@@ -124,22 +122,12 @@ cobalt_thread_view_update(cobalt_thread_view *view, const cobalt_input *in)
       }
    }
 
-   if (view->selected < view->scroll) {
-      view->scroll = view->selected;
-   } else if (view->last_visible >= 0 && view->selected > view->last_visible) {
-      view->scroll += view->selected - view->last_visible;
-   }
-   if (view->scroll > view->selected) {
-      view->scroll = view->selected;
-   }
-   if (view->scroll < 0) {
-      view->scroll = 0;
-   }
+   cobalt_listnav_follow(&view->nav);
 
    /* Same bindings as the timeline, deliberately: the card is the same card,
     * so the buttons that act on it should be the same buttons. */
-   if (!busy && view->selected < thread->count) {
-      const cobalt_post *post = &thread->posts[view->selected];
+   if (!busy && view->nav.selected < thread->count) {
+      const cobalt_post *post = &thread->posts[view->nav.selected];
 
       /* A blocked or deleted placeholder has no URI to act on. */
       if (post->uri[0] && post->cid[0]) {
@@ -148,7 +136,7 @@ cobalt_thread_view_update(cobalt_thread_view *view, const cobalt_input *in)
          } else if (cobalt_input_pressed(in, COBALT_BTN_RIGHT)) {
             cobalt_session_begin_repost(post->uri, post->cid);
          } else if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
-            if (view->selected == thread->focus) {
+            if (view->nav.selected == thread->focus) {
                /* A is reply on the post being read, and navigation elsewhere.
                 * Replying to the thing on screen is the common case and should
                 * not need a different button from the one that acts on it. */
@@ -208,9 +196,7 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
    const int top = cobalt_content_top(r);
    const int bottom = m->height - m->pad_edge - 28;
 
-   if (touchable) {
-      view->hit_count = 0;
-   }
+   cobalt_listnav_draw_begin(&view->nav, touchable);
 
    if (thread->count == 0) {
       SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge,
@@ -221,9 +207,7 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
                                              : "This conversation is unavailable.",
                        card.x + m->pad_tile, card.y + m->pad_tile,
                        COBALT_COLOUR_TEXT);
-      if (touchable) {
-         view->last_visible = -1;
-      }
+      cobalt_listnav_draw_empty(&view->nav, touchable);
       return;
    }
 
@@ -233,11 +217,11 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
    int win = 0;
    int first = 0;
    int tot = 0;
-   if (view->selected >= 0 && view->selected < thread->count) {
-      const cobalt_post *sp = &thread->posts[view->selected];
+   if (view->nav.selected >= 0 && view->nav.selected < thread->count) {
+      const cobalt_post *sp = &thread->posts[view->nav.selected];
       const int full_w = m->width - 2 * m->pad_edge;
       const int total = cobalt_postcard_text_total(r, sp, full_w,
-                                                   thread->depth[view->selected]);
+                                                   thread->depth[view->nav.selected]);
       const int line_h = cobalt_font_line_height(r, COBALT_FONT_BODY) + m->line_gap;
       const int base = cobalt_postcard_height(r, sp, 0, true);
       int fit = line_h > 0 ? (bottom - top - base) / line_h : TEXT_LINES;
@@ -264,37 +248,37 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
    }
 
    /* Make sure the (possibly tall) selected card is actually on screen. */
-   while (view->scroll < view->selected) {
+   while (view->nav.scroll < view->nav.selected) {
       int span = 0;
-      for (int k = view->scroll; k <= view->selected; k++) {
+      for (int k = view->nav.scroll; k <= view->nav.selected; k++) {
          span += cobalt_postcard_height(r, &thread->posts[k],
-                                        k == view->selected ? sel_lines : TEXT_LINES,
-                                        k == view->selected) + m->gap;
+                                        k == view->nav.selected ? sel_lines : TEXT_LINES,
+                                        k == view->nav.selected) + m->gap;
       }
       if (span <= bottom - top) {
          break;
       }
-      view->scroll++;
+      view->nav.scroll++;
    }
 
    int y = top;
-   int last_fitted = view->scroll;
+   int last_fitted = view->nav.scroll;
 
-   for (int i = view->scroll; i < thread->count; i++) {
+   for (int i = view->nav.scroll; i < thread->count; i++) {
       const cobalt_post *post = &thread->posts[i];
-      const int lines = i == view->selected ? sel_lines : TEXT_LINES;
-      const int h = cobalt_postcard_height(r, post, lines, i == view->selected);
+      const int lines = i == view->nav.selected ? sel_lines : TEXT_LINES;
+      const int h = cobalt_postcard_height(r, post, lines, i == view->nav.selected);
 
-      if (y + h > bottom && i > view->scroll) {
+      if (y + h > bottom && i > view->nav.scroll) {
          break;
       }
 
       SDL_Rect rect = { m->pad_edge, y, m->width - 2 * m->pad_edge, h };
-      cobalt_postcard_draw_scrolled(r, post, &rect, i == view->selected, lines,
+      cobalt_postcard_draw_scrolled(r, post, &rect, i == view->nav.selected, lines,
                                     thread->depth[i],
-                                    i == view->selected ? first : 0);
+                                    i == view->nav.selected ? first : 0);
 
-      if (i == view->selected && tot > win && win > 0) {
+      if (i == view->nav.selected && tot > win && win > 0) {
          const int track_h = rect.h - 2 * m->pad_tile;
          int thumb_h = track_h * win / tot;
          if (thumb_h < 8) {
@@ -313,27 +297,20 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
 
       /* The post the thread was opened on gets an accent edge, so it stays
        * findable after scrolling away from it and back. */
-      if (i == thread->focus && i != view->selected) {
+      if (i == thread->focus && i != view->nav.selected) {
          SDL_Color edge = COBALT_COLOUR_ACCENT;
          edge.a = 140;
          SDL_Rect strip = { rect.x, rect.y, 3, rect.h };
          cobalt_fill_rect(r, &strip, edge);
       }
 
-      if (touchable && view->hit_count < COBALT_THREAD_MAX_POSTS) {
-         view->hit[view->hit_count] = rect;
-         view->hit_index[view->hit_count] = i;
-         view->hit_count++;
-      }
+      cobalt_listnav_draw_add(&view->nav, touchable, &rect, i);
 
       last_fitted = i;
       y += h + m->gap;
    }
 
-   if (touchable) {
-      view->hit_valid = true;
-      view->last_visible = last_fitted;
-   }
+   cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);
 
    cobalt_draw_hints(r, view->confirm_delete
                        ? "Delete this post for good?   A: delete   B: keep it"

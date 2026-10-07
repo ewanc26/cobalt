@@ -14,7 +14,7 @@ cobalt_lists_view_init(cobalt_lists_view *view)
       return;
    }
    memset(view, 0, sizeof(*view));
-   view->last_visible = -1;
+   cobalt_listnav_init(&view->nav);
 }
 
 void
@@ -26,9 +26,7 @@ cobalt_lists_view_open(cobalt_lists_view *view)
    view->browsing_members = false;
    view->open_uri[0] = '\0';
    view->open_name[0] = '\0';
-   view->selected = 0;
-   view->scroll = 0;
-   view->last_visible = -1;
+   cobalt_listnav_rewind(&view->nav);
 
    if (cobalt_session_lists()->count == 0) {
       cobalt_session_begin_lists(false);
@@ -51,57 +49,24 @@ update_list_of_lists(cobalt_lists_view *view, const cobalt_input *in)
       return COBALT_LISTS_VIEW_STAY;
    }
 
-   cobalt_list_clamp(&view->selected, &view->scroll, lists->count);
-   cobalt_input_drag_list(in, &view->selected, lists->count, view->hit_valid ? view->hit : NULL,
-                          view->hit_count);
+   const int tapped_index = cobalt_listnav_move(&view->nav, in, lists->count);
 
-   if (cobalt_input_pressed(in, COBALT_BTN_DOWN) &&
-       view->selected < lists->count - 1) {
-      view->selected++;
-   }
-   if (cobalt_input_pressed(in, COBALT_BTN_UP) && view->selected > 0) {
-      view->selected--;
-   }
-
-   int tapped_index = -1;
-   if (view->hit_valid && in->touch_ended) {
-      for (int i = 0; i < view->hit_count; i++) {
-         if (cobalt_input_tapped(in, &view->hit[i])) {
-            view->selected = view->hit_index[i];
-            tapped_index = view->hit_index[i];
-            break;
-         }
-      }
-   }
-
-   if (view->selected < view->scroll) {
-      view->scroll = view->selected;
-   } else if (view->last_visible >= 0 && view->selected > view->last_visible) {
-      view->scroll += view->selected - view->last_visible;
-   }
-   if (view->scroll > view->selected) {
-      view->scroll = view->selected;
-   }
-   if (view->scroll < 0) {
-      view->scroll = 0;
-   }
+   cobalt_listnav_follow(&view->nav);
 
    if (!busy && cobalt_list_summary_list_can_page(lists) &&
-       view->selected >= lists->count - 1) {
+       view->nav.selected >= lists->count - 1) {
       cobalt_session_begin_lists(true);
    }
 
    bool open = tapped_index >= 0 || cobalt_input_pressed(in, COBALT_BTN_CONFIRM);
-   if (!busy && open && view->selected < lists->count) {
-      const cobalt_list_summary *list = &lists->lists[view->selected];
+   if (!busy && open && view->nav.selected < lists->count) {
+      const cobalt_list_summary *list = &lists->lists[view->nav.selected];
       if (list->uri[0]) {
          COBALT_LOGI("lists: opening %s", list->name);
          snprintf(view->open_uri, sizeof(view->open_uri), "%s", list->uri);
          snprintf(view->open_name, sizeof(view->open_name), "%s", list->name);
          view->browsing_members = true;
-         view->selected = 0;
-         view->scroll = 0;
-         view->last_visible = -1;
+         cobalt_listnav_rewind(&view->nav);
          cobalt_session_begin_list_members(list->uri, false);
       }
    }
@@ -114,9 +79,7 @@ update_members(cobalt_lists_view *view, const cobalt_input *in)
 {
    if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
       view->browsing_members = false;
-      view->selected = 0;
-      view->scroll = 0;
-      view->last_visible = -1;
+      cobalt_listnav_rewind(&view->nav);
       return COBALT_LISTS_VIEW_STAY;
    }
 
@@ -127,51 +90,20 @@ update_members(cobalt_lists_view *view, const cobalt_input *in)
       return COBALT_LISTS_VIEW_STAY;
    }
 
-   cobalt_list_clamp(&view->selected, &view->scroll, members->count);
-   cobalt_input_drag_list(in, &view->selected, members->count, view->hit_valid ? view->hit : NULL,
-                          view->hit_count);
-
-   if (cobalt_input_pressed(in, COBALT_BTN_DOWN) &&
-       view->selected < members->count - 1) {
-      view->selected++;
-   }
-   if (cobalt_input_pressed(in, COBALT_BTN_UP) && view->selected > 0) {
-      view->selected--;
-   }
-
-   bool tapped = false;
-   if (view->hit_valid && in->touch_ended) {
-      for (int i = 0; i < view->hit_count; i++) {
-         if (cobalt_input_tapped(in, &view->hit[i])) {
-            view->selected = view->hit_index[i];
-            tapped = true;
-            break;
-         }
-      }
-   }
+   const bool tapped = cobalt_listnav_move(&view->nav, in, members->count) >= 0;
 
    if (tapped || cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
-      const cobalt_actor *actor = &members->actors[view->selected];
+      const cobalt_actor *actor = &members->actors[view->nav.selected];
       if (actor->did[0]) {
          cobalt_session_begin_profile(actor->did);
          return COBALT_LISTS_VIEW_OPEN_PROFILE;
       }
    }
 
-   if (view->selected < view->scroll) {
-      view->scroll = view->selected;
-   } else if (view->last_visible >= 0 && view->selected > view->last_visible) {
-      view->scroll += view->selected - view->last_visible;
-   }
-   if (view->scroll > view->selected) {
-      view->scroll = view->selected;
-   }
-   if (view->scroll < 0) {
-      view->scroll = 0;
-   }
+   cobalt_listnav_follow(&view->nav);
 
    if (!busy && cobalt_actor_list_can_page(members) &&
-       view->selected >= members->count - 1) {
+       view->nav.selected >= members->count - 1) {
       cobalt_session_begin_list_members(view->open_uri, true);
    }
 
@@ -276,9 +208,7 @@ draw_list_of_lists(cobalt_lists_view *view, cobalt_render *r,
    const int top = cobalt_content_top(r);
    const int bottom = m->height - m->pad_edge - 28;
 
-   if (touchable) {
-      view->hit_count = 0;
-   }
+   cobalt_listnav_draw_begin(&view->nav, touchable);
 
    if (lists->count == 0) {
       SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge,
@@ -289,38 +219,29 @@ draw_list_of_lists(cobalt_lists_view *view, cobalt_render *r,
                                              : "You haven't made any lists yet.",
                        card.x + m->pad_tile, card.y + m->pad_tile,
                        COBALT_COLOUR_TEXT);
-      if (touchable) {
-         view->last_visible = -1;
-      }
+      cobalt_listnav_draw_empty(&view->nav, touchable);
       return;
    }
 
    const int h = row_height(m);
    int y = top;
-   int last_fitted = view->scroll;
+   int last_fitted = view->nav.scroll;
 
-   for (int i = view->scroll; i < lists->count; i++) {
-      if (y + h > bottom && i > view->scroll) {
+   for (int i = view->nav.scroll; i < lists->count; i++) {
+      if (y + h > bottom && i > view->nav.scroll) {
          break;
       }
 
       SDL_Rect rect = { m->pad_edge, y, m->width - 2 * m->pad_edge, h };
-      draw_list_row(r, &lists->lists[i], &rect, i == view->selected, m);
+      draw_list_row(r, &lists->lists[i], &rect, i == view->nav.selected, m);
 
-      if (touchable && view->hit_count < COBALT_LISTS_MAX) {
-         view->hit[view->hit_count] = rect;
-         view->hit_index[view->hit_count] = i;
-         view->hit_count++;
-      }
+      cobalt_listnav_draw_add(&view->nav, touchable, &rect, i);
 
       last_fitted = i;
       y += h + m->gap / 2;
    }
 
-   if (touchable) {
-      view->hit_valid = true;
-      view->last_visible = last_fitted;
-   }
+   cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);
 
    cobalt_draw_hints(r, cobalt_session_busy() ? "Working..."
                                           : view->browsing_members ? "A / touch: open profile"
@@ -341,9 +262,7 @@ draw_members(cobalt_lists_view *view, cobalt_render *r,
    const int top = cobalt_content_top(r);
    const int bottom = m->height - m->pad_edge - 28;
 
-   if (touchable) {
-      view->hit_count = 0;
-   }
+   cobalt_listnav_draw_begin(&view->nav, touchable);
 
    if (members->count == 0) {
       SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge,
@@ -354,38 +273,29 @@ draw_members(cobalt_lists_view *view, cobalt_render *r,
                                              : "This list has no members.",
                        card.x + m->pad_tile, card.y + m->pad_tile,
                        COBALT_COLOUR_TEXT);
-      if (touchable) {
-         view->last_visible = -1;
-      }
+      cobalt_listnav_draw_empty(&view->nav, touchable);
       return;
    }
 
    const int h = row_height(m);
    int y = top;
-   int last_fitted = view->scroll;
+   int last_fitted = view->nav.scroll;
 
-   for (int i = view->scroll; i < members->count; i++) {
-      if (y + h > bottom && i > view->scroll) {
+   for (int i = view->nav.scroll; i < members->count; i++) {
+      if (y + h > bottom && i > view->nav.scroll) {
          break;
       }
 
       SDL_Rect rect = { m->pad_edge, y, m->width - 2 * m->pad_edge, h };
-      draw_actor_row(r, &members->actors[i], &rect, i == view->selected, m);
+      draw_actor_row(r, &members->actors[i], &rect, i == view->nav.selected, m);
 
-      if (touchable && view->hit_count < COBALT_ACTORS_MAX) {
-         view->hit[view->hit_count] = rect;
-         view->hit_index[view->hit_count] = i;
-         view->hit_count++;
-      }
+      cobalt_listnav_draw_add(&view->nav, touchable, &rect, i);
 
       last_fitted = i;
       y += h + m->gap / 2;
    }
 
-   if (touchable) {
-      view->hit_valid = true;
-      view->last_visible = last_fitted;
-   }
+   cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);
 
    if (cobalt_session_busy()) {
       cobalt_draw_hints(r, "Working...");

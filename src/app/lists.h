@@ -18,6 +18,7 @@
 #include "atproto/actors.h"
 #include "atproto/curated_lists.h"
 #include "input/input.h"
+#include "ui/listnav.h"
 #include "ui/render.h"
 
 #include <stdbool.h>
@@ -33,20 +34,10 @@ typedef enum {
 } cobalt_lists_view_action;
 
 typedef struct {
+   cobalt_listnav nav;
    bool browsing_members;   /* false: list-of-lists; true: one list's members */
    char open_uri[COBALT_POST_URI_MAX];   /* the list currently drilled into */
    char open_name[COBALT_POST_NAME_MAX];
-
-   int selected;
-   int scroll;
-   int last_visible;
-
-   SDL_Rect hit[COBALT_LISTS_MAX > COBALT_ACTORS_MAX ? COBALT_LISTS_MAX
-                                                     : COBALT_ACTORS_MAX];
-   int hit_index[COBALT_LISTS_MAX > COBALT_ACTORS_MAX ? COBALT_LISTS_MAX
-                                                       : COBALT_ACTORS_MAX];
-   int hit_count;
-   bool hit_valid;
 } cobalt_lists_view;
 
 void cobalt_lists_view_init(cobalt_lists_view *view);

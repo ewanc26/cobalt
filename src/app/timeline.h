@@ -17,6 +17,7 @@
 
 #include "atproto/feed.h"
 #include "input/input.h"
+#include "ui/listnav.h"
 #include "ui/render.h"
 
 #include <stdbool.h>
@@ -35,22 +36,10 @@ typedef enum {
 } cobalt_timeline_action;
 
 typedef struct {
-   int selected;
-   int scroll;   /* index of the first card drawn */
-
-   /*
-    * The highest index the last GamePad draw fitted on screen, or -1 before
-    * the first frame. The GamePad is the tighter of the two surfaces and is
-    * always present, so using it keeps anything visible there visible on the
-    * TV as well.
-    */
-   int last_visible;
-
-   /* Touch targets in GamePad pixels, rebuilt on every GamePad draw. */
-   SDL_Rect hit[COBALT_FEED_MAX_POSTS];
-   int hit_index[COBALT_FEED_MAX_POSTS];
-   int hit_count;
-   bool hit_valid;
+   /* Selection, scroll and touch targets. The GamePad is the tighter of the two
+    * surfaces and is always present, so what it fitted is what scrolling
+    * follows, keeping anything visible there visible on the TV as well. */
+   cobalt_listnav nav;
 } cobalt_timeline;
 
 void cobalt_timeline_init(cobalt_timeline *view);

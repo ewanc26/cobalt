@@ -24,6 +24,7 @@
 #include "ui/imagecache.h"
 #include "ui/imageview.h"
 #include "ui/keyboard.h"
+#include "ui/listnav.h"
 #include "ui/popup.h"
 #include "ui/postcard.h"
 #include "input/input.h"
@@ -1737,7 +1738,7 @@ test_likes_lists(void)
    cobalt_graph_view_open_likes(&view, COBALT_GRAPH_LIKES, "at://did:plc:x");
    CHECK(view.kind == COBALT_GRAPH_LIKES);
    CHECK_STR(view.actor, "at://did:plc:x");
-   CHECK(view.selected == 0 && view.scroll == 0);
+   CHECK(view.nav.selected == 0 && view.nav.scroll == 0);
 
    /* A wrong kind is refused rather than half-opened. */
    cobalt_graph_view_open_likes(&view, COBALT_GRAPH_MUTED, "at://did:plc:x");
@@ -2552,6 +2553,78 @@ test_popup_touch(void)
 }
 
 static void
+test_listnav(void)
+{
+   begin("list navigation shared by the scrolling screens");
+
+   static cobalt_listnav nav;
+   cobalt_listnav_init(&nav);
+   CHECK(nav.selected == 0 && nav.scroll == 0 && nav.last_visible == -1);
+   CHECK(!nav.hit_valid && nav.hit_count == 0);
+
+   /* The D-pad moves one row and stops at both ends. */
+   cobalt_input in = tap(COBALT_BTN_DOWN);
+   CHECK(cobalt_listnav_move(&nav, &in, 3) == -1);
+   CHECK(nav.selected == 1);
+   cobalt_listnav_move(&nav, &in, 3);
+   cobalt_listnav_move(&nav, &in, 3);
+   CHECK(nav.selected == 2);
+   in = tap(COBALT_BTN_UP);
+   cobalt_listnav_move(&nav, &in, 3);
+   CHECK(nav.selected == 1);
+
+   /* A shrunken list pulls the selection back in; an empty one is left alone. */
+   nav.selected = 9;
+   cobalt_listnav_move(&nav, &in, 2);
+   CHECK(nav.selected <= 1);
+   nav.selected = 5;
+   CHECK(cobalt_listnav_move(&nav, &in, 0) == -1);
+   CHECK(nav.selected == 5);
+   CHECK(cobalt_listnav_move(NULL, &in, 3) == -1);
+
+   /* A frame's rows are recorded, and a tap on one selects it and reports it. */
+   cobalt_listnav_init(&nav);
+   const SDL_Rect a = { 0, 0, 100, 40 };
+   const SDL_Rect b = { 0, 50, 100, 40 };
+   cobalt_listnav_draw_begin(&nav, true);
+   cobalt_listnav_draw_add(&nav, true, &a, 4);
+   cobalt_listnav_draw_add(&nav, true, &b, 5);
+   cobalt_listnav_draw_end(&nav, true, 5);
+   CHECK(nav.hit_valid && nav.hit_count == 2 && nav.last_visible == 5);
+   touch_release_at(&in, 10, 60);
+   CHECK(cobalt_listnav_move(&nav, &in, 10) == 5);
+   CHECK(nav.selected == 5);
+
+   /* The TV frame never touches the hit rectangles. */
+   cobalt_listnav_draw_begin(&nav, false);
+   cobalt_listnav_draw_add(&nav, false, &a, 0);
+   CHECK(nav.hit_count == 2);
+
+   /* Following: back is exact, forward uses what the last frame fitted. */
+   nav.selected = 8;
+   nav.scroll = 4;
+   nav.last_visible = 6;
+   cobalt_listnav_follow(&nav);
+   CHECK(nav.scroll == 6);
+   nav.selected = 2;
+   cobalt_listnav_follow(&nav);
+   CHECK(nav.scroll == 2);
+   nav.selected = 20;
+   nav.last_visible = -1;
+   nav.scroll = 3;
+   cobalt_listnav_follow(&nav);
+   CHECK(nav.scroll == 3);   /* nothing fitted yet, so nothing to scroll by */
+
+   /* An empty list publishes "nothing visible", and rewind goes to the top. */
+   cobalt_listnav_draw_empty(&nav, true);
+   CHECK(nav.last_visible == -1);
+   nav.selected = 7;
+   nav.scroll = 3;
+   cobalt_listnav_rewind(&nav);
+   CHECK(nav.selected == 0 && nav.scroll == 0 && nav.last_visible == -1);
+}
+
+static void
 test_popup_link_qr(void)
 {
    begin("a link's text page carries a QR code");
@@ -2627,6 +2700,7 @@ main(int argc, char **argv)
    test_touch_drag_scrolls_a_list();
    test_popup_touch();
    test_popup_link_qr();
+   test_listnav();
    test_post_refuses_partial_refs();
    test_notification_wording();
    test_paging_stops_when_the_window_fills();

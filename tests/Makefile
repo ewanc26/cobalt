@@ -126,7 +126,8 @@ UNIT_SOURCES := \
 	$(SRC)/ui/postcard.c \
 	$(SRC)/ui/render.c \
 	$(SRC)/ui/theme.c \
-	$(SRC)/input/input.c
+	$(SRC)/input/input.c \
+	$(SRC)/ui/listnav.c
 
 TEST_BIN := $(OUT)/cobalt-tests
 

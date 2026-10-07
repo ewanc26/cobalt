@@ -12,6 +12,7 @@
 
 #include "atproto/actors.h"
 #include "input/input.h"
+#include "ui/listnav.h"
 #include "ui/render.h"
 
 #include <stdbool.h>
@@ -36,18 +37,11 @@ typedef enum {
 } cobalt_graph_view_action;
 
 typedef struct {
+   cobalt_listnav nav;
    cobalt_graph_kind kind;
    /* Followers/following/likes/reposts only: whose list this is (a DID for
     * follows, a post URI for likes/reposts), so B can return there. */
    char actor[COBALT_DID_MAX];
-   int selected;
-   int scroll;
-   int last_visible;
-
-   SDL_Rect hit[COBALT_ACTORS_MAX];
-   int hit_index[COBALT_ACTORS_MAX];
-   int hit_count;
-   bool hit_valid;
 } cobalt_graph_view;
 
 void cobalt_graph_view_init(cobalt_graph_view *view);

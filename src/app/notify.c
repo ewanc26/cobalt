@@ -19,7 +19,7 @@ cobalt_notify_view_init(cobalt_notify_view *view)
       return;
    }
    memset(view, 0, sizeof(*view));
-   view->last_visible = -1;
+   cobalt_listnav_init(&view->nav);
 }
 
 void
@@ -28,9 +28,7 @@ cobalt_notify_view_rewind(cobalt_notify_view *view)
    if (!view) {
       return;
    }
-   view->selected = 0;
-   view->scroll = 0;
-   view->last_visible = -1;
+   cobalt_listnav_rewind(&view->nav);
 }
 
 cobalt_notify_action
@@ -59,47 +57,18 @@ cobalt_notify_view_update(cobalt_notify_view *view, const cobalt_input *in)
       return COBALT_NOTIFY_STAY;
    }
 
-   cobalt_list_clamp(&view->selected, &view->scroll, list->count);
-   cobalt_input_drag_list(in, &view->selected, list->count, view->hit_valid ? view->hit : NULL,
-                          view->hit_count);
+   cobalt_listnav_move(&view->nav, in, list->count);
 
-   if (cobalt_input_pressed(in, COBALT_BTN_DOWN) &&
-       view->selected < list->count - 1) {
-      view->selected++;
-   }
-   if (cobalt_input_pressed(in, COBALT_BTN_UP) && view->selected > 0) {
-      view->selected--;
-   }
-
-   if (view->hit_valid && in->touch_ended) {
-      for (int i = 0; i < view->hit_count; i++) {
-         if (cobalt_input_tapped(in, &view->hit[i])) {
-            view->selected = view->hit_index[i];
-            break;
-         }
-      }
-   }
-
-   if (view->selected < view->scroll) {
-      view->scroll = view->selected;
-   } else if (view->last_visible >= 0 && view->selected > view->last_visible) {
-      view->scroll += view->selected - view->last_visible;
-   }
-   if (view->scroll > view->selected) {
-      view->scroll = view->selected;
-   }
-   if (view->scroll < 0) {
-      view->scroll = 0;
-   }
+   cobalt_listnav_follow(&view->nav);
 
    if (!busy && cobalt_input_pressed(in, COBALT_BTN_ALT_Y)) {
       return COBALT_NOTIFY_MENU;
    }
 
    /* Bounded before indexing, matching the other two list screens. */
-   if (!busy && view->selected < list->count &&
+   if (!busy && view->nav.selected < list->count &&
        cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
-      const cobalt_notification *item = &list->items[view->selected];
+      const cobalt_notification *item = &list->items[view->nav.selected];
       if (item->subject_uri[0]) {
          COBALT_LOGI("notify: opening %s", item->subject_uri);
          cobalt_session_begin_thread(item->subject_uri);
@@ -112,7 +81,7 @@ cobalt_notify_view_update(cobalt_notify_view *view, const cobalt_input *in)
       }
    }
 
-   if (!busy && cobalt_notifications_can_page(list) && view->selected >= list->count - 1) {
+   if (!busy && cobalt_notifications_can_page(list) && view->nav.selected >= list->count - 1) {
       cobalt_session_begin_notifications(true);
    }
 
@@ -242,9 +211,7 @@ cobalt_notify_view_draw(cobalt_notify_view *view, cobalt_render *r,
    const int top = cobalt_content_top(r);
    const int bottom = m->height - m->pad_edge - 28;
 
-   if (touchable) {
-      view->hit_count = 0;
-   }
+   cobalt_listnav_draw_begin(&view->nav, touchable);
 
    if (list->count == 0) {
       SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge,
@@ -254,40 +221,31 @@ cobalt_notify_view_draw(cobalt_notify_view *view, cobalt_render *r,
                        cobalt_session_busy() ? "Loading..." : "Nothing new.",
                        card.x + m->pad_tile, card.y + m->pad_tile,
                        COBALT_COLOUR_TEXT);
-      if (touchable) {
-         view->last_visible = -1;
-      }
+      cobalt_listnav_draw_empty(&view->nav, touchable);
       return;
    }
 
    int y = top;
-   int last_fitted = view->scroll;
+   int last_fitted = view->nav.scroll;
 
-   for (int i = view->scroll; i < list->count; i++) {
+   for (int i = view->nav.scroll; i < list->count; i++) {
       const cobalt_notification *item = &list->items[i];
       const int h = row_height(r, item, m);
 
-      if (y + h > bottom && i > view->scroll) {
+      if (y + h > bottom && i > view->nav.scroll) {
          break;
       }
 
       SDL_Rect rect = { m->pad_edge, y, m->width - 2 * m->pad_edge, h };
-      draw_row(r, item, &rect, i == view->selected, m);
+      draw_row(r, item, &rect, i == view->nav.selected, m);
 
-      if (touchable && view->hit_count < COBALT_NOTIFICATIONS_MAX) {
-         view->hit[view->hit_count] = rect;
-         view->hit_index[view->hit_count] = i;
-         view->hit_count++;
-      }
+      cobalt_listnav_draw_add(&view->nav, touchable, &rect, i);
 
       last_fitted = i;
       y += h + m->gap / 2;
    }
 
-   if (touchable) {
-      view->hit_valid = true;
-      view->last_visible = last_fitted;
-   }
+   cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);
 
    cobalt_draw_hints(r, cobalt_session_busy() ? "Working..."
                                           : "A: open   Y: more   +: refresh");

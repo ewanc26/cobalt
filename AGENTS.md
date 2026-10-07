@@ -341,6 +341,7 @@ Protocol, OAuth, moderation, parsing, muted words, pagination of protocol result
 - **Update manifest, semver, SHA-256.** `wolfram/update.h` (wolfram#106, Wolfram v0.27.0). Cobalt's copy is deleted; the guard fails if SHA-256 or semver comparison grows back.
 - **Time formatting.** `wolfram/time.h` (`wf_time_parse_rfc3339`, `wf_time_format_rfc3339`, `wf_time_relative`). Cobalt keeps only the clock, in `src/util/clock.c`; the guard fails if a civil-date conversion grows back.
 - **Muted words.** `wolfram/muted_words.h` (`wf_muted_list`, v0.31.0). `src/atproto/prefs.c` holds the list and the hide-reposts rule and applies both to a feed.
+- **List navigation.** Not Wolfram's (it is input and drawing), but shared by every scrolling screen in `src/ui/listnav.c`: selection, scroll, the follow-the-selection rule and the touch hit rectangles. A list screen embeds a `cobalt_listnav`, calls `cobalt_listnav_move` first and `cobalt_listnav_follow` last in its update, and brackets its draw loop with `cobalt_listnav_draw_*`. Do not copy that block into a new screen (cobalt#185).
 - **Image attachments.** `wolfram/attach.h` (v0.33.0): the type and size filter, the folder scan and the upload to an image embed. `src/app/compose.c` only draws the picker; the guard fails if the MIME mapping grows back.
 - **Reply gates.** `wf_agent_set_reply_gate` (`wolfram/threadgate_postgate.h`, v0.34.0); `apply_reply_gate` in `session.c` only logs a failure.
 - **Failure kinds.** `wolfram/failure.h`; `describe_failure` in `session.c` only chooses the wording.
