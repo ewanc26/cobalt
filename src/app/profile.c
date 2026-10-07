@@ -19,7 +19,7 @@ cobalt_profile_view_init(cobalt_profile_view *view)
       return;
    }
    memset(view, 0, sizeof(*view));
-   view->last_visible = -1;
+   cobalt_listnav_init(&view->nav);
 }
 
 void
@@ -28,19 +28,17 @@ cobalt_profile_view_rewind(cobalt_profile_view *view)
    if (!view) {
       return;
    }
-   view->selected = 0;
-   view->scroll = 0;
-   view->last_visible = -1;
+   cobalt_listnav_rewind(&view->nav);
 }
 
 const cobalt_post *
 cobalt_profile_view_selected_post(const cobalt_profile_view *view)
 {
-   if (!view || view->selected <= HEADER_ROW) {
+   if (!view || view->nav.selected <= HEADER_ROW) {
       return NULL;
    }
    const cobalt_feed *feed = cobalt_session_author_feed();
-   const int index = view->selected - 1;
+   const int index = view->nav.selected - 1;
    return (index < feed->count) ? &feed->posts[index] : NULL;
 }
 
@@ -60,40 +58,11 @@ cobalt_profile_view_update(cobalt_profile_view *view, const cobalt_input *in)
    const bool busy = cobalt_session_busy();
    const int rows = feed->count + 1;   /* header plus posts */
 
-   if (cobalt_input_pressed(in, COBALT_BTN_DOWN) && view->selected < rows - 1) {
-      view->selected++;
-   }
-   if (cobalt_input_pressed(in, COBALT_BTN_UP) && view->selected > 0) {
-      view->selected--;
-   }
-
-   if (view->hit_valid && in->touch_ended) {
-      for (int i = 0; i < view->hit_count; i++) {
-         if (cobalt_input_tapped(in, &view->hit[i])) {
-            view->selected = view->hit_index[i];
-            break;
-         }
-      }
-   }
-
-   /* A refresh can return fewer posts than were on screen, which would leave
-    * the cursor past the end. The header always exists, so `rows` is at least
-    * one and the cursor never clamps to -1 here. */
-   cobalt_list_clamp(&view->selected, &view->scroll, rows);
-   cobalt_input_drag_list(in, &view->selected, rows, view->hit_valid ? view->hit : NULL,
-                          view->hit_count);
-
-   if (view->selected < view->scroll) {
-      view->scroll = view->selected;
-   } else if (view->last_visible >= 0 && view->selected > view->last_visible) {
-      view->scroll += view->selected - view->last_visible;
-   }
-   if (view->scroll > view->selected) {
-      view->scroll = view->selected;
-   }
-   if (view->scroll < 0) {
-      view->scroll = 0;
-   }
+   /* A refresh can return fewer posts than were on screen; the clamp inside
+    * keeps the cursor in range. The header always exists, so `rows` is at
+    * least one and the cursor never clamps to -1. */
+   cobalt_listnav_move(&view->nav, in, rows);
+   cobalt_listnav_follow(&view->nav);
 
    if (busy) {
       return COBALT_PROFILE_VIEW_STAY;
@@ -105,7 +74,7 @@ cobalt_profile_view_update(cobalt_profile_view *view, const cobalt_input *in)
       return COBALT_PROFILE_VIEW_MENU;
    }
 
-   if (view->selected == HEADER_ROW) {
+   if (view->nav.selected == HEADER_ROW) {
       /* Same three-button language a post row already uses (A / Left /
        * Right), just mapped to follow/mute/block instead of open/like/repost.
        * None apply to your own profile, and the session layer refuses them
@@ -279,9 +248,7 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
    const int top = cobalt_content_top(r);
    const int bottom = m->height - m->pad_edge - 28;
 
-   if (touchable) {
-      view->hit_count = 0;
-   }
+   cobalt_listnav_draw_begin(&view->nav, touchable);
 
    if (!profile->loaded) {
       SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge,
@@ -292,49 +259,40 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
                                              : "This profile is unavailable.",
                        card.x + m->pad_tile, card.y + m->pad_tile,
                        COBALT_COLOUR_TEXT);
-      if (touchable) {
-         view->last_visible = -1;
-      }
+      cobalt_listnav_draw_empty(&view->nav, touchable);
       return;
    }
 
    const int rows = feed->count + 1;
    int y = top;
-   int last_fitted = view->scroll;
+   int last_fitted = view->nav.scroll;
 
-   for (int i = view->scroll; i < rows; i++) {
+   for (int i = view->nav.scroll; i < rows; i++) {
       const bool is_header = (i == HEADER_ROW);
       const int h = is_header ? header_height(r, profile, m)
                               : cobalt_postcard_height(r, &feed->posts[i - 1],
                                                        TEXT_LINES,
-                                                       i == view->selected);
+                                                       i == view->nav.selected);
 
-      if (y + h > bottom && i > view->scroll) {
+      if (y + h > bottom && i > view->nav.scroll) {
          break;
       }
 
       SDL_Rect rect = { m->pad_edge, y, m->width - 2 * m->pad_edge, h };
       if (is_header) {
-         draw_header(r, profile, &rect, i == view->selected, m);
+         draw_header(r, profile, &rect, i == view->nav.selected, m);
       } else {
          cobalt_postcard_draw(r, &feed->posts[i - 1], &rect,
-                              i == view->selected, TEXT_LINES, 0);
+                              i == view->nav.selected, TEXT_LINES, 0);
       }
 
-      if (touchable && view->hit_count < COBALT_FEED_MAX_POSTS + 1) {
-         view->hit[view->hit_count] = rect;
-         view->hit_index[view->hit_count] = i;
-         view->hit_count++;
-      }
+      cobalt_listnav_draw_add(&view->nav, touchable, &rect, i);
 
       last_fitted = i;
       y += h + m->gap;
    }
 
-   if (touchable) {
-      view->hit_valid = true;
-      view->last_visible = last_fitted;
-   }
+   cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);
 
    /* An account with no posts is normal; say so rather than leaving a gap. */
    if (feed->count == 0 && !cobalt_session_busy()) {

@@ -15,6 +15,7 @@
 
 #include "atproto/notifications.h"
 #include "input/input.h"
+#include "ui/listnav.h"
 #include "ui/render.h"
 
 #include <stdbool.h>
@@ -32,14 +33,7 @@ typedef enum {
 } cobalt_notify_action;
 
 typedef struct {
-   int selected;
-   int scroll;
-   int last_visible;
-
-   SDL_Rect hit[COBALT_NOTIFICATIONS_MAX];
-   int hit_index[COBALT_NOTIFICATIONS_MAX];
-   int hit_count;
-   bool hit_valid;
+   cobalt_listnav nav;
 } cobalt_notify_view;
 
 void cobalt_notify_view_init(cobalt_notify_view *view);
