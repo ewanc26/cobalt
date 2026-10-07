@@ -66,7 +66,7 @@ Shows the conversation around a post. Like and repost work as on the timeline. A
 
 ![New post](screenshots/compose.png)
 
-You type on Cobalt's own keyboard: move with the D-pad or tap on the GamePad. Posting asks before it sends, and B from that screen goes back to editing rather than throwing the text away. A new post (not a reply) also lets you choose who can reply: everyone, people you follow and mention, or nobody. You can attach one picture from the SD card to a new post or quote and type its description.
+You type on Cobalt's own keyboard: move with the D-pad or tap on the GamePad. Posting asks before it sends, and B from that screen goes back to editing rather than throwing the text away. A new post (not a reply) also lets you choose who can reply: everyone, people you follow and mention, or nobody. You can attach one picture from the SD card to a new post or quote and type its description. The picker lists the images in Cobalt's own folder (`sd:/wiiu/apps/cobalt/images`) and the console's camera folder (`sd:/DCIM`, with photos one folder down), and each row says which one it came from.
 
 ## Notifications
 

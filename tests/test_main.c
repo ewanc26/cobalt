@@ -1912,7 +1912,7 @@ test_image_attach(const char *root)
    c.confirm_choice = 3; /* image */
 
    /* Open the picker, move down, attach the second file. */
-   cobalt_compose_open_picker(&c, dir);
+   cobalt_compose_open_picker(&c, dir, NULL);
    CHECK(c.picking && c.picker_count == 2);
    cobalt_input in = tap(COBALT_BTN_DOWN);
    CHECK(cobalt_compose_update(&c, &in) == COBALT_COMPOSE_STAY);
@@ -1935,7 +1935,7 @@ test_image_attach(const char *root)
    CHECK(c.attach_path[0] == '\0');
 
    /* B backs out of the picker without attaching. */
-   cobalt_compose_open_picker(&c, dir);
+   cobalt_compose_open_picker(&c, dir, NULL);
    in = tap(COBALT_BTN_BACK);
    CHECK(cobalt_compose_update(&c, &in) == COBALT_COMPOSE_STAY);
    CHECK(!c.picking && c.attach_path[0] == '\0' && c.confirming);
@@ -1954,6 +1954,66 @@ test_image_attach(const char *root)
    CHECK(c.confirm_choice == 3);
 
    CHECK(!cobalt_session_begin_quote("hi", "at://x", NULL, 0, "x.png", "alt"));
+}
+
+/* The picker's row paths: the app folder and the camera folder are listed
+ * together, and each row opens from the folder it came from. */
+static void
+test_picker_paths(const char *root)
+{
+   begin("picker paths");
+
+   char out[640];
+   CHECK(cobalt_picker_join(out, sizeof(out), "sd:/DCIM", "100WIIU/IMG.jpg"));
+   CHECK(strcmp(out, "sd:/DCIM/100WIIU/IMG.jpg") == 0);
+   char tiny[8];
+   CHECK(!cobalt_picker_join(tiny, sizeof(tiny), "sd:/DCIM", "x.jpg"));
+   CHECK(!cobalt_picker_join(out, sizeof(out), NULL, "x.jpg"));
+
+   char app[512], cam[512], sub[512], f[640];
+   snprintf(app, sizeof(app), "%s/pk", root);
+   mkdir(app, 0755);
+   snprintf(app, sizeof(app), "%s/pk/images", root);
+   mkdir(app, 0755);
+   snprintf(cam, sizeof(cam), "%s/pk/DCIM", root);
+   mkdir(cam, 0755);
+   snprintf(sub, sizeof(sub), "%s/100WIIU", cam);
+   mkdir(sub, 0755);
+   const char *files[][2] = {
+      { app, "a.jpg" }, { sub, "IMG.jpg" }, { cam, "top.png" },
+   };
+   for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
+      snprintf(f, sizeof(f), "%s/%s", files[i][0], files[i][1]);
+      FILE *fp = fopen(f, "wb");
+      if (fp) {
+         fputs("data", fp);
+         fclose(fp);
+      }
+   }
+
+   static cobalt_compose c;
+   cobalt_compose_init(&c);
+   cobalt_compose_open_picker(&c, app, cam);
+   CHECK(c.picker_count == 3);
+   /* App rows first, then the camera rows, each sorted by strcmp. */
+   CHECK(strcmp(cobalt_picker_row_source(&c, 0), "Images") == 0);
+   CHECK(strcmp(cobalt_picker_row_source(&c, 1), "Camera") == 0);
+   CHECK(strcmp(c.picker_names[1], "100WIIU/IMG.jpg") == 0);
+   CHECK(strcmp(c.picker_names[2], "top.png") == 0);
+   CHECK(cobalt_picker_row_source(&c, 3) == NULL);
+   CHECK(strcmp(cobalt_picker_row_dir(&c, 1), cam) == 0);
+   CHECK(strcmp(cobalt_picker_row_dir(&c, 0), app) == 0);
+
+   char want[640];
+   snprintf(want, sizeof(want), "%s/100WIIU/IMG.jpg", cam);
+   CHECK(cobalt_picker_join(out, sizeof(out), cobalt_picker_row_dir(&c, 1),
+                            c.picker_names[1]));
+   CHECK(strcmp(out, want) == 0);
+
+   /* With no camera folder the picker lists only the app's images. */
+   cobalt_compose_open_picker(&c, app, NULL);
+   CHECK(c.picker_count == 1 && c.picker_src[0] == COBALT_PICKER_SRC_APP);
+   CHECK(c.picker_dirs[COBALT_PICKER_SRC_CAMERA][0] == '\0');
 }
 
 static void
@@ -2687,6 +2747,7 @@ main(int argc, char **argv)
    test_profile_tabs();
    test_quote_compose();
    test_image_attach(root);
+   test_picker_paths(root);
    test_search_mode_toggle();
    test_pinned_prepend();
    test_compose();
