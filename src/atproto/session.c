@@ -6,6 +6,7 @@
 #include "atproto/notifications.h"
 #include "atproto/actor_profile.h"
 #include "cache/session_store.h"
+#include "util/clock.h"
 #include "util/log.h"
 #include "util/paths.h"
 #include "util/rng.h"
@@ -16,6 +17,7 @@
 #include <wolfram/feed_gen_typed.h>
 #include <wolfram/agent.h>
 #include <wolfram/embed.h>
+#include <wolfram/failure.h>
 #include <wolfram/feed_typed.h>
 #include <wolfram/graph_typed.h>
 #include <wolfram/list_typed.h>
@@ -24,6 +26,7 @@
 #include <wolfram/session.h>
 #include <wolfram/thread_typed.h>
 #include <wolfram/threadgate_postgate.h>
+#include <wolfram/time.h>
 #include <wolfram/xrpc.h>
 #endif
 
@@ -418,29 +421,37 @@ cobalt_session_cycle_post_lang(void)
 #ifdef COBALT_HAS_WOLFRAM
 
 /*
- * Wolfram reports transport and protocol failures as a single wf_status, so the
- * PDS's own XRPC error envelope ("InvalidLogin", "AuthFactorTokenRequired", …)
- * is not part of the wf_status. These messages are written to be useful without
- * it: each names the most likely cause and what to try. run_login additionally
- * prepends the server's message via wf_agent_last_error.
+ * What kind of failure it was is Wolfram's call (wf_failure_classify, shared with
+ * the other clients); the wording is Cobalt's. Each message names the most
+ * likely cause and what to try. run_login additionally prepends the server's
+ * message via wf_agent_last_error.
  */
 static void
 describe_failure(cobalt_job_result *r, wf_status status, cobalt_job_kind kind)
 {
-   switch (status) {
-      case WF_ERR_NETWORK:
+   if (status == WF_ERR_ALLOC) {
+      set_message(r, "Out of memory.");
+      return;
+   }
+   switch (wf_failure_classify(status, 0, NULL)) {
+      case WF_FAIL_NETWORK:
+      case WF_FAIL_TLS:
          set_message(r, "Could not reach the server. Check the console's "
                         "internet connection, and that a TLS trust store was "
                         "bundled with this build.");
          break;
 
-      case WF_ERR_TIMEOUT:
+      case WF_FAIL_TIMEOUT:
          set_message(r, "The server did not answer in time. Try again.");
          break;
 
-      case WF_ERR_AUTH:
-      case WF_ERR_HTTP:
-         if (kind == COBALT_JOB_LOGIN) {
+      case WF_FAIL_BAD_CREDENTIALS:
+      case WF_FAIL_OTHER:
+         if (status != WF_ERR_AUTH && status != WF_ERR_HTTP) {
+            /* No friendlier wording available: log the code so a hardware run
+             * can be matched against wf_status in wolfram/xrpc.h. */
+            set_message(r, "The request failed (wolfram status %d).", (int) status);
+         } else if (kind == COBALT_JOB_LOGIN) {
             set_message(r, "The server rejected those details. Check the handle "
                            "and app password — an account password will not work "
                            "if two-factor is on.");
@@ -451,22 +462,22 @@ describe_failure(cobalt_job_result *r, wf_status status, cobalt_job_kind kind)
          }
          break;
 
-      case WF_ERR_RATE_LIMIT:
+      case WF_FAIL_RATE_LIMIT:
          set_message(r, "The server is rate limiting this console. Wait a few "
                         "minutes and try again.");
          break;
 
-      case WF_ERR_PARSE:
+      case WF_FAIL_SERVER:
+         set_message(r, "The server had a problem. Try again in a few minutes.");
+         break;
+
+      case WF_FAIL_BAD_RESPONSE:
          set_message(r, "The server sent a reply Cobalt could not read.");
          break;
 
-      case WF_ERR_ALLOC:
-         set_message(r, "Out of memory.");
-         break;
-
+      case WF_FAIL_NONE:
+      case WF_FAIL_NOT_READY:
       default:
-         /* No friendlier wording available: log the code so a hardware run can
-          * be matched against wf_status in wolfram/xrpc.h. */
          set_message(r, "The request failed (wolfram status %d).", (int) status);
          break;
    }
@@ -1415,7 +1426,7 @@ run_notifications(const job_input *in, cobalt_job_result *r,
     */
    if (!in->paging && total > 0 && now > 0) {
       char seen_at[32];
-      if (cobalt_time_format_rfc3339(now, seen_at, sizeof(seen_at)) &&
+      if (wf_time_format_rfc3339(now, seen_at, sizeof(seen_at)) == WF_OK &&
           wf_agent_update_seen_notifications(s.wf, seen_at) != WF_OK) {
          COBALT_LOGW("session: updateSeen failed — the unread badge may linger "
                      "on other clients");

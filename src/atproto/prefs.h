@@ -3,8 +3,9 @@
 
 /*
  * The slice of the account's saved preferences Cobalt honours when it draws a
- * feed: muted words and "hide reposts" on the home timeline. Kept apart from
- * the network code so the matching rules can be tested on the host.
+ * feed: muted words and "hide reposts" on the home timeline. The word list and
+ * the matching rules are Wolfram's (wf_muted_list); this keeps the list beside
+ * Cobalt's one own rule and applies both to a feed.
  */
 
 #include "atproto/feed.h"
@@ -12,40 +13,27 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <wolfram/muted_words.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define COBALT_PREFS_WORDS_MAX 48
-#define COBALT_PREFS_WORD_MAX 64
-
 typedef struct {
-   char value[COBALT_PREFS_WORD_MAX];
-   bool content;            /* applies to post text */
-   bool tag;                /* applies to hashtags */
-} cobalt_muted_word;
-
-typedef struct {
-   cobalt_muted_word words[COBALT_PREFS_WORDS_MAX];
-   int count;
+   wf_muted_list muted;
    bool hide_reposts;       /* home timeline only */
 } cobalt_prefs;
 
 void cobalt_prefs_clear(cobalt_prefs *prefs);
 
-/*
- * Add a word. Empty values and a full list are ignored. A word with neither
- * target is treated as content-only, which is what the server means by the
- * default.
- */
-bool cobalt_prefs_add_word(cobalt_prefs *prefs, const char *value, bool content,
-                           bool tag);
+/* Replace `prefs` with what the server returned. Expired mutes are skipped. */
+void cobalt_prefs_from_wolfram(cobalt_prefs *prefs, const wf_actor_preferences *src,
+                               int64_t now);
 
 /*
- * Whether `text` (and `tags`, which may be NULL) contains a muted word. Matching
- * is case-insensitive. A single alphanumeric word matches whole words only, so
- * muting "cat" does not hide "category"; a phrase, or a word with punctuation in
- * it, matches as a substring.
+ * Whether `text` (and `tags`, which may be NULL) contains a muted word, by
+ * Wolfram's rules: case-insensitive, a single plain word matches whole words
+ * only, a phrase or one with punctuation matches as a substring.
  */
 bool cobalt_prefs_text_is_muted(const cobalt_prefs *prefs, const char *text,
                                 const char *const *tags, int tag_count);
@@ -57,14 +45,6 @@ bool cobalt_prefs_text_is_muted(const cobalt_prefs *prefs, const char *text,
  */
 int cobalt_prefs_filter_feed(const cobalt_prefs *prefs, cobalt_feed *feed,
                              int from, bool home);
-
-#ifdef COBALT_HAS_WOLFRAM
-struct wf_actor_preferences;
-/* Replace `prefs` with what the server returned. Expired mutes are skipped. */
-void cobalt_prefs_from_wolfram(cobalt_prefs *prefs,
-                               const struct wf_actor_preferences *src,
-                               int64_t now);
-#endif
 
 #ifdef __cplusplus
 }

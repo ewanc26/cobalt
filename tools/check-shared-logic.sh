@@ -17,6 +17,7 @@ rules=(
   'uk\.ewancroft\.oauth\.|-|wf_oauth_pair_run from wolfram/oauth_pairing.h (the pairing contract is Wolfram'"'"'s)'
   '0x428a2f98|-|wf_sha256_* from wolfram/update.h (SHA-256 is Wolfram'"'"'s)'
   'parse_semver|cmp_pre|-|wf_update_compare_versions from wolfram/update.h (version comparison is Wolfram'"'"'s)'
+  'days_from_civil|civil_from_days|-|wf_time_* from wolfram/time.h (RFC 3339 and relative time are Wolfram'"'"'s)'
 )
 
 for rule in "${rules[@]}"; do

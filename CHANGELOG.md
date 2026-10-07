@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Changed
+
+- Timestamps, muted-word matching and failure classification now come from Wolfram v0.31.0 (`wf_time_*`, `wf_muted_list`, `wf_failure_classify`); Cobalt's own copies are deleted. A server-side failure now says the server had a problem instead of reporting a refused request.
+
 ## [0.7.0] - 2026-10-07
 
 ### Changed

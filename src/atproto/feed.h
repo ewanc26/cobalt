@@ -20,7 +20,7 @@
  * multi-byte sequence would render as tofu.
  */
 
-#include "util/timefmt.h"
+#include "util/clock.h"
 
 #include <stdbool.h>
 #include <stddef.h>

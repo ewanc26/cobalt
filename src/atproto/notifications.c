@@ -4,6 +4,7 @@
 #ifdef COBALT_HAS_WOLFRAM
 #include <wolfram/agent.h>
 #include <wolfram/post_view_typed.h>
+#include <wolfram/time.h>
 #endif
 
 #include <stdio.h>
@@ -133,8 +134,8 @@ cobalt_notifications_append_from_wolfram(
 
       const char *created = rec.created_at ? rec.created_at : src->indexed_at;
       int64_t epoch = 0;
-      if (created && cobalt_time_parse_rfc3339(created, &epoch) && now > 0) {
-         cobalt_time_relative(epoch, now, item->age, sizeof(item->age));
+      if (created && wf_time_parse_rfc3339(created, &epoch) == WF_OK && now > 0) {
+         wf_time_relative(epoch, now, item->age, sizeof(item->age));
       }
       wf_post_record_free(&rec);
 
