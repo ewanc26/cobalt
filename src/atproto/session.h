@@ -433,6 +433,7 @@ bool cobalt_session_normalise_service(const char *input, char *out, size_t out_s
 
 /* The service used when the user does not name one. */
 const char *cobalt_session_default_service(void);
+const char *cobalt_session_entry_service(const char *typed);
 
 #ifdef __cplusplus
 }
