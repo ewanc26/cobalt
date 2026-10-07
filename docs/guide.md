@@ -14,7 +14,7 @@ I have not walked through all of this on my console since I wrote it down, so if
 | X | A second action: new post on the timeline, quote on a thread, followers on a profile. |
 | Y | The "More" menu for the highlighted post, notification or profile row. |
 | + | Refresh, or on a profile, the next tab. |
-| GamePad touch | Tap what you would press. Rows, the Back pill in the corner and the footer prompts are all tappable. |
+| GamePad touch | Tap what you would press. Rows, the Back pill in the corner and the footer prompts are all tappable. Drag a finger up or down a list to scroll it; a drag never also counts as a tap. |
 
 HOME never reaches Cobalt: Aroma keeps it. Leave with Quit on the home screen.
 
