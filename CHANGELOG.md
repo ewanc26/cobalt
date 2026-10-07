@@ -9,7 +9,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Changed
 
-- Signing in needs only the handle and password: the account's PDS is discovered from its DID document (Wolfram's `wf_agent_login_discovered`), so the host the account lives on no longer has to be typed. An empty Server field starts from the default host. ([#201](https://github.com/ewanc26/cobalt/pull/201))
+- Signing in needs only the handle and password: the account's PDS is discovered from its DID document (Wolfram's `wf_agent_login_discovered`), so the host the account lives on no longer has to be typed. An empty Server field starts from the default host. ([#201](https://github.com/ewanc26/cobalt/pull/202))
 
 ## [0.9.0] - 2026-10-07
 
