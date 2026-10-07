@@ -104,17 +104,10 @@ typedef struct {
    bool picking;
    int picker_count;
    int picker_sel;
+   int picker_too_large;   /* images skipped for size, to explain an empty list */
    char picker_dir[COBALT_ATTACH_PATH_MAX];
    char picker_names[COBALT_PICKER_MAX][COBALT_PICKER_NAME_MAX];
 } cobalt_compose;
-
-/*
- * List postable images (jpg/jpeg/png, non-empty, within the blob limit) in
- * `dir`, sorted by name, at most `max`. Returns the count; 0 if the directory
- * is missing.
- */
-int cobalt_compose_scan_images(const char *dir,
-                               char names[][COBALT_PICKER_NAME_MAX], int max);
 
 /* Open the picker over `dir`. */
 void cobalt_compose_open_picker(cobalt_compose *compose, const char *dir);
