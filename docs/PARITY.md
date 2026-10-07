@@ -19,9 +19,9 @@ The two flows have different dependencies, so they are two rows.
 
 | Flow | Cobalt | Indigo | Platinum | Evidence |
 |---|---|---|---|---|
-| App password | implemented | implemented | issue platinum#38 | Cobalt: `src/app/signin.c`, the login job in `src/atproto/session.c`; host and mock-PDS tests. Platinum's bridge is OAuth-only. |
+| App password | implemented | implemented | implemented | Cobalt: `src/app/signin.c`, the login job in `src/atproto/session.c`; host and mock-PDS tests. Platinum: `bridge/src/auth/app-password.ts` and `macos9/apppw.c`. |
 | OAuth | implemented | implemented | implemented | Cobalt: `run_oauth()` in `src/atproto/session.c` through a Wolfram OAuth node (`docs/oauth-node.md` in Wolfram). An empty password in the form selects it. The pairing exchange (begin, a terminal error, completion into a session) has an e2e test against a mock node (`tests/e2e_main.c`); that test found wolfram#124, which had stopped the last step since 0.5.0. Not verified on a console by me. Platinum's bridge pairs differently (its own Node protocol). |
-| Pairing client shared in Wolfram | implemented | issue indigo#20 | n/a | Cobalt calls `wf_oauth_pair_run` (wolfram#101); covered by an e2e test against a mock node. |
+| Pairing client shared in Wolfram | implemented | implemented | n/a | Cobalt calls `wf_oauth_pair_run` (wolfram#101); covered by an e2e test against a mock node. |
 
 OAuth on a console is not the AT Protocol browser flow running on the console. The node holds the OAuth session and the DPoP key; the console holds a bearer token for the node and never sees the account password, MFA or a refresh token. The token is not logged.
 
@@ -35,7 +35,7 @@ OAuth on a console is not the AT Protocol browser flow running on the console. T
 | Thread view | implemented | implemented | issue platinum#27 | |
 | Profiles | implemented | implemented | partial, issue platinum#31 | Platinum shows the signed-in account only |
 | Follow, unfollow, followers, following | implemented | implemented | issue platinum#31 | |
-| Profile tabs | implemented | partial, issue indigo#20 | issue platinum#31 | Cobalt: posts, replies, media, likes (`src/atproto/actor_profile.h`). Indigo shows a person's posts only. |
+| Profile tabs | implemented | partial, issue indigo#56 | issue platinum#31 | Cobalt: posts, replies, media, likes (`src/atproto/actor_profile.h`). Indigo shows a person's posts only. |
 | Pinned posts | implemented | implemented | issue platinum#31 | |
 | Notifications | implemented | implemented | implemented | |
 | Mark notifications seen | implemented | implemented | issue platinum#30 | |
@@ -53,7 +53,7 @@ OAuth on a console is not the AT Protocol browser flow running on the console. T
 | Custom feeds | implemented | implemented | issue platinum#34 | Both read the account's saved feeds. Cobalt: `run_saved_feeds` in `src/atproto/session.c`; B from a feed goes Home, not back to the picker. |
 | Lists and members | implemented | implemented | issue platinum#34 | Read-only in both consoles |
 | Mute and block, with lists | implemented | implemented | issue platinum#35 | |
-| Muted words, hide reposts | implemented | implemented | issue platinum#35 | Cobalt calls Wolfram's matcher; Indigo still carries a copy (indigo#20) |
+| Muted words, hide reposts | implemented | implemented | issue platinum#35 | Both call Wolfram's `wf_muted_list` |
 | Direct messages | issue #107 | issue indigo#22 | issue platinum#42 | Wolfram has `chat_typed.h`. |
 | Post to a thread (several posts at once) | issue #103 | issue indigo#22 | issue platinum#42 | |
 | Video poster and external-media embeds | issue #102 | issue indigo#22 | issue platinum#42 | Link cards are done. This row is the video poster frame and other external embeds. |
@@ -77,7 +77,7 @@ These are Wii U specific and have no row in the other clients.
 
 ## Duplication
 
-The same logic exists in more than one client, and shared logic belongs in Wolfram. The findings are in cobalt#142 and AGENTS.md ("Shared logic lives in Wolfram"). Wolfram already has `wf_mod_match_mute_words` for muted words, so that one is a replacement and not a new module.
+Shared logic lives in Wolfram. Muted words, time, failure kinds, the update check and the OAuth pairing client are all Wolfram's in Cobalt and Indigo, and `tools/check-shared-logic.sh` fails if a copy grows back. What is left is the repeated list-screen scaffolding inside Cobalt (cobalt#185).
 
 ## Keeping this honest
 
