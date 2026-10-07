@@ -145,6 +145,69 @@ open_home_item(int idx)
 }
 
 
+static const cobalt_popup *
+popup(void)
+{
+   return cobalt_app_popup(g_app);
+}
+
+/* The row of the first open-popup item of this kind, or -1. */
+static int
+popup_index(cobalt_popup_kind kind)
+{
+   const cobalt_popup *p = popup();
+   for (int i = 0; p && i < p->count; i++)
+      if (p->items[i].kind == kind) return i;
+   return -1;
+}
+
+/* Presses DOWN until the open popup's cursor sits on row idx. */
+static void
+popup_select(int idx)
+{
+   const cobalt_popup *p = popup();
+   CHECK(p != NULL && idx >= 0 && idx < p->count);
+   for (int n = 0; p && p->selected != idx && n < COBALT_POPUP_MAX; n++) {
+      frame(COBALT_BTN_DOWN); settle(2);
+      p = popup();
+   }
+   CHECK(p != NULL && p->selected == idx);
+}
+
+/* Reaches the timeline from anywhere, with no popup open. */
+static void
+open_timeline(void)
+{
+   go_home();
+   open_home_item(0);
+   settle(40);
+   CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
+   CHECK(popup() == NULL);
+}
+
+/* Moves the timeline cursor to card idx, one row at a time, and checks it. */
+static void
+select_timeline(int idx)
+{
+   int sel, scr;
+   cobalt_app_timeline_position(g_app, &sel, &scr);
+   for (int n = sel; n < idx; n++) { frame(COBALT_BTN_DOWN); settle(3); }
+   for (int n = sel; n > idx; n--) { frame(COBALT_BTN_UP); settle(3); }
+   cobalt_app_timeline_position(g_app, &sel, &scr);
+   CHECK(sel == idx);
+}
+
+/* Opens the More menu on timeline card idx, checking the state first. */
+static void
+open_post_menu(int idx)
+{
+   open_timeline();
+   select_timeline(idx);
+   frame(COBALT_BTN_ALT_Y); settle(5);
+   CHECK(popup() != NULL && popup()->open);
+   CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -282,24 +345,41 @@ main(int argc, char **argv)
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
    }
 
-   frame(COBALT_BTN_BACK); settle(3);
-   frame(COBALT_BTN_DOWN); settle(3);
-   frame(COBALT_BTN_ALT_Y); settle(5);
-   shoot("timeline-menu-facets");
-   frame(COBALT_BTN_DOWN); frame(COBALT_BTN_DOWN); settle(3);
-   frame(COBALT_BTN_CONFIRM); settle(3);
-   shoot("timeline-menu-link");
-   frame(COBALT_BTN_BACK); settle(3);
-   frame(COBALT_BTN_UP); settle(3);
-   frame(COBALT_BTN_ALT_Y); settle(5);
-   frame(COBALT_BTN_CONFIRM);
-   settle(40);
+   /* Facets: timeline card 1 carries a mention, a link and a tag. */
+   open_post_menu(1);
+   {
+      const int link = popup_index(COBALT_POPUP_LINK);
+      CHECK(popup_index(COBALT_POPUP_MENTION) >= 0);
+      CHECK(popup_index(COBALT_POPUP_TAG) >= 0);
+      CHECK(link >= 0);
+      shoot("timeline-menu-facets");
+      popup_select(link);
+      frame(COBALT_BTN_CONFIRM); settle(3);
+      const cobalt_popup *p = popup();
+      CHECK(p != NULL && p->text_mode);
+      CHECK(p != NULL && strstr(p->text, "example.com/page") != NULL);
+      shoot("timeline-menu-link");
+      frame(COBALT_BTN_BACK); settle(3);
+      CHECK(popup() == NULL);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
+   }
+
+   /* Profile: card 0's menu opens the author's profile as its first row. */
+   open_post_menu(0);
+   {
+      const int prof = popup_index(COBALT_POPUP_PROFILE);
+      CHECK(prof >= 0);
+      popup_select(prof);
+      frame(COBALT_BTN_CONFIRM); settle(40);
+      CHECK(popup() == NULL);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE);
+   }
    shoot("profile");
 
-   frame(COBALT_BTN_BACK);
-   settle(10);
-   frame(COBALT_BTN_BACK);
-   settle(10);
+   frame(COBALT_BTN_BACK); settle(10);
+   CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
+   go_home();
+   CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
    shoot("home-signedin");
 
    open_home_item(5);
