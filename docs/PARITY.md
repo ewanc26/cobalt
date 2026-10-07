@@ -29,7 +29,7 @@ OAuth on a console is not the AT Protocol browser flow running on the console. T
 
 | Feature | Cobalt | Indigo | Platinum | Evidence |
 |---|---|---|---|---|
-| Diagnostics | implemented | implemented | issue platinum#37 | Cobalt: `ACTION_DIAGNOSTICS` in `src/app/app.c` |
+| Diagnostics | implemented | implemented | issue platinum#37 | Cobalt: `ACTION_DIAGNOSTICS` in `src/app/app_home.c` |
 | Persistent session, sign-out | implemented | implemented | implemented | Cobalt stores the session encrypted (`src/cache/session_store.c`); see AGENTS.md on what that is worth |
 | Home timeline, paging | implemented | implemented | partial, issue platinum#26 | Platinum parses the cursor and never uses it |
 | Thread view | implemented | implemented | issue platinum#27 | |
