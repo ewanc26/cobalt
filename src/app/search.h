@@ -17,6 +17,7 @@
 #include "atproto/actors.h"
 #include "input/input.h"
 #include "ui/keyboard.h"
+#include "ui/listnav.h"
 #include "ui/render.h"
 
 #include <stdbool.h>
@@ -41,15 +42,7 @@ typedef struct {
    SDL_Rect mode_hit[2];   /* People, Posts; valid after a GamePad draw */
    bool mode_hit_valid;
    bool browsing;   /* false: editing the query; true: viewing results */
-
-   int selected;
-   int scroll;
-   int last_visible;
-
-   SDL_Rect hit[COBALT_ACTORS_MAX];
-   int hit_index[COBALT_ACTORS_MAX];
-   int hit_count;
-   bool hit_valid;
+   cobalt_listnav nav;
 } cobalt_search_view;
 
 void cobalt_search_view_init(cobalt_search_view *view);

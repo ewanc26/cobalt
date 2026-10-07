@@ -18,7 +18,7 @@ cobalt_timeline_init(cobalt_timeline *view)
       return;
    }
    memset(view, 0, sizeof(*view));
-   view->last_visible = -1;
+   cobalt_listnav_init(&view->nav);
 }
 
 void
@@ -27,9 +27,7 @@ cobalt_timeline_rewind(cobalt_timeline *view)
    if (!view) {
       return;
    }
-   view->selected = 0;
-   view->scroll = 0;
-   view->last_visible = -1;
+   cobalt_listnav_rewind(&view->nav);
 }
 
 /* --- input --- */
@@ -65,32 +63,7 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
    /* A refresh can return fewer posts than were on screen. Every current path
     * that shrinks the feed also rewinds the view, but that is a property of
     * the call graph rather than an invariant, so clamp here too. */
-   cobalt_list_clamp(&view->selected, &view->scroll, feed->count);
-   cobalt_input_drag_list(in, &view->selected, feed->count, view->hit_valid ? view->hit : NULL,
-                          view->hit_count);
-
-   if (cobalt_input_pressed(in, COBALT_BTN_DOWN)) {
-      if (view->selected < feed->count - 1) {
-         view->selected++;
-      }
-   }
-   if (cobalt_input_pressed(in, COBALT_BTN_UP)) {
-      if (view->selected > 0) {
-         view->selected--;
-      }
-   }
-
-   if (view->hit_valid && in->touch_ended) {
-      for (int i = 0; i < view->hit_count; i++) {
-         if (cobalt_input_tapped(in, &view->hit[i])) {
-            /* A tap selects; opening the thread is a second, deliberate press.
-             * A single tap that navigated would make scrolling by touch on a
-             * dense list feel like a minefield. */
-            view->selected = view->hit_index[i];
-            break;
-         }
-      }
-   }
+   cobalt_listnav_move(&view->nav, in, feed->count);
 
    /*
     * Left and right are free on a vertical list, so they carry the two
@@ -98,8 +71,8 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
     * makes them usable one-handed with the GamePad resting on a lap, and the
     * footer names them so they are discoverable.
     */
-   if (!busy && view->selected < feed->count) {
-      const cobalt_post *post = &feed->posts[view->selected];
+   if (!busy && view->nav.selected < feed->count) {
+      const cobalt_post *post = &feed->posts[view->nav.selected];
       if (cobalt_input_pressed(in, COBALT_BTN_LEFT)) {
          cobalt_session_begin_like(post->uri, post->cid);
       } else if (cobalt_input_pressed(in, COBALT_BTN_RIGHT)) {
@@ -118,17 +91,7 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
    /* Keep the selection in view. Scrolling back is exact; scrolling forward
     * uses what the last frame actually fitted, since card heights vary and are
     * only known after a draw. */
-   if (view->selected < view->scroll) {
-      view->scroll = view->selected;
-   } else if (view->last_visible >= 0 && view->selected > view->last_visible) {
-      view->scroll += view->selected - view->last_visible;
-   }
-   if (view->scroll > view->selected) {
-      view->scroll = view->selected;
-   }
-   if (view->scroll < 0) {
-      view->scroll = 0;
-   }
+   cobalt_listnav_follow(&view->nav);
 
    /*
     * Reaching the last loaded post fetches the next page. Doing it on arrival
@@ -136,7 +99,7 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
     * the request is already asynchronous, and a D-pad is a slow way to reach a
     * button that exists only to say "yes, continue".
     */
-   if (!busy && cobalt_feed_can_page(feed) && view->selected >= feed->count - 1) {
+   if (!busy && cobalt_feed_can_page(feed) && view->nav.selected >= feed->count - 1) {
       COBALT_LOGI("timeline: reached the end, fetching the next page");
       cobalt_session_begin_feed_current(true);
    }
@@ -191,7 +154,7 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
       if (cobalt_session_busy()) {
          snprintf(subtitle, sizeof(subtitle), "Loading...");
       } else if (feed->count > 0) {
-         snprintf(subtitle, sizeof(subtitle), "%d of %d", view->selected + 1,
+         snprintf(subtitle, sizeof(subtitle), "%d of %d", view->nav.selected + 1,
                   feed->count);
       } else {
          snprintf(subtitle, sizeof(subtitle), "%s", cobalt_session_handle());
@@ -208,21 +171,17 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
 
    if (feed->count == 0) {
       draw_empty(r, m, top);
-      if (touchable) {
-         view->hit_count = 0;
-         view->last_visible = -1;
-      }
+      cobalt_listnav_draw_begin(&view->nav, touchable);
+      cobalt_listnav_draw_empty(&view->nav, touchable);
       return;
    }
 
-   if (touchable) {
-      view->hit_count = 0;
-   }
+   cobalt_listnav_draw_begin(&view->nav, touchable);
 
    int y = top;
-   int last_fitted = view->scroll;
+   int last_fitted = view->nav.scroll;
 
-   for (int i = view->scroll; i < feed->count; i++) {
+   for (int i = view->nav.scroll; i < feed->count; i++) {
       const cobalt_post *post = &feed->posts[i];
       int lines = cobalt_postcard_text_total(r, post, m->width - 2 * m->pad_edge, 0);
       if (lines > TEXT_LINES) {
@@ -230,32 +189,25 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
       } else if (lines < 1) {
          lines = 1;
       }
-      const int h = cobalt_postcard_height(r, post, lines, i == view->selected);
+      const int h = cobalt_postcard_height(r, post, lines, i == view->nav.selected);
 
       /* Stop before drawing a card that would run off the bottom. Always draw
        * at least one, so a card taller than the viewport is still readable
        * rather than the screen going blank. */
-      if (y + h > bottom && i > view->scroll) {
+      if (y + h > bottom && i > view->nav.scroll) {
          break;
       }
 
       SDL_Rect rect = { m->pad_edge, y, m->width - 2 * m->pad_edge, h };
-      cobalt_postcard_draw(r, post, &rect, i == view->selected, lines, 0);
+      cobalt_postcard_draw(r, post, &rect, i == view->nav.selected, lines, 0);
 
-      if (touchable && view->hit_count < COBALT_FEED_MAX_POSTS) {
-         view->hit[view->hit_count] = rect;
-         view->hit_index[view->hit_count] = i;
-         view->hit_count++;
-      }
+      cobalt_listnav_draw_add(&view->nav, touchable, &rect, i);
 
       last_fitted = i;
       y += h + m->gap;
    }
 
-   if (touchable) {
-      view->hit_valid = true;
-      view->last_visible = last_fitted;
-   }
+   cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);
 
    /* A card taller than the viewport is still drawn whole; the strip keeps the
     * hint legible instead of printing it across the card. */

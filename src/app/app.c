@@ -328,16 +328,16 @@ cobalt_app_view_position(const cobalt_app *app, cobalt_screen screen, int *selec
    if (app) {
       switch (screen) {
          case COBALT_SCREEN_TIMELINE:
-            sel = app->timeline.selected;
-            scr = app->timeline.scroll;
+            sel = app->timeline.nav.selected;
+            scr = app->timeline.nav.scroll;
             break;
          case COBALT_SCREEN_NOTIFICATIONS:
-            sel = app->notify.selected;
-            scr = app->notify.scroll;
+            sel = app->notify.nav.selected;
+            scr = app->notify.nav.scroll;
             break;
          case COBALT_SCREEN_PROFILE:
-            sel = app->profile.selected;
-            scr = app->profile.scroll;
+            sel = app->profile.nav.selected;
+            scr = app->profile.nav.scroll;
             break;
          default:
             break;
@@ -1025,9 +1025,9 @@ popup_choose(cobalt_app *app, int index)
       case COBALT_POPUP_QUOTE: {
          const cobalt_thread *conv = cobalt_session_thread();
          cobalt_popup_close(&app->popup);
-         if (app->thread.selected < conv->count) {
+         if (app->thread.nav.selected < conv->count) {
             cobalt_compose_quote(&app->compose,
-                                 &conv->posts[app->thread.selected]);
+                                 &conv->posts[app->thread.nav.selected]);
             if (cobalt_compose_is_quote(&app->compose)) {
                app->compose_return = COBALT_SCREEN_THREAD;
                app->screen = COBALT_SCREEN_COMPOSE;
@@ -1046,13 +1046,13 @@ popup_choose(cobalt_app *app, int index)
             post = cobalt_profile_view_selected_post(&app->profile);
          } else if (app->popup_in_thread) {
             const cobalt_thread *conv = cobalt_session_thread();
-            if (app->thread.selected < conv->count) {
-               post = &conv->posts[app->thread.selected];
+            if (app->thread.nav.selected < conv->count) {
+               post = &conv->posts[app->thread.nav.selected];
             }
          } else {
             const cobalt_feed *feed = cobalt_session_feed();
-            if (app->timeline.selected < feed->count) {
-               post = &feed->posts[app->timeline.selected];
+            if (app->timeline.nav.selected < feed->count) {
+               post = &feed->posts[app->timeline.nav.selected];
             }
          }
          if (post) {
@@ -1285,8 +1285,8 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             case COBALT_TIMELINE_MENU: {
                const cobalt_feed *feed = cobalt_session_feed();
-               if (app->timeline.selected < feed->count) {
-                  open_post_menu(app, &feed->posts[app->timeline.selected], false);
+               if (app->timeline.nav.selected < feed->count) {
+                  open_post_menu(app, &feed->posts[app->timeline.nav.selected], false);
                }
                break;
             }
@@ -1303,9 +1303,9 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             case COBALT_THREAD_VIEW_QUOTE: {
                const cobalt_thread *conv = cobalt_session_thread();
-               if (app->thread.selected < conv->count) {
+               if (app->thread.nav.selected < conv->count) {
                   cobalt_compose_quote(&app->compose,
-                                       &conv->posts[app->thread.selected]);
+                                       &conv->posts[app->thread.nav.selected]);
                   if (cobalt_compose_is_quote(&app->compose)) {
                      app->compose_return = COBALT_SCREEN_THREAD;
                      app->screen = COBALT_SCREEN_COMPOSE;
@@ -1315,9 +1315,9 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
             }
             case COBALT_THREAD_VIEW_REPLY: {
                const cobalt_thread *conv = cobalt_session_thread();
-               if (app->thread.selected < conv->count) {
+               if (app->thread.nav.selected < conv->count) {
                   cobalt_compose_reply_to(&app->compose,
-                                          &conv->posts[app->thread.selected]);
+                                          &conv->posts[app->thread.nav.selected]);
                   app->compose_return = COBALT_SCREEN_THREAD;
                   app->screen = COBALT_SCREEN_COMPOSE;
                }
@@ -1325,8 +1325,8 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
             }
             case COBALT_THREAD_VIEW_MENU: {
                const cobalt_thread *conv = cobalt_session_thread();
-               if (app->thread.selected < conv->count) {
-                  open_post_menu(app, &conv->posts[app->thread.selected], true);
+               if (app->thread.nav.selected < conv->count) {
+                  open_post_menu(app, &conv->posts[app->thread.nav.selected], true);
                }
                break;
             }
@@ -1353,8 +1353,8 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             case COBALT_NOTIFY_MENU: {
                const cobalt_notifications *list = cobalt_session_notifications();
-               if (app->notify.selected < list->count) {
-                  open_notification_menu(app, &list->items[app->notify.selected]);
+               if (app->notify.nav.selected < list->count) {
+                  open_notification_menu(app, &list->items[app->notify.nav.selected]);
                }
                break;
             }

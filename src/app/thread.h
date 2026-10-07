@@ -14,6 +14,7 @@
 
 #include "atproto/feed.h"
 #include "input/input.h"
+#include "ui/listnav.h"
 #include "ui/render.h"
 
 #include <stdbool.h>
@@ -31,9 +32,7 @@ typedef enum {
 } cobalt_thread_action;
 
 typedef struct {
-   int selected;
-   int scroll;
-   int last_visible;
+   cobalt_listnav nav;
 
    /* Line scroll inside the selected post's text, for posts longer than the
     * screen. total and window are measured by the last draw. */
@@ -51,11 +50,6 @@ typedef struct {
     * undone, and Y sits next to buttons that are casually pressed. */
    bool confirm_delete;
    char delete_uri[COBALT_POST_URI_MAX];
-
-   SDL_Rect hit[COBALT_THREAD_MAX_POSTS];
-   int hit_index[COBALT_THREAD_MAX_POSTS];
-   int hit_count;
-   bool hit_valid;
 } cobalt_thread_view;
 
 void cobalt_thread_view_init(cobalt_thread_view *view);
