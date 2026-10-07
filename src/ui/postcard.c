@@ -76,7 +76,7 @@ embed_media_height(const cobalt_metrics *m, int caption_h, int body_h,
    if (post->image_count > 1) {
       return EMBED_IMAGE_GRID_H(body_h);
    }
-   if (post->link.uri[0]) {
+   if (cobalt_post_has_card(post)) {
       /* Padding top and bottom, one title line, two description lines, one
        * domain line. */
       return m->pad_tile + body_h + 3 * caption_h;
@@ -521,7 +521,7 @@ draw_embed_media(cobalt_render *r, const cobalt_post *post, int x, int y,
 {
    if (post->image_count > 0) {
       draw_image_row(r, post, x, y, width, media_height);
-   } else if (post->link.uri[0]) {
+   } else if (cobalt_post_has_card(post)) {
       draw_link_card(r, post, x, y, width, media_height);
    }
 

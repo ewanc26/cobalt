@@ -93,7 +93,10 @@ typedef struct {
 } cobalt_post_image;
 
 typedef struct {
-   /* Empty uri means the post carries no link card. */
+   /* Empty uri means the post carries no link card, unless `video` is set: a
+    * video's poster frame is drawn on the same card (title "Video", the alt
+    * text as the description) with no address to show. */
+   bool video;
    char uri[COBALT_POST_LINK_URI_MAX];
    char title[COBALT_POST_LINK_TITLE_MAX];
    char description[COBALT_POST_LINK_DESC_MAX];
@@ -354,6 +357,8 @@ void cobalt_feed_set_quote(cobalt_post *post, const char *display_name,
  * URI. Pure string handling, exposed for testing the same way
  * cobalt_feed_copy_text is.
  */
+/* True when the post has a card to draw: a link, or a video's poster. */
+bool cobalt_post_has_card(const cobalt_post *post);
 void cobalt_feed_link_domain(const char *uri, char *out, size_t out_size);
 
 #ifdef COBALT_HAS_WOLFRAM

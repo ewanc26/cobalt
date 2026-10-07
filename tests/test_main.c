@@ -1217,6 +1217,19 @@ test_entropy_gather(const char *root)
 static void
 test_feed_link_domain(void)
 {
+   begin("a card is a link or a video poster");
+   {
+      cobalt_post post;
+
+      memset(&post, 0, sizeof(post));
+      CHECK(!cobalt_post_has_card(&post));
+      post.link.video = true;
+      CHECK(cobalt_post_has_card(&post));
+      post.link.video = false;
+      snprintf(post.link.uri, sizeof(post.link.uri), "https://e.x/p");
+      CHECK(cobalt_post_has_card(&post));
+   }
+
    begin("link card domain extraction");
 
    char out[64];
