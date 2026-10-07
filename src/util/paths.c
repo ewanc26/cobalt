@@ -185,6 +185,19 @@ cobalt_data_path(char *out, size_t out_size, const char *rel)
    return join(out, out_size, s_data_root, rel);
 }
 
+bool
+cobalt_sd_path(char *out, size_t out_size, const char *rel)
+{
+   if (!s_sd_mounted) {
+      return false;
+   }
+   const char *mount = WHBGetSdCardMountPath();
+   if (!mount || mount[0] == '\0') {
+      return false;
+   }
+   return join(out, out_size, mount, rel);
+}
+
 const char *
 cobalt_content_root(void)
 {

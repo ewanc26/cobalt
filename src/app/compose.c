@@ -54,17 +54,71 @@ confirm_label(const cobalt_compose *compose, int id)
    }
 }
 
-void
-cobalt_compose_open_picker(cobalt_compose *compose, const char *dir)
+bool
+cobalt_picker_join(char *out, size_t out_size, const char *dir, const char *entry)
 {
-   if (!compose || !dir) {
+   if (!out || out_size == 0 || !dir || !entry) {
+      return false;
+   }
+   const int n = snprintf(out, out_size, "%s/%s", dir, entry);
+   return n >= 0 && (size_t) n < out_size;
+}
+
+const char *
+cobalt_picker_row_dir(const cobalt_compose *compose, int row)
+{
+   if (!compose || row < 0 || row >= compose->picker_count) {
+      return NULL;
+   }
+   const unsigned src = compose->picker_src[row];
+   return src < COBALT_PICKER_SRCS ? compose->picker_dirs[src] : NULL;
+}
+
+const char *
+cobalt_picker_row_source(const cobalt_compose *compose, int row)
+{
+   if (!compose || row < 0 || row >= compose->picker_count) {
+      return NULL;
+   }
+   return compose->picker_src[row] == COBALT_PICKER_SRC_CAMERA ? "Camera"
+                                                                : "Images";
+}
+
+void
+cobalt_compose_open_picker(cobalt_compose *compose, const char *app_dir,
+                           const char *camera_dir)
+{
+   if (!compose || !app_dir) {
       return;
    }
-   snprintf(compose->picker_dir, sizeof(compose->picker_dir), "%s", dir);
-   mkdir(dir, 0777);
-   compose->picker_count = wf_attach_scan_images(
-      dir, &compose->picker_names[0][0], COBALT_PICKER_NAME_MAX, COBALT_PICKER_MAX,
-      &compose->picker_too_large);
+   snprintf(compose->picker_dirs[COBALT_PICKER_SRC_APP],
+            sizeof(compose->picker_dirs[COBALT_PICKER_SRC_APP]), "%s", app_dir);
+   snprintf(compose->picker_dirs[COBALT_PICKER_SRC_CAMERA],
+            sizeof(compose->picker_dirs[COBALT_PICKER_SRC_CAMERA]), "%s",
+            camera_dir ? camera_dir : "");
+   mkdir(app_dir, 0777);
+
+   /* The app's own folder first, exactly as before; the camera folder fills
+    * the rows after it. Each scan writes into the next free rows. */
+   int too_large_app = 0;
+   int too_large_camera = 0;
+   const int n_app = wf_attach_scan_images(
+      app_dir, &compose->picker_names[0][0], COBALT_PICKER_NAME_MAX,
+      COBALT_PICKER_MAX, &too_large_app);
+   int n_camera = 0;
+   if (camera_dir && camera_dir[0] != '\0') {
+      n_camera = wf_attach_scan_images_tree(
+         camera_dir, &compose->picker_names[n_app][0], COBALT_PICKER_NAME_MAX,
+         COBALT_PICKER_MAX - n_app, &too_large_camera);
+   }
+   for (int i = 0; i < n_app; i++) {
+      compose->picker_src[i] = COBALT_PICKER_SRC_APP;
+   }
+   for (int i = n_app; i < n_app + n_camera; i++) {
+      compose->picker_src[i] = COBALT_PICKER_SRC_CAMERA;
+   }
+   compose->picker_count = n_app + n_camera;
+   compose->picker_too_large = too_large_app + too_large_camera;
    compose->picker_sel = 0;
    compose->picking = true;
 }
@@ -256,8 +310,9 @@ cobalt_compose_update(cobalt_compose *compose, const cobalt_input *in)
          compose->picking = false;
       } else if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM) &&
                  compose->picker_count > 0) {
-         snprintf(compose->attach_path, sizeof(compose->attach_path), "%s/%s",
-                  compose->picker_dir, compose->picker_names[compose->picker_sel]);
+         cobalt_picker_join(compose->attach_path, sizeof(compose->attach_path),
+                            cobalt_picker_row_dir(compose, compose->picker_sel),
+                            compose->picker_names[compose->picker_sel]);
          compose->picking = false;
          compose->attach_alt[0] = '\0';
          cobalt_keyboard_open(&compose->alt_kb, compose->attach_alt,
@@ -332,8 +387,12 @@ cobalt_compose_update(cobalt_compose *compose, const cobalt_input *in)
             compose->attach_alt[0] = '\0';
          } else {
             char dir[COBALT_ATTACH_PATH_MAX];
+            char camera[COBALT_ATTACH_PATH_MAX];
             if (cobalt_data_path(dir, sizeof(dir), "images")) {
-               cobalt_compose_open_picker(compose, dir);
+               const bool has_camera =
+                  cobalt_sd_path(camera, sizeof(camera), "DCIM");
+               cobalt_compose_open_picker(compose, dir,
+                                          has_camera ? camera : NULL);
             }
          }
          return COBALT_COMPOSE_STAY;
@@ -546,8 +605,14 @@ draw_picker(cobalt_compose *compose, cobalt_render *r, cobalt_surface_id surface
       cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, msg, m->pad_edge, top,
                                m->width - 2 * m->pad_edge, 4,
                                COBALT_COLOUR_TEXT);
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, compose->picker_dir, m->pad_edge,
+      cobalt_draw_text(r, COBALT_FONT_CAPTION,
+                       compose->picker_dirs[COBALT_PICKER_SRC_APP], m->pad_edge,
                        top + 4 * row_h, COBALT_COLOUR_TEXT_DIM);
+      if (compose->picker_dirs[COBALT_PICKER_SRC_CAMERA][0]) {
+         cobalt_draw_text(r, COBALT_FONT_CAPTION,
+                          compose->picker_dirs[COBALT_PICKER_SRC_CAMERA],
+                          m->pad_edge, top + 5 * row_h, COBALT_COLOUR_TEXT_DIM);
+      }
    } else {
       int first = compose->picker_sel - visible + 1;
       if (first < 0) {
@@ -557,8 +622,13 @@ draw_picker(cobalt_compose *compose, cobalt_render *r, cobalt_surface_id surface
          SDL_Rect row = { m->pad_edge, top + i * (row_h + m->gap),
                           m->width - 2 * m->pad_edge, row_h };
          const bool focused = (first + i == compose->picker_sel);
+         /* "Camera: 100WIIU/IMG_0001.jpg" says where the photo came from. */
+         char label[COBALT_PICKER_NAME_MAX + 16];
+         snprintf(label, sizeof(label), "%s: %s",
+                  cobalt_picker_row_source(compose, first + i),
+                  compose->picker_names[first + i]);
          cobalt_draw_tile(r, &row, focused ? 1.0f : 0.0f);
-         cobalt_draw_text(r, COBALT_FONT_BODY, compose->picker_names[first + i],
+         cobalt_draw_text(r, COBALT_FONT_BODY, label,
                           row.x + m->pad_tile, row.y + m->line_gap / 2,
                           focused ? COBALT_COLOUR_ACCENT_TEXT : COBALT_COLOUR_TEXT);
       }

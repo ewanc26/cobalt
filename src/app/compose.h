@@ -55,8 +55,16 @@ typedef enum {
    COBALT_REPLY_GATE_COUNT,
 } cobalt_reply_gate;
 
-#define COBALT_PICKER_MAX      32
-#define COBALT_PICKER_NAME_MAX 64
+/* The picker lists the app's images folder, then the console's camera folder
+ * (DCIM/<folder>/<image>). A row is one name, "folder/name" for the camera, so
+ * the names are wider than a bare filename. The rows cost about 8 KB. */
+#define COBALT_PICKER_MAX      64
+#define COBALT_PICKER_NAME_MAX 128
+
+/* Where a picker row was listed from: an index into picker_dirs. */
+#define COBALT_PICKER_SRC_APP    0
+#define COBALT_PICKER_SRC_CAMERA 1
+#define COBALT_PICKER_SRCS       2
 
 typedef struct {
    char text[COBALT_COMPOSE_BYTES];
@@ -105,12 +113,26 @@ typedef struct {
    int picker_count;
    int picker_sel;
    int picker_too_large;   /* images skipped for size, to explain an empty list */
-   char picker_dir[COBALT_ATTACH_PATH_MAX];
+   char picker_dirs[COBALT_PICKER_SRCS][COBALT_ATTACH_PATH_MAX];
+   unsigned char picker_src[COBALT_PICKER_MAX];
    char picker_names[COBALT_PICKER_MAX][COBALT_PICKER_NAME_MAX];
 } cobalt_compose;
 
 /* Open the picker over `dir`. */
-void cobalt_compose_open_picker(cobalt_compose *compose, const char *dir);
+/* List the images in app_dir, then the images one folder down in camera_dir
+ * (NULL when there is no SD card). Either may be empty. */
+void cobalt_compose_open_picker(cobalt_compose *compose, const char *app_dir,
+                                const char *camera_dir);
+
+/* Join a picker folder and a row name into out. False if it does not fit. */
+bool cobalt_picker_join(char *out, size_t out_size, const char *dir,
+                        const char *entry);
+
+/* The folder row `row` was listed from, or NULL if there is no such row. */
+const char *cobalt_picker_row_dir(const cobalt_compose *compose, int row);
+
+/* "Images" or "Camera": where row `row` came from, or NULL. */
+const char *cobalt_picker_row_source(const cobalt_compose *compose, int row);
 
 /* Start a new top-level post. */
 void cobalt_compose_init(cobalt_compose *compose);

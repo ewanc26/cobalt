@@ -49,6 +49,10 @@ bool cobalt_content_path(char *out, size_t out_size, const char *rel);
 /* Writable per-app storage on SD (logs, session, cache). */
 bool cobalt_data_path(char *out, size_t out_size, const char *rel);
 
+/* A path on the SD card root, e.g. "DCIM" for the console's camera folder.
+ * False if no SD card is mounted. */
+bool cobalt_sd_path(char *out, size_t out_size, const char *rel);
+
 /* NULL until cobalt_paths_init() succeeds. */
 const char *cobalt_content_root(void);
 const char *cobalt_data_root(void);

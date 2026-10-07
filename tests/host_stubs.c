@@ -68,6 +68,13 @@ cobalt_data_path(char *out, size_t out_size, const char *rel)
    return join(out, out_size, rel);
 }
 
+bool
+cobalt_sd_path(char *out, size_t out_size, const char *rel)
+{
+   (void) out; (void) out_size; (void) rel;
+   return false;
+}
+
 const char *
 cobalt_content_root(void)
 {
