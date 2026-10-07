@@ -13,7 +13,8 @@
  */
 
 #include "atproto/feed.h"
-#include "cache/session_store.h"   /* COBALT_DID_MAX */
+#include "cache/session_store.h" /* COBALT_DID_MAX */
+#include <wolfram/profile_tab.h>
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -94,25 +95,7 @@ void cobalt_profile_apply_block(cobalt_profile *profile, const char *record_uri)
 /* Apply a mute or unmute locally. No record URI: mute state is a plain flag. */
 void cobalt_profile_apply_mute(cobalt_profile *profile, bool muted);
 
-/*
- * Profile tabs. Posts/Replies/Media are `getAuthorFeed` filters; Likes is a
- * separate endpoint the server only answers for the viewer's own account.
- */
-typedef enum {
-   COBALT_PROFILE_TAB_POSTS = 0,
-   COBALT_PROFILE_TAB_REPLIES,
-   COBALT_PROFILE_TAB_MEDIA,
-   COBALT_PROFILE_TAB_LIKES,
-   COBALT_PROFILE_TAB_COUNT,
-} cobalt_profile_tab;
-
-const char *cobalt_profile_tab_name(int tab);
-
-/* The getAuthorFeed filter for a tab, or NULL for Likes (own endpoint). */
-const char *cobalt_profile_tab_filter(int tab);
-
-/* The tab after `tab`, wrapping, skipping Likes unless `is_self`. */
-int cobalt_profile_tab_next(int tab, bool is_self);
+/* Profile tabs are Wolfram's: wolfram/profile_tab.h. */
 
 #ifdef COBALT_HAS_WOLFRAM
 struct wf_agent_profile;

@@ -91,8 +91,8 @@ cobalt_app_open_profile_menu(cobalt_app *app)
       cobalt_popup_add(&app->popup, COBALT_POPUP_FOLLOWING, "Following", "");
    }
    snprintf(label, sizeof(label), "Show %s",
-            cobalt_profile_tab_name(cobalt_profile_tab_next(cobalt_session_profile_tab(),
-                                                            profile->is_self)));
+            wf_profile_tab_name(wf_profile_tab_next(
+                cobalt_session_profile_tab(), profile->is_self)));
    cobalt_popup_add(&app->popup, COBALT_POPUP_TAB, label, "");
 }
 
@@ -237,9 +237,10 @@ cobalt_app_popup_choose(cobalt_app *app, int index)
       case COBALT_POPUP_TAB:
          cobalt_popup_close(&app->popup);
          if (!cobalt_session_busy() &&
-             cobalt_session_begin_profile_tab(cobalt_profile_tab_next(
-                cobalt_session_profile_tab(), cobalt_session_profile()->is_self))) {
-            cobalt_profile_view_rewind(&app->profile);
+             cobalt_session_begin_profile_tab(
+                 wf_profile_tab_next(cobalt_session_profile_tab(),
+                                     cobalt_session_profile()->is_self))) {
+           cobalt_profile_view_rewind(&app->profile);
          }
          break;
       case COBALT_POPUP_DELETE:

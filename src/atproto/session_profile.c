@@ -12,15 +12,8 @@ fetch_author_feed(const char *actor, int tab, const char *pinned_uri)
    wf_agent_feed_list list;
    memset(&list, 0, sizeof(list));
 
-   wf_status status;
-   if (tab == COBALT_PROFILE_TAB_LIKES) {
-      status = wf_agent_get_actor_likes_typed(g_session.wf, actor, COBALT_SESSION_PAGE, NULL,
-                                              &list);
-   } else {
-      status = wf_agent_get_author_feed_typed(g_session.wf, actor, COBALT_SESSION_PAGE, NULL,
-                                              cobalt_profile_tab_filter(tab),
-                                              &list);
-   }
+   const wf_status status = wf_agent_get_profile_tab_typed(
+       g_session.wf, actor, tab, COBALT_SESSION_PAGE, NULL, &list);
 
    if (status == WF_OK) {
       const int64_t now = cobalt_time_now();
@@ -32,16 +25,16 @@ fetch_author_feed(const char *actor, int tab, const char *pinned_uri)
 
       /* The Posts tab leads with the pinned post, as the official client does.
        * Best-effort: a failure here leaves the ordinary feed untouched. */
-      if (pinned_uri && pinned_uri[0] && tab == COBALT_PROFILE_TAB_POSTS) {
-         wf_agent_post_list pins;
-         memset(&pins, 0, sizeof(pins));
-         const char *uris[1] = { pinned_uri };
-         if (wf_agent_get_posts_typed(g_session.wf, uris, 1, &pins) == WF_OK) {
-            SDL_LockMutex(g_session.lock);
-            cobalt_feed_pin_from_wolfram(&g_session.author_feed, &pins, now);
-            SDL_UnlockMutex(g_session.lock);
-            wf_agent_post_list_free(&pins);
-         }
+      if (pinned_uri && pinned_uri[0] && tab == WF_PROFILE_TAB_POSTS) {
+        wf_agent_post_list pins;
+        memset(&pins, 0, sizeof(pins));
+        const char *uris[1] = {pinned_uri};
+        if (wf_agent_get_posts_typed(g_session.wf, uris, 1, &pins) == WF_OK) {
+          SDL_LockMutex(g_session.lock);
+          cobalt_feed_pin_from_wolfram(&g_session.author_feed, &pins, now);
+          SDL_UnlockMutex(g_session.lock);
+          wf_agent_post_list_free(&pins);
+        }
       }
    } else {
       COBALT_LOGW("session: author feed (tab %d) failed (%d) — showing the "
@@ -275,9 +268,9 @@ cobalt_session_begin_profile(const char *actor)
    cobalt_job_input in;
    memset(&in, 0, sizeof(in));
    snprintf(in.uri, sizeof(in.uri), "%s", actor);
-   in.tab = COBALT_PROFILE_TAB_POSTS;
+   in.tab = WF_PROFILE_TAB_POSTS;
    SDL_LockMutex(g_session.lock);
-   g_session.profile_tab = COBALT_PROFILE_TAB_POSTS;
+   g_session.profile_tab = WF_PROFILE_TAB_POSTS;
    SDL_UnlockMutex(g_session.lock);
    return cobalt_session_submit(COBALT_JOB_PROFILE, &in);
 }
@@ -285,13 +278,13 @@ cobalt_session_begin_profile(const char *actor)
 bool
 cobalt_session_begin_profile_tab(int tab)
 {
-   if (tab < 0 || tab >= COBALT_PROFILE_TAB_COUNT || !g_session.profile.loaded ||
-       !g_session.profile.did[0]) {
-      return false;
-   }
-   if (tab == COBALT_PROFILE_TAB_LIKES && !g_session.profile.is_self) {
-      return false;
-   }
+  if (tab < 0 || tab >= WF_PROFILE_TAB_COUNT || !g_session.profile.loaded ||
+      !g_session.profile.did[0]) {
+    return false;
+  }
+  if (tab == WF_PROFILE_TAB_LIKES && !g_session.profile.is_self) {
+    return false;
+  }
 
    cobalt_job_input in;
    memset(&in, 0, sizeof(in));

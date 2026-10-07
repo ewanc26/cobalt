@@ -302,6 +302,6 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
 
    char hint_text[160];
    snprintf(hint_text, sizeof(hint_text), "[%s]  Y: more   A/Left/Right: act",
-            cobalt_profile_tab_name(cobalt_session_profile_tab()));
+            wf_profile_tab_name(cobalt_session_profile_tab()));
    cobalt_draw_hints(r, cobalt_session_busy() ? "Working..." : hint_text);
 }

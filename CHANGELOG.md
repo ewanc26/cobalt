@@ -16,6 +16,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Changed
 
+- The profile tabs' names, filters and cycle come from Wolfram v0.36.0's `wolfram/profile_tab.h`; Cobalt's copies are deleted. ([#197](https://github.com/ewanc26/cobalt/pull/197))
 - The feed picker reads the saved feeds through Wolfram v0.35.0's `wf_agent_get_saved_feeds`; Cobalt's own preferences walk is deleted. A feed beyond the first 25 now gets its name too (the server takes 25 per call). ([#195](https://github.com/ewanc26/cobalt/pull/195))
 - Reply gates are set with Wolfram v0.34.0's `wf_agent_set_reply_gate`; Cobalt's copy of the threadgate rules is deleted. ([#191](https://github.com/ewanc26/cobalt/pull/191))
 - Attaching an image uses Wolfram v0.33.0's `wolfram/attach.h` for the type and size filter, the folder scan and the upload; Cobalt's copies are deleted. This also stops leaking the uploaded blob's strings on every attach. ([#190](https://github.com/ewanc26/cobalt/pull/190))
