@@ -341,6 +341,12 @@ cobalt_feed_embed_note(const char *type)
    return "";
 }
 
+bool
+cobalt_post_has_card(const cobalt_post *post)
+{
+   return post->link.uri[0] || post->link.video;
+}
+
 void
 cobalt_feed_link_domain(const char *uri, char *out, size_t out_size)
 {
@@ -477,10 +483,24 @@ apply_embed(cobalt_post *post, const wf_post_embed *embed)
                embed->external_thumb ? embed->external_thumb : "");
    }
 
+   /* A video cannot be played, but its poster frame can be drawn, on the link
+    * card's layout. The title says so, so the card is not mistaken for a
+    * link. */
+   if (!post->link.uri[0] && embed->video_thumb && embed->video_thumb[0]) {
+      post->link.video = true;
+      snprintf(post->link.thumb, sizeof(post->link.thumb), "%s",
+               embed->video_thumb);
+      snprintf(post->link.title, sizeof(post->link.title),
+               "Video: can't play on the Wii U");
+      cobalt_feed_copy_text(post->link.description,
+                            sizeof(post->link.description),
+                            embed->video_alt ? embed->video_alt : "");
+   }
+
    /* Real media is now drawn, so the bracket note that used to stand in for
     * it would only be clutter alongside it. Left alone for anything still
     * undrawable — video, and the quote half of recordWithMedia. */
-   if (post->image_count > 0 || post->link.uri[0]) {
+   if (post->image_count > 0 || cobalt_post_has_card(post)) {
       post->embed_note[0] = '\0';
    }
 

@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Added
+
+- A video in a post shows its poster frame on the card, decoded at the thumbnail size (320 px), with a line saying it cannot play on the Wii U. The poster and its alt text come from Wolfram v0.37.0's `wf_post_embed`. ([#200](https://github.com/ewanc26/cobalt/pull/200))
+
 ## [0.8.1] - 2026-10-07
 
 ### Changed
