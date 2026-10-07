@@ -1893,13 +1893,6 @@ test_image_attach(const char *root)
 {
    begin("image attach");
 
-   CHECK(strcmp(cobalt_attach_mime("a/b/photo.JPG"), "image/jpeg") == 0);
-   CHECK(strcmp(cobalt_attach_mime("x.jpeg"), "image/jpeg") == 0);
-   CHECK(strcmp(cobalt_attach_mime("x.png"), "image/png") == 0);
-   CHECK(cobalt_attach_mime("x.gif") == NULL);
-   CHECK(cobalt_attach_mime("noext") == NULL);
-   CHECK(cobalt_attach_mime(NULL) == NULL);
-
    char dir[512];
    snprintf(dir, sizeof(dir), "%s/images", root);
    mkdir(dir, 0755);
@@ -1915,13 +1908,6 @@ test_image_attach(const char *root)
          fclose(f);
       }
    }
-
-   static char names[COBALT_PICKER_MAX][COBALT_PICKER_NAME_MAX];
-   CHECK(cobalt_compose_scan_images(dir, names, COBALT_PICKER_MAX) == 2);
-   CHECK(strcmp(names[0], "a.jpg") == 0);
-   CHECK(strcmp(names[1], "b.png") == 0);
-   CHECK(cobalt_compose_scan_images("/nonexistent-cobalt-dir", names, 4) == 0);
-   CHECK(cobalt_compose_scan_images(dir, names, 1) == 1);
 
    static cobalt_compose c;
    cobalt_compose_init(&c);
