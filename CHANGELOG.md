@@ -9,6 +9,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Added
 
+- A new post can be extended into a thread: "Add to thread" on the confirmation row keeps the text and starts the next post, up to eight, and Post publishes them as one thread through Wolfram's `wf_agent_post_thread`. Text only, no images, and not for replies or quotes. If a later post fails the earlier ones stay published and the notice says how many. ([#103](https://github.com/ewanc26/cobalt/issues/103))
 - A link's page in the More menu now also shows the address as a QR code, so it can be scanned from a phone. ([#101](https://github.com/ewanc26/cobalt/issues/101))
 
 ### Changed

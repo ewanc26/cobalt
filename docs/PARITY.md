@@ -55,7 +55,7 @@ OAuth on a console is not the AT Protocol browser flow running on the console. T
 | Mute and block, with lists | implemented | implemented | issue platinum#35 | |
 | Muted words, hide reposts | implemented | implemented | issue platinum#35 | Both call Wolfram's `wf_muted_list` |
 | Direct messages | issue #107 | issue indigo#22 | issue platinum#42 | Wolfram has `chat_typed.h`. |
-| Post to a thread (several posts at once) | issue #103 | issue indigo#22 | issue platinum#42 | |
+| Post to a thread (several posts at once) | implemented | issue indigo#22 | issue platinum#42 | Cobalt: `cobalt_compose_extend` (`src/app/compose.c`) and `wf_agent_post_thread`; text only. Host-tested for the compose state; the posting call is tested in Wolfram against a mock PDS. |
 | Video poster and external-media embeds | issue #102 | issue indigo#22 | issue platinum#42 | Link cards are done. This row is the video poster frame and other external embeds. |
 | Open a link on a phone via QR code | implemented | issue indigo#22 | issue platinum#42 | Cobalt: `cobalt_popup_show_text` in `src/ui/popup.c` encodes with Wolfram's `wf_qr_encode`; host-tested for the matrix, not scanned from a screen. |
 | Auto-update from GitHub releases | implemented | issue indigo#23 | issue platinum#47 | Cobalt: Home, Updates (`src/app/update.c`, `src/update/`); confirm, SHA-256 checked, replaced on quit, previous build kept. Manifest signed (Ed25519, `update.json.sig`) and refused if unsigned. Host-verified only; the console run is #139. Manifest, version comparison and SHA-256 are Wolfram's `wolfram/update.h` (wolfram#106, v0.27.0). |

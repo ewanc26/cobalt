@@ -64,6 +64,11 @@ typedef struct {
     * signal an undo with, so the direction is carried explicitly. */
    bool flag;
 
+   /* A thread of new posts: how many, with the texts in s.thread_texts (too big
+    * to copy with every job; only one job runs at a time and a new one is
+    * refused while one is in flight). Zero for everything else. */
+   int thread_count;
+
    /* Composing. `text` is the post body; the refs are empty for a new post. */
    char text[COBALT_COMPOSE_TEXT_MAX];
    char root_uri[COBALT_POST_URI_MAX];
@@ -86,6 +91,9 @@ typedef struct {
 
 static struct {
    bool initialised;
+
+   /* The texts of a thread being posted; see job_input.thread_count. */
+   char thread_texts[COBALT_THREAD_POSTS_MAX][COBALT_COMPOSE_TEXT_MAX];
 
    /* Set once at init and read-only afterwards, so no locking. */
    char ca_path[COBALT_PATH_MAX];
@@ -1262,9 +1270,81 @@ upload_attachment(const char *path, const char *alt)
    return embed;
 }
 
+/* Reply-gate on a new top-level post. A failure here does not roll the post
+ * back — it exists, just ungated, which is the safer failure than silently
+ * dropping it. `gate` is 0 for none, 1 followed/mentioned, 2 nobody. */
+static void
+apply_reply_gate(int gate, const char *post_uri)
+{
+   if (gate == 0 || !post_uri || !post_uri[0]) {
+      return;
+   }
+   const char *allow_json =
+      (gate == 2) ? "[]" /* nobody */
+                  : "[{\"$type\":\"app.bsky.feed.threadgate#followingRule\"},"
+                    "{\"$type\":\"app.bsky.feed.threadgate#mentionRule\"}]";
+   wf_agent_post_result gate_result;
+   memset(&gate_result, 0, sizeof(gate_result));
+   const wf_status gate_status =
+      wf_agent_create_threadgate(s.wf, post_uri, allow_json, NULL, 0, &gate_result);
+   if (gate_status != WF_OK) {
+      COBALT_LOGW("session: threadgate failed (%d) for %s", (int) gate_status,
+                  post_uri);
+   }
+   wf_agent_post_result_free(&gate_result);
+}
+
+static void
+run_post_thread(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
+{
+   if (!s.wf) {
+      set_message(r, "Sign in first.");
+      return;
+   }
+
+   const char *texts[COBALT_THREAD_POSTS_MAX];
+   for (int i = 0; i < in->thread_count; i++) {
+      texts[i] = s.thread_texts[i];
+   }
+
+   wf_agent_post_result first;
+   memset(&first, 0, sizeof(first));
+   size_t posted = 0;
+   const wf_status status = wf_agent_post_thread(
+      s.wf, texts, (size_t) in->thread_count, &posted, &first, NULL);
+
+   COBALT_LOGI("session: thread of %d: %d posted (status %d)", in->thread_count,
+               (int) posted, (int) status);
+   apply_reply_gate(in->reply_gate, first.uri);
+   wf_agent_post_result_free(&first);
+   *state = COBALT_AUTH_SIGNED_IN;
+
+   if (status == WF_OK) {
+      publish_session();
+      r->ok = true;
+      return;
+   }
+   if (posted == 0) {
+      set_message(r, "Could not publish that (wolfram status %d). Nothing was "
+                     "posted.", (int) status);
+      return;
+   }
+   /* Part of it is public. Say so, and do not leave the draft up to be sent
+    * again: that would post the first ones twice. */
+   publish_session();
+   set_message(r, "Only %d of %d posts went out (wolfram status %d). The rest "
+                  "were not sent.", (int) posted, in->thread_count, (int) status);
+   r->ok = true;
+   r->partial = true;
+}
+
 static void
 run_post(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
 {
+   if (in->thread_count > 1) {
+      run_post_thread(in, r, state);
+      return;
+   }
    if (!s.wf) {
       set_message(r, "Sign in first.");
       return;
@@ -1331,26 +1411,7 @@ run_post(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
 
    COBALT_LOGI("session: posted %s", result.uri ? result.uri : "(no uri)");
 
-   /* Reply-gate, top-level posts only (run_post's caller already zeroes this
-    * for a reply). A failure here does not roll back the post — it exists,
-    * just ungated, which is the safer failure than silently dropping it. */
-   if (in->reply_gate != 0 && result.uri && result.uri[0]) {
-      const char *allow_json =
-         (in->reply_gate == 2) ? "[]" /* nobody */
-                               : "[{\"$type\":\"app.bsky.feed."
-                                 "threadgate#followingRule\"},"
-                                 "{\"$type\":\"app.bsky.feed."
-                                 "threadgate#mentionRule\"}]";
-      wf_agent_post_result gate_result;
-      memset(&gate_result, 0, sizeof(gate_result));
-      wf_status gate_status = wf_agent_create_threadgate(
-         s.wf, result.uri, allow_json, NULL, 0, &gate_result);
-      if (gate_status != WF_OK) {
-         COBALT_LOGW("session: threadgate failed (%d) for %s",
-                     (int) gate_status, result.uri);
-      }
-      wf_agent_post_result_free(&gate_result);
-   }
+   apply_reply_gate(in->reply_gate, result.uri);
 
    wf_agent_post_result_free(&result);
 
@@ -3176,6 +3237,31 @@ cobalt_session_begin_delete_post(const char *uri)
    memset(&in, 0, sizeof(in));
    snprintf(in.uri, sizeof(in.uri), "%s", uri);
    return submit(COBALT_JOB_DELETE_POST, &in);
+}
+
+bool
+cobalt_session_begin_post_thread(const char *const *texts, int count, int reply_gate)
+{
+   if (!texts || count < 2 || count > COBALT_THREAD_POSTS_MAX) {
+      return false;
+   }
+   for (int i = 0; i < count; i++) {
+      if (!texts[i] || !texts[i][0]) {
+         return false;
+      }
+   }
+   if (cobalt_session_busy()) {
+      return false;
+   }
+
+   for (int i = 0; i < count; i++) {
+      snprintf(s.thread_texts[i], sizeof(s.thread_texts[i]), "%s", texts[i]);
+   }
+   job_input in;
+   memset(&in, 0, sizeof(in));
+   in.thread_count = count;
+   in.reply_gate = reply_gate;
+   return submit(COBALT_JOB_POST, &in);
 }
 
 bool

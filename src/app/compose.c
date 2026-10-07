@@ -13,20 +13,29 @@
 #define CONFIRM_EDIT    1
 #define CONFIRM_DISCARD 2
 #define CONFIRM_IMAGE   3
-#define CONFIRM_COUNT   4
+#define CONFIRM_THREAD  4
+#define CONFIRM_COUNT   5
 
 /* Stored in confirm_choice as these ids; the row shows them in this order. */
 static const int CONFIRM_ORDER[CONFIRM_COUNT] = {
-   CONFIRM_POST, CONFIRM_IMAGE, CONFIRM_EDIT, CONFIRM_DISCARD
+   CONFIRM_POST, CONFIRM_THREAD, CONFIRM_IMAGE, CONFIRM_EDIT, CONFIRM_DISCARD
 };
 
+/* The choices on offer for this post. An image and a thread exclude each other:
+ * the thread call posts plain text. */
 static int
 confirm_ids(const cobalt_compose *compose, int out[CONFIRM_COUNT])
 {
-   (void) compose;
    int n = 0;
    for (int i = 0; i < CONFIRM_COUNT; i++) {
-      out[n++] = CONFIRM_ORDER[i];
+      const int id = CONFIRM_ORDER[i];
+      if (id == CONFIRM_THREAD && !cobalt_compose_can_extend(compose)) {
+         continue;
+      }
+      if (id == CONFIRM_IMAGE && compose->thread_count > 0) {
+         continue;
+      }
+      out[n++] = id;
    }
    return n;
 }
@@ -38,6 +47,7 @@ confirm_label(const cobalt_compose *compose, int id)
       case CONFIRM_POST:    return "Post";
       case CONFIRM_IMAGE:   return compose->attach_path[0] ? "Remove image"
                                                             : "Add image";
+      case CONFIRM_THREAD:  return "Add to thread";
       case CONFIRM_EDIT:    return "Keep editing";
       default:              return "Discard";
    }
@@ -172,6 +182,41 @@ bool
 cobalt_compose_is_reply(const cobalt_compose *compose)
 {
    return compose && compose->parent_uri[0] != '\0';
+}
+
+bool
+cobalt_compose_can_extend(const cobalt_compose *compose)
+{
+   return compose && !cobalt_compose_is_reply(compose) &&
+          !cobalt_compose_is_quote(compose) && !compose->attach_path[0] &&
+          compose->thread_count + 1 < COBALT_THREAD_POSTS_MAX;
+}
+
+bool
+cobalt_compose_extend(cobalt_compose *compose)
+{
+   if (!cobalt_compose_can_extend(compose) || !compose->text[0]) {
+      return false;
+   }
+   snprintf(compose->thread_texts[compose->thread_count], COBALT_COMPOSE_BYTES,
+            "%s", compose->text);
+   compose->thread_count++;
+   compose->text[0] = '\0';
+   compose->confirming = false;
+   cobalt_keyboard_open(&compose->kb, compose->text, sizeof(compose->text), false);
+   return true;
+}
+
+int
+cobalt_compose_thread_texts(const cobalt_compose *compose,
+                            const char *out[COBALT_THREAD_POSTS_MAX])
+{
+   int n = 0;
+   for (int i = 0; i < compose->thread_count; i++) {
+      out[n++] = compose->thread_texts[i];
+   }
+   out[n++] = compose->text;
+   return n;
 }
 
 int
@@ -319,6 +364,10 @@ cobalt_compose_update(cobalt_compose *compose, const cobalt_input *in)
          }
          return COBALT_COMPOSE_SUBMIT;
 
+      case CONFIRM_THREAD:
+         cobalt_compose_extend(compose);
+         return COBALT_COMPOSE_STAY;
+
       case CONFIRM_IMAGE:
          if (compose->attach_path[0]) {
             compose->attach_path[0] = '\0';
@@ -350,9 +399,14 @@ draw_header(cobalt_compose *compose, cobalt_render *r)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
 
+   char title_buf[32];
    const char *title = cobalt_compose_is_reply(compose)  ? "Reply"
                        : cobalt_compose_is_quote(compose) ? "Quote post"
                                                           : "New post";
+   if (compose->thread_count > 0) {
+      snprintf(title_buf, sizeof(title_buf), "Thread: post %d", compose->thread_count + 1);
+      title = title_buf;
+   }
    cobalt_draw_text(r, COBALT_FONT_TITLE, title, m->pad_edge, m->pad_edge,
                     COBALT_COLOUR_TILE_FOCUS);
 

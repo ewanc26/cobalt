@@ -51,6 +51,8 @@ extern "C" {
  * than taken from app/compose.h so the protocol layer does not depend on a
  * screen. */
 #define COBALT_COMPOSE_TEXT_MAX 3001
+/* Posts in one thread, counting the first. */
+#define COBALT_THREAD_POSTS_MAX 8
 
 typedef enum {
    COBALT_AUTH_SIGNED_OUT = 0,
@@ -93,6 +95,9 @@ typedef enum {
 typedef struct {
    cobalt_job_kind kind;
    bool ok;
+   /* A thread that went out only in part: ok is true because the first posts
+    * are public, and `message` says how far it got. Nothing else sets this. */
+   bool partial;
    /* Written for the user, not for a log: says what happened and what to do
     * about it. Empty on success. */
    char message[COBALT_MESSAGE_MAX];
@@ -249,6 +254,15 @@ bool cobalt_session_begin_post(const char *text, const char *parent_uri,
                                const char *root_cid, int reply_gate,
                                const char *attach_path,
                                const char *attach_alt);
+
+/*
+ * Publish `count` texts (2 to COBALT_THREAD_POSTS_MAX) as a thread of new
+ * top-level posts, the first as the root; `reply_gate` applies to the first. The
+ * texts are copied. If a later post fails the earlier ones stay published and
+ * the result says how many; nothing is rolled back or retried.
+ */
+bool cobalt_session_begin_post_thread(const char *const *texts, int count,
+                                      int reply_gate);
 
 /*
  * Language tag written to new posts ("" for none) and a step to the next

@@ -569,10 +569,16 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
 
       case COBALT_JOB_POST:
          if (result->ok) {
-            set_notice(app, cobalt_compose_is_reply(&app->compose)
-                               ? "Reply posted."
-                            : cobalt_compose_is_quote(&app->compose)
-                               ? "Quote posted." : "Posted.", false);
+            if (result->partial) {
+               set_notice(app, result->message, true);
+            } else {
+               set_notice(app, cobalt_compose_is_reply(&app->compose)
+                                  ? "Reply posted."
+                               : cobalt_compose_is_quote(&app->compose)
+                                  ? "Quote posted."
+                               : app->compose.thread_count > 0
+                                  ? "Thread posted." : "Posted.", false);
+            }
             /* Back to where composing started, and refresh so the new post is
              * actually visible rather than only claimed. */
             app->screen = app->compose_return;
@@ -1364,6 +1370,15 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                app->screen = app->compose_return;
                break;
             case COBALT_COMPOSE_SUBMIT:
+               if (app->compose.thread_count > 0) {
+                  const char *texts[COBALT_THREAD_POSTS_MAX];
+                  const int n = cobalt_compose_thread_texts(&app->compose, texts);
+                  if (!cobalt_session_begin_post_thread(
+                         texts, n, (int) app->compose.reply_gate)) {
+                     set_notice(app, "Could not start that thread.", true);
+                  }
+                  break;
+               }
                if (!(cobalt_compose_is_quote(&app->compose)
                         ? cobalt_session_begin_quote(
                              app->compose.text, app->compose.quote_uri,
