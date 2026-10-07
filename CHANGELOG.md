@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Fixed
+
+- Backing out of a profile's followers or following list keeps the profile's selection and scroll, rather than rewinding it to the header. The rule is `cobalt_listnav_restore`. Checked on the host; not on a Wii U ([#203](https://github.com/ewanc26/cobalt/pull/203), [#110](https://github.com/ewanc26/cobalt/issues/110)).
+
 ## [0.9.0] - 2026-10-07
 
 ### Added
