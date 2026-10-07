@@ -1684,28 +1684,10 @@ test_selection_survives_a_shrinking_list(void)
 static void
 test_profile_tabs(void)
 {
-   begin("profile tab filters and cycling");
+  begin("profile tab switch without a session");
 
-   CHECK(strcmp(cobalt_profile_tab_name(COBALT_PROFILE_TAB_MEDIA), "Media") == 0);
-   CHECK(strcmp(cobalt_profile_tab_filter(COBALT_PROFILE_TAB_REPLIES),
-                "posts_with_replies") == 0);
-   CHECK(strcmp(cobalt_profile_tab_filter(COBALT_PROFILE_TAB_MEDIA),
-                "posts_with_media") == 0);
-   CHECK(cobalt_profile_tab_filter(COBALT_PROFILE_TAB_LIKES) == NULL);
-
-   /* Other people's likes are private, so the cycle skips that tab. */
-   CHECK(cobalt_profile_tab_next(COBALT_PROFILE_TAB_POSTS, false) ==
-         COBALT_PROFILE_TAB_REPLIES);
-   CHECK(cobalt_profile_tab_next(COBALT_PROFILE_TAB_MEDIA, false) ==
-         COBALT_PROFILE_TAB_POSTS);
-   CHECK(cobalt_profile_tab_next(COBALT_PROFILE_TAB_MEDIA, true) ==
-         COBALT_PROFILE_TAB_LIKES);
-   CHECK(cobalt_profile_tab_next(COBALT_PROFILE_TAB_LIKES, true) ==
-         COBALT_PROFILE_TAB_POSTS);
-   /* A stale Likes tab on a profile that cannot show it falls back to Posts. */
-   CHECK(cobalt_profile_tab_next(COBALT_PROFILE_TAB_LIKES, false) ==
-         COBALT_PROFILE_TAB_POSTS);
-   CHECK(!cobalt_session_begin_profile_tab(COBALT_PROFILE_TAB_MEDIA));
+  /* Names, filters and the cycle are Wolfram's and tested there. */
+  CHECK(!cobalt_session_begin_profile_tab(WF_PROFILE_TAB_MEDIA));
 }
 
 static void

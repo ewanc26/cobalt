@@ -20,6 +20,7 @@ rules=(
   'image/jpeg|-|wf_attach_mime / wf_agent_upload_image_file from wolfram/attach.h (attachment types, limit and upload are Wolfram'"'"'s)'
   'threadgate#followingRule|-|wf_agent_set_reply_gate from wolfram/threadgate_postgate.h (the reply-gate rules are Wolfram'"'"'s)'
   'savedFeedsPref|-|wf_agent_get_saved_feeds from wolfram/saved_feeds.h (the saved-feeds preference walk is Wolfram'"'"'s)'
+  'posts_with_replies|-|wf_profile_tab_* and wf_agent_get_profile_tab_typed from wolfram/profile_tab.h (the profile tabs are Wolfram'"'"'s)'
   'days_from_civil|civil_from_days|-|wf_time_* from wolfram/time.h (RFC 3339 and relative time are Wolfram'"'"'s)'
 )
 
