@@ -340,7 +340,7 @@ Protocol, OAuth, moderation, parsing, muted words, pagination of protocol result
 - **OAuth pairing.** Wolfram's `wf_oauth_pair_run`; Cobalt keeps only the hooks and the session hand-off (cobalt#136).
 - **Update manifest, semver, SHA-256.** `wolfram/update.h` (wolfram#106, Wolfram v0.27.0). Cobalt's copy is deleted; the guard fails if SHA-256 or semver comparison grows back.
 - **Time formatting.** `wolfram/time.h` (`wf_time_parse_rfc3339`, `wf_time_format_rfc3339`, `wf_time_relative`). Cobalt keeps only the clock, in `src/util/clock.c`; the guard fails if a civil-date conversion grows back.
-- **Muted words.** `wolfram/muted_words.h` (`wf_muted_list`, v0.32.0). `src/atproto/prefs.c` holds the list and the hide-reposts rule and applies both to a feed.
+- **Muted words.** `wolfram/muted_words.h` (`wf_muted_list`, v0.31.0). `src/atproto/prefs.c` holds the list and the hide-reposts rule and applies both to a feed.
 - **Failure kinds.** `wolfram/failure.h`; `describe_failure` in `session.c` only chooses the wording.
 
 `tools/check-shared-logic.sh` (CI job `shared-logic`) fails if the old matcher grows back or the pairing method names appear in `src/` at all. Its self-test has a deliberate violation per rule. When Wolfram takes something over, delete the local copy and tighten the allow-list in the same PR.
