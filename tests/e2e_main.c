@@ -51,19 +51,19 @@ test_muted_words(void)
 
    cobalt_prefs_clear(&p);
    CHECK(!cobalt_prefs_text_is_muted(&p, "anything", NULL, 0));
-   CHECK(cobalt_prefs_add_word(&p, "cat", true, false));
+   CHECK(wf_muted_list_add(&p.muted, "cat", true, false, false, NULL));
    CHECK(cobalt_prefs_text_is_muted(&p, "I like my Cat.", NULL, 0));
    CHECK(cobalt_prefs_text_is_muted(&p, "cat", NULL, 0));
    CHECK(!cobalt_prefs_text_is_muted(&p, "a category of things", NULL, 0));
    CHECK(!cobalt_prefs_text_is_muted(&p, "concatenate", NULL, 0));
 
    cobalt_prefs_clear(&p);
-   CHECK(cobalt_prefs_add_word(&p, "good morning", true, false));
+   CHECK(wf_muted_list_add(&p.muted, "good morning", true, false, false, NULL));
    CHECK(cobalt_prefs_text_is_muted(&p, "oh, GOOD MORNING all", NULL, 0));
    CHECK(!cobalt_prefs_text_is_muted(&p, "good evening", NULL, 0));
 
    cobalt_prefs_clear(&p);
-   CHECK(cobalt_prefs_add_word(&p, "#spoilers", false, true));
+   CHECK(wf_muted_list_add(&p.muted, "#spoilers", false, true, false, NULL));
    CHECK(cobalt_prefs_text_is_muted(&p, "text", tags, 1));
    CHECK(!cobalt_prefs_text_is_muted(&p, "spoilers in text", NULL, 0));
 
@@ -71,7 +71,7 @@ test_muted_words(void)
    static cobalt_feed feed;
    memset(&feed, 0, sizeof(feed));
    cobalt_prefs_clear(&p);
-   CHECK(cobalt_prefs_add_word(&p, "ban", true, false));
+   CHECK(wf_muted_list_add(&p.muted, "ban", true, false, false, NULL));
    for (int i = 0; i < 4; i++) snprintf(feed.posts[i].text, sizeof(feed.posts[i].text), "post %d", i);
    snprintf(feed.posts[1].text, sizeof(feed.posts[1].text), "a BAN here");
    feed.count = 4;
