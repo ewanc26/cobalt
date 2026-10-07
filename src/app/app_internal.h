@@ -78,6 +78,10 @@ struct cobalt_app {
    cobalt_screen profile_return;
    /* profile_return as it was when a followers/following list was opened. */
    cobalt_screen follows_profile_return;
+   /* The profile's selection and scroll when that list was opened, so backing
+    * out of it puts the profile back where it was rather than at the top. */
+   int follows_profile_selected;
+   int follows_profile_scroll;
    /* Where to return after composing — the timeline or the thread. */
    cobalt_screen compose_return;
    /* Where B from the thread screen returns to — the timeline or notifications. */

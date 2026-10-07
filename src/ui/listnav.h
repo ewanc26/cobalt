@@ -43,6 +43,12 @@ void cobalt_listnav_init(cobalt_listnav *nav);
 /* Back to the first row, keeping the hit rectangles of the frame already drawn. */
 void cobalt_listnav_rewind(cobalt_listnav *nav);
 
+/* Put back a selection and scroll saved from an earlier visit, keeping the hit
+ * rectangles. Out-of-range values are pulled into range: the scroll never
+ * passes the selection, and neither goes below zero. The list may have changed
+ * while it was away, so the next input clamps against the live count. */
+void cobalt_listnav_restore(cobalt_listnav *nav, int selected, int scroll);
+
 /*
  * Apply this frame's input to a list of `count` rows: clamp the selection (a
  * refresh can return fewer rows than were on screen), follow a touch drag, move

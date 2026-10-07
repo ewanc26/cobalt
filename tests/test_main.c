@@ -2679,6 +2679,30 @@ test_listnav(void)
    CHECK(nav.selected == 0 && nav.scroll == 0 && nav.last_visible == -1);
 }
 
+/* Backing out of a list restores the cursor it was left on (#110). */
+static void
+test_listnav_restore(void)
+{
+   begin("a saved list position is restored, and out-of-range values are pulled in");
+   static cobalt_listnav nav;
+   cobalt_listnav_init(&nav);
+   nav.selected = 9;
+   nav.scroll = 6;
+   nav.last_visible = 12;
+
+   cobalt_listnav_restore(&nav, 5, 3);
+   CHECK(nav.selected == 5 && nav.scroll == 3 && nav.last_visible == -1);
+
+   cobalt_listnav_restore(&nav, 2, 4);
+   CHECK(nav.selected == 2 && nav.scroll == 2);
+
+   cobalt_listnav_restore(&nav, -3, -1);
+   CHECK(nav.selected == 0 && nav.scroll == 0);
+
+   cobalt_listnav_restore(NULL, 4, 4);
+   CHECK(nav.selected == 0 && nav.scroll == 0);
+}
+
 static void
 test_popup_link_qr(void)
 {
@@ -2757,6 +2781,7 @@ main(int argc, char **argv)
    test_popup_touch();
    test_popup_link_qr();
    test_listnav();
+   test_listnav_restore();
    test_post_refuses_partial_refs();
    test_notification_wording();
    test_paging_stops_when_the_window_fills();

@@ -619,7 +619,8 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                /* The profile on screen may have been replaced by one opened
                 * from this list, so go back to the one the list belongs to. */
                cobalt_session_begin_profile(app->graph.actor);
-               cobalt_profile_view_rewind(&app->profile);
+               cobalt_listnav_restore(&app->profile.nav, app->follows_profile_selected,
+                                      app->follows_profile_scroll);
                app->profile_return = app->follows_profile_return;
                app->screen = COBALT_SCREEN_PROFILE;
                break;
