@@ -35,7 +35,7 @@ OAuth on a console is not the AT Protocol browser flow running on the console. T
 | Thread view | implemented | implemented | issue platinum#27 | |
 | Profiles | implemented | implemented | partial, issue platinum#31 | Platinum shows the signed-in account only |
 | Follow, unfollow, followers, following | implemented | implemented | issue platinum#31 | |
-| Profile tabs | implemented | partial, issue indigo#56 | issue platinum#31 | Cobalt: posts, replies, media, likes (`src/atproto/actor_profile.h`). Indigo shows a person's posts only. |
+| Profile tabs | implemented | implemented | issue platinum#31 | Cobalt: posts, replies, media, likes (`src/atproto/actor_profile.h`). Indigo: the same four, cycled from the header box on a person's posts (likes on the signed-in account only). |
 | Pinned posts | implemented | implemented | issue platinum#31 | |
 | Notifications | implemented | implemented | implemented | |
 | Mark notifications seen | implemented | implemented | issue platinum#30 | |
