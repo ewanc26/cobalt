@@ -85,6 +85,8 @@ cobalt_thread_view_update(cobalt_thread_view *view, const cobalt_input *in)
     * takes one press of UP per row to escape.
     */
    cobalt_list_clamp(&view->selected, &view->scroll, thread->count);
+   cobalt_input_drag_list(in, &view->selected, thread->count, view->hit_valid ? view->hit : NULL,
+                          view->hit_count);
 
    /* Down and Up read through a long post before leaving it. */
    const int text_max = view->text_total - view->text_window;

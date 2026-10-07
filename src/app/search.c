@@ -97,6 +97,8 @@ cobalt_search_view_update(cobalt_search_view *view, const cobalt_input *in)
    }
 
    cobalt_list_clamp(&view->selected, &view->scroll, results->count);
+   cobalt_input_drag_list(in, &view->selected, results->count, view->hit_valid ? view->hit : NULL,
+                          view->hit_count);
 
    if (cobalt_input_pressed(in, COBALT_BTN_DOWN) &&
        view->selected < results->count - 1) {

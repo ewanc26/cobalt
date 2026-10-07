@@ -3,6 +3,7 @@
 #include "util/log.h"
 
 #include <string.h>
+#include <wolfram/drag.h>
 
 /* Directional auto-repeat, tuned for scrolling a timeline rather than for
  * text entry: a deliberate first delay, then a steady stream. */
@@ -11,6 +12,10 @@
 
 /* Analogue stick deflection past which the stick counts as a direction. */
 #define STICK_DEADZONE 12000
+
+/* The touch in progress, for telling a drag from a tap. Module state, like the
+ * stick directions below, so a screen can read the input structure as const. */
+static wf_drag s_drag;
 
 static SDL_GameController *s_controllers[4];
 static int s_controller_count = 0;
@@ -70,6 +75,7 @@ void
 cobalt_input_init(cobalt_input *in)
 {
    memset(in, 0, sizeof(*in));
+   memset(&s_drag, 0, sizeof(s_drag));
    open_controllers();
 }
 
@@ -92,6 +98,7 @@ cobalt_input_begin_frame(cobalt_input *in, uint32_t now_ms)
    memset(in->pressed, 0, sizeof(in->pressed));
    in->touch_began = false;
    in->touch_ended = false;
+   in->touch_dragged = false;
 }
 
 static void
@@ -184,9 +191,11 @@ cobalt_input_handle_event(cobalt_input *in, const SDL_Event *event)
          if (event->type == SDL_FINGERDOWN) {
             in->touch_down = true;
             in->touch_began = true;
+            wf_drag_begin(&s_drag, in->touch_y);
          } else if (event->type == SDL_FINGERUP) {
             in->touch_down = false;
             in->touch_ended = true;
+            in->touch_dragged = wf_drag_end(&s_drag) != 0;
          }
          break;
       }
@@ -220,9 +229,44 @@ cobalt_input_end_frame(cobalt_input *in, uint32_t now_ms)
 bool
 cobalt_input_tapped(const cobalt_input *in, const SDL_Rect *rect)
 {
-   if (!in->touch_ended || !rect) {
+   if (!in->touch_ended || in->touch_dragged || !rect) {
       return false;
    }
    SDL_Point p = { in->touch_x, in->touch_y };
    return SDL_PointInRect(&p, rect) == SDL_TRUE;
+}
+
+/* A row's height when the screen has not drawn any yet. */
+#define DEFAULT_ROW_PX 80
+
+void
+cobalt_input_drag_list(const cobalt_input *in, int *selected, int count,
+                       const SDL_Rect *hit, int hit_count)
+{
+   int row_px = DEFAULT_ROW_PX;
+   int rows;
+
+   if (!in->touch_down || count <= 0) {
+      return;
+   }
+   if (hit && hit_count > 0) {
+      int total = 0;
+      for (int i = 0; i < hit_count; i++) {
+         total += hit[i].h;
+      }
+      if (total / hit_count > 0) {
+         row_px = total / hit_count;
+      }
+   }
+   rows = wf_drag_move(&s_drag, in->touch_y, row_px);
+   if (rows == 0) {
+      return;
+   }
+   *selected += rows;
+   if (*selected < 0) {
+      *selected = 0;
+   }
+   if (*selected > count - 1) {
+      *selected = count - 1;
+   }
 }
