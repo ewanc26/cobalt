@@ -113,7 +113,7 @@ Keep `atproto/` platform-agnostic where realistically possible — it's the part
 Cobalt supports two sign-in flows. They are separate parity rows (`docs/PARITY.md`); keep both working and neither may regress the other.
 
 - **App password.** `com.atproto.server.createSession` through `wf_agent_login`, identifier and app password typed on Cobalt's own keyboard (§13). The session is stored encrypted on the SD card; "sign out" wipes it.
-- **OAuth, through a hosted Wolfram OAuth node.** An empty password selects it (`src/app/signin.c`, `run_oauth()` in `src/atproto/session.c`). The service field then holds the node's URL. `run_oauth()` calls Wolfram's `wf_oauth_pair_run` (`wolfram/oauth_pairing.h`), which owns the begin/poll contract, the parsing and the loop; Cobalt supplies hooks that show the pairing URL and code, stop polling when the app quits, and sleep, then turns the node's bearer into a session and wipes the poll result. The node holds the OAuth session and DPoP key; the console keeps only the node's bearer token. The contract is Wolfram's `docs/oauth-node.md`.
+- **OAuth, through a hosted Wolfram OAuth node.** An empty password selects it (`src/app/signin.c`, `cobalt_session_run_oauth()` in `src/atproto/session_auth.c`). The service field then holds the node's URL. `run_oauth()` calls Wolfram's `wf_oauth_pair_run` (`wolfram/oauth_pairing.h`), which owns the begin/poll contract, the parsing and the loop; Cobalt supplies hooks that show the pairing URL and code, stop polling when the app quits, and sleep, then turns the node's bearer into a session and wipes the poll result. The node holds the OAuth session and DPoP key; the console keeps only the node's bearer token. The contract is Wolfram's `docs/oauth-node.md`.
 
 Rules for both:
 
@@ -343,8 +343,8 @@ Protocol, OAuth, moderation, parsing, muted words, pagination of protocol result
 - **Muted words.** `wolfram/muted_words.h` (`wf_muted_list`, v0.31.0). `src/atproto/prefs.c` holds the list and the hide-reposts rule and applies both to a feed.
 - **List navigation.** Not Wolfram's (it is input and drawing), but shared by every scrolling screen in `src/ui/listnav.c`: selection, scroll, the follow-the-selection rule and the touch hit rectangles. A list screen embeds a `cobalt_listnav`, calls `cobalt_listnav_move` first and `cobalt_listnav_follow` last in its update, and brackets its draw loop with `cobalt_listnav_draw_*`. Do not copy that block into a new screen (cobalt#185).
 - **Image attachments.** `wolfram/attach.h` (v0.33.0): the type and size filter, the folder scan and the upload to an image embed. `src/app/compose.c` only draws the picker; the guard fails if the MIME mapping grows back.
-- **Reply gates.** `wf_agent_set_reply_gate` (`wolfram/threadgate_postgate.h`, v0.34.0); `apply_reply_gate` in `session.c` only logs a failure.
-- **Failure kinds.** `wolfram/failure.h`; `describe_failure` in `session.c` only chooses the wording.
+- **Reply gates.** `wf_agent_set_reply_gate` (`wolfram/threadgate_postgate.h`, v0.34.0); `apply_reply_gate` in `session_post.c` only logs a failure.
+- **Failure kinds.** `wolfram/failure.h`; `cobalt_session_describe_failure` in `session.c` only chooses the wording.
 
 `tools/check-shared-logic.sh` (CI job `shared-logic`) fails if the old matcher grows back or the pairing method names appear in `src/` at all. Its self-test has a deliberate violation per rule. When Wolfram takes something over, delete the local copy and tighten the allow-list in the same PR.
 
@@ -389,7 +389,7 @@ A trust store fixes certificate *verification* only. Handshake *randomness* is a
 
 Wolfram's transport is blocking libcurl. A sign-in against a cold PDS is several seconds of DNS, TLS handshake and server-side password hashing. Doing that on the frame loop would stop the app pumping SDL events — and since SDL owns ProcUI here, a stalled event pump is a stalled ProcUI message queue, i.e. a console sitting on a frozen frame that will not return to the Wii U Menu.
 
-`src/atproto/session.c` therefore owns an SDL worker thread with a one-job-at-a-time handoff: the UI submits a request, keeps drawing, and calls `cobalt_session_poll()` each frame for the result. If `SDL_CreateThread` fails, requests fall back to running synchronously on the caller — functional, but visibly stalling — and the diagnostics screen reports which mode is live, because "slow" and "hung" look identical from the couch otherwise.
+`src/atproto/session.c` therefore owns an SDL worker thread (the jobs themselves are in `session_auth.c`, `session_read.c`, `session_profile.c`, `session_lists.c` and `session_post.c`, sharing `session_internal.h`) with a one-job-at-a-time handoff: the UI submits a request, keeps drawing, and calls `cobalt_session_poll()` each frame for the result. If `SDL_CreateThread` fails, requests fall back to running synchronously on the caller — functional, but visibly stalling — and the diagnostics screen reports which mode is live, because "slow" and "hung" look identical from the couch otherwise.
 
 Any future network call belongs behind the same job mechanism. Adding a synchronous one anywhere on the frame path reintroduces the freeze.
 
@@ -442,7 +442,7 @@ Two rules keep it honest, and both are tested:
 
 The same post is frequently on screen in the feed *and* a loaded thread, so both copies are updated together — `cobalt_feed_apply_*` and `cobalt_thread_apply_*` share one post-level implementation.
 
-The direction of a toggle is decided inside `session.c` from the post's own viewer state, not passed in by the screen. A screen that passed its own idea of "liked" could disagree with what was last fetched and send the wrong verb.
+The direction of a toggle is decided inside `session_post.c` from the post's own viewer state, not passed in by the screen. A screen that passed its own idea of "liked" could disagree with what was last fetched and send the wrong verb.
 
 ### A reply must name its root, and Cobalt refuses to guess
 
@@ -743,7 +743,7 @@ covered.)*
 
 ### Custom feeds: the account's saved feeds, reusing the timeline wholesale
 
-The picker lists the account's own saved feeds, not a compiled-in table. `run_saved_feeds` in `atproto/session.c` reads the raw `getPreferences` array and takes `savedFeedsPrefV2` items of type `feed` (falling back to the older `savedFeedsPref.saved` list), then resolves display names with `getFeedGenerators`; a generator that cannot be resolved shows its record key rather than vanishing. It reads the raw JSON on purpose: a single preference type the strict typed parse rejects (status 5 on a real account) must not take the whole picker down. `FALLBACK_FEED` in `app/app.c` (Bluesky's "What's Hot") is shown only when the account has none or the fetch failed. The list is capped at `COBALT_SAVED_FEEDS_MAX`.
+The picker lists the account's own saved feeds, not a compiled-in table. `run_saved_feeds` in `atproto/session_lists.c` reads the raw `getPreferences` array and takes `savedFeedsPrefV2` items of type `feed` (falling back to the older `savedFeedsPref.saved` list), then resolves display names with `getFeedGenerators`; a generator that cannot be resolved shows its record key rather than vanishing. It reads the raw JSON on purpose: a single preference type the strict typed parse rejects (status 5 on a real account) must not take the whole picker down. `FALLBACK_FEED` in `app/app.c` (Bluesky's "What's Hot") is shown only when the account has none or the fetch failed. The list is capped at `COBALT_SAVED_FEEDS_MAX`.
 
 Viewing a feed adds nothing new: `wf_agent_get_feed_typed` returns the same `wf_agent_feed_list` `getTimeline`/`getAuthorFeed` return, so a custom feed is "the timeline, sourced elsewhere". `COBALT_JOB_FEED`/`run_feed` write into the same `s.feed` storage; opening a feed calls `cobalt_session_begin_feed(uri, false)` and switches to `COBALT_SCREEN_TIMELINE`, and reopening Timeline from the home menu re-fetches the home timeline over it. The picker (`update_feeds`/`draw_feeds` in `app.c`) is modelled on the account screen's inline menu rather than getting its own file.
 
