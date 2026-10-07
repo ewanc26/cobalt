@@ -68,7 +68,7 @@ WOLFRAM_CJSON := $(firstword $(wildcard \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.a))
 
 # The updater and the entropy seed use wolfram/update.h, and the touch input uses
-# wolfram/drag.h, so the unit tests need a Wolfram checkout (at least v0.35.0).
+# wolfram/drag.h, so the unit tests need a Wolfram checkout (at least v0.36.0).
 # They compile those sources directly rather than linking the whole library.
 ifeq ($(HAVE_WOLFRAM),)
 $(error No Wolfram checkout at $(WOLFRAM_ROOT). Clone ewanc26/wolfram there, or set WOLFRAM_ROOT)
