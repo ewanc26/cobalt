@@ -9,7 +9,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Added
 
-- The image picker on a new post also lists the console's camera folder, `sd:/DCIM`, with photos one folder down, next to Cobalt's own images folder. Each row says where it came from. Needs Wolfram v0.39.0's `wf_attach_scan_images_tree`. ([#PR](https://github.com/ewanc26/cobalt/pull/PR))
+- The image picker on a new post also lists the console's camera folder, `sd:/DCIM`, with photos one folder down, next to Cobalt's own images folder. Each row says where it came from. Needs Wolfram v0.39.0's `wf_attach_scan_images_tree`. ([#PR](https://github.com/ewanc26/cobalt/pull/206))
 
 ### Fixed
 
