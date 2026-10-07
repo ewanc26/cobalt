@@ -167,7 +167,7 @@ the same thing everywhere:
 | Y | the selected post's menu: the author's profile, its images, quote, who liked or reposted it |
 | X | write a new post from the timeline |
 | + | reload the timeline |
-| Touch | select a row, or press a footer prompt |
+| Touch | select a row, or press a footer prompt; drag a finger up or down a list to scroll it, a row for every row's height dragged |
 
 Aroma keeps the HOME button for itself, so Cobalt never sees it. Quit from
 Cobalt's own Home menu instead. The same menu switches between TV + GamePad and
