@@ -11,6 +11,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 - Cobalt now builds against Wolfram v0.30.0 (was v0.28.0). ([#181](https://github.com/ewanc26/cobalt/pull/181))
 
+### Added
+
+- Lists scroll by dragging a finger up or down the GamePad screen, a row for every row's height dragged, on the timeline, threads, profiles, notifications, search, lists and their members, and the followers and following lists. A drag no longer also counts as a tap when it ends on a row. Wolfram's `wf_drag` does the tap-versus-drag work. Checked on the host; not on a Wii U ([#181](https://github.com/ewanc26/cobalt/pull/181)).
+
 ## [0.6.0] - 2026-10-06
 
 ### Changed
