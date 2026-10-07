@@ -97,6 +97,11 @@ UNIT_SOURCES := \
 	host_stubs.c \
 	$(SRC)/cache/session_store.c \
 	$(SRC)/atproto/session.c \
+	$(SRC)/atproto/session_auth.c \
+	$(SRC)/atproto/session_read.c \
+	$(SRC)/atproto/session_profile.c \
+	$(SRC)/atproto/session_lists.c \
+	$(SRC)/atproto/session_post.c \
 	$(SRC)/app/signin.c \
 	$(SRC)/net/http.c \
 	$(SRC)/ui/imagecache.c \
