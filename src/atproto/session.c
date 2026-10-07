@@ -17,6 +17,17 @@ cobalt_session_default_service(void)
    return DEFAULT_SERVICE;
 }
 
+/*
+ * The host the app-password sign-in starts from. The PDS itself is discovered
+ * from the handle, so this only needs to be somewhere to start: an empty field
+ * means the default rather than a client with no host.
+ */
+const char *
+cobalt_session_entry_service(const char *typed)
+{
+   return (typed && typed[0]) ? typed : cobalt_session_default_service();
+}
+
 static bool
 is_space(char c)
 {

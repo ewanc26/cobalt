@@ -7,6 +7,9 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Changed
+
+- Signing in needs only the handle and password: the account's PDS is discovered from its DID document (Wolfram's `wf_agent_login_discovered`), so the host the account lives on no longer has to be typed. An empty Server field starts from the default host. ([#201](https://github.com/ewanc26/cobalt/pull/201))
 ### Added
 
 - The image picker on a new post also lists the console's camera folder, `sd:/DCIM`, with photos one folder down, next to Cobalt's own images folder. Each row says where it came from. Needs Wolfram v0.39.0's `wf_attach_scan_images_tree`. ([#PR](https://github.com/ewanc26/cobalt/pull/206))
