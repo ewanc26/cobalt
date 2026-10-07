@@ -1367,6 +1367,57 @@ test_interactions(void)
 /* --- composing --- */
 
 static void
+test_compose_thread(void)
+{
+   begin("composing a thread");
+
+   static cobalt_compose c;
+   cobalt_compose_init(&c);
+
+   /* Nothing written yet: nothing to keep. */
+   CHECK(cobalt_compose_can_extend(&c));
+   CHECK(!cobalt_compose_extend(&c));
+
+   snprintf(c.text, sizeof(c.text), "one");
+   CHECK(cobalt_compose_extend(&c));
+   CHECK(c.thread_count == 1);
+   CHECK_STR(c.text, "");
+   CHECK(!c.confirming);
+
+   snprintf(c.text, sizeof(c.text), "two");
+   CHECK(cobalt_compose_extend(&c));
+   snprintf(c.text, sizeof(c.text), "three");
+
+   const char *texts[COBALT_THREAD_POSTS_MAX];
+   CHECK(cobalt_compose_thread_texts(&c, texts) == 3);
+   CHECK_STR(texts[0], "one");
+   CHECK_STR(texts[1], "two");
+   CHECK_STR(texts[2], "three");
+
+   /* The thread stops growing at the limit, counting the post being written. */
+   while (cobalt_compose_can_extend(&c)) {
+      snprintf(c.text, sizeof(c.text), "more");
+      CHECK(cobalt_compose_extend(&c));
+   }
+   CHECK(c.thread_count + 1 == COBALT_THREAD_POSTS_MAX);
+   snprintf(c.text, sizeof(c.text), "last");
+   CHECK(!cobalt_compose_extend(&c));
+   CHECK(cobalt_compose_thread_texts(&c, texts) == COBALT_THREAD_POSTS_MAX);
+
+   /* Replies, quotes and posts with an image are not threads. */
+   cobalt_compose_init(&c);
+   snprintf(c.attach_path, sizeof(c.attach_path), "/x.jpg");
+   CHECK(!cobalt_compose_can_extend(&c));
+   cobalt_compose_init(&c);
+   snprintf(c.parent_uri, sizeof(c.parent_uri), "at://p");
+   CHECK(!cobalt_compose_can_extend(&c));
+   cobalt_compose_init(&c);
+   snprintf(c.quote_uri, sizeof(c.quote_uri), "at://q");
+   CHECK(!cobalt_compose_can_extend(&c));
+   CHECK(!cobalt_compose_can_extend(NULL));
+}
+
+static void
 test_compose(void)
 {
    begin("composing a post or reply");
@@ -2585,6 +2636,7 @@ main(int argc, char **argv)
    test_search_mode_toggle();
    test_pinned_prepend();
    test_compose();
+   test_compose_thread();
    test_both_sticks_navigate();
    test_touch_drag_scrolls_a_list();
    test_popup_touch();
