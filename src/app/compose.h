@@ -84,6 +84,14 @@ typedef struct {
    /* Only meaningful when this is a new top-level post; ignored on replies. */
    cobalt_reply_gate reply_gate;
 
+   /*
+    * A thread: the posts already written, in order. `text` is the one being
+    * written, so the thread has thread_count + 1 posts. Top-level posts only,
+    * and without images, because Wolfram's thread call posts plain text.
+    */
+   int thread_count;
+   char thread_texts[COBALT_THREAD_POSTS_MAX - 1][COBALT_COMPOSE_BYTES];
+
    /* Attached image: full SD path, empty for none. New posts and quotes only. */
    char attach_path[COBALT_ATTACH_PATH_MAX];
 
@@ -123,6 +131,22 @@ void cobalt_compose_quote(cobalt_compose *compose, const cobalt_post *post);
 bool cobalt_compose_is_quote(const cobalt_compose *compose);
 
 bool cobalt_compose_is_reply(const cobalt_compose *compose);
+
+/*
+ * Whether the post being written can be followed by another in a thread: a new
+ * top-level post, not a quote, without an image, with room left.
+ */
+bool cobalt_compose_can_extend(const cobalt_compose *compose);
+
+/* Keep the current text as the next post of a thread and start an empty one.
+ * False, and nothing changes, when cobalt_compose_can_extend is false or the
+ * text is empty. */
+bool cobalt_compose_extend(cobalt_compose *compose);
+
+/* The thread's texts in order, the current one last, for posting. Returns the
+ * count; `out` holds pointers into `compose`. */
+int cobalt_compose_thread_texts(const cobalt_compose *compose,
+                                const char *out[COBALT_THREAD_POSTS_MAX]);
 
 /*
  * Codepoints left before the limit; negative when over. Exposed because it is

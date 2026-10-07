@@ -51,6 +51,7 @@ replace testing on the console.
 - Updates from this repository's releases, only when you ask and confirm
 - Home timeline with paging, reposts and threads
 - Posting, replies, quote posts and reply gates
+- Threads: write up to eight posts in a row and publish them as one thread
 - Likes and reposts, including undo
 - Notifications and mark-as-seen
 - Profiles, follows and unfollows
