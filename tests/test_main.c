@@ -2514,6 +2514,26 @@ test_popup_touch(void)
    CHECK(!p.open);
 }
 
+static void
+test_popup_link_qr(void)
+{
+   begin("a link's text page carries a QR code");
+   static cobalt_popup p;
+
+   cobalt_popup_show_text(&p, "Link", "https://example.com/a?b=1");
+   CHECK(p.text_mode);
+   CHECK(p.qr_size >= 21 && p.qr_size <= WF_QR_MAX_SIZE);
+   /* The top-left finder pattern starts with a dark module and has a dark
+    * border seven wide; a code with the wrong layout would not. */
+   CHECK(p.qr[0] == 1 && p.qr[6] == 1 && p.qr[6 * p.qr_size] == 1);
+   CHECK(p.qr[1 * p.qr_size + 1] == 0);
+
+   cobalt_popup_show_text(&p, "Handle", "alice.example.com");
+   CHECK(p.qr_size == 0);
+   CHECK(!cobalt_popup_text_is_link(NULL));
+   CHECK(cobalt_popup_text_is_link("http://x"));
+}
+
 int
 main(int argc, char **argv)
 {
@@ -2568,6 +2588,7 @@ main(int argc, char **argv)
    test_both_sticks_navigate();
    test_touch_drag_scrolls_a_list();
    test_popup_touch();
+   test_popup_link_qr();
    test_post_refuses_partial_refs();
    test_notification_wording();
    test_paging_stops_when_the_window_fills();
