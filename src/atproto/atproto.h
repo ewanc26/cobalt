@@ -31,8 +31,6 @@ typedef enum {
 bool cobalt_atproto_init(void);
 void cobalt_atproto_shutdown(void);
 
-cobalt_atproto_status cobalt_atproto_get_status(void);
-
 /* Short human-readable summary for the diagnostics screen. */
 const char *cobalt_atproto_status_string(void);
 

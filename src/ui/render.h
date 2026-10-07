@@ -199,12 +199,6 @@ int cobalt_draw_text_wrapped(cobalt_render *r, cobalt_font_id font, const char *
                              int x, int y, int max_width, int max_lines,
                              SDL_Color colour);
 
-/* As cobalt_draw_text_wrapped, but skips the first `first_line` wrapped lines,
- * for scrolling through a long post. */
-int cobalt_draw_text_wrapped_from(cobalt_render *r, cobalt_font_id font, const char *utf8,
-                                  int x, int y, int max_width, int first_line,
-                                  int max_lines, SDL_Color colour);
-
 /* A coloured byte range of the text being drawn (rich text facets). */
 typedef struct {
    int start;
@@ -213,7 +207,8 @@ typedef struct {
    bool underline;
 } cobalt_text_span;
 
-/* As cobalt_draw_text_wrapped_from, colouring the byte ranges in `spans`. */
+/* As cobalt_draw_text_wrapped, but skips the first `first_line` wrapped lines (for
+ * scrolling through a long post) and colours the byte ranges in `spans`. */
 int cobalt_draw_text_wrapped_spans(cobalt_render *r, cobalt_font_id font,
                                    const char *utf8, int x, int y, int max_width,
                                    int first_line, int max_lines, SDL_Color colour,

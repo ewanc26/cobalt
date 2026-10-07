@@ -1439,15 +1439,6 @@ cobalt_draw_text_wrapped(cobalt_render *r, cobalt_font_id font_id, const char *u
 }
 
 int
-cobalt_draw_text_wrapped_from(cobalt_render *r, cobalt_font_id font_id,
-                              const char *utf8, int x, int y, int max_width,
-                              int first_line, int max_lines, SDL_Color colour)
-{
-   return wrapped_impl(r, font_id, utf8, x, y, max_width, first_line, max_lines,
-                       colour, true, NULL, NULL, 0);
-}
-
-int
 cobalt_text_wrapped_lines(cobalt_render *r, cobalt_font_id font_id,
                           const char *utf8, int max_width)
 {
