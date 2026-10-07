@@ -67,14 +67,15 @@ WOLFRAM_CJSON := $(firstword $(wildcard \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.$(SOEXT) \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.a))
 
-# The updater and the entropy seed use wolfram/update.h, so the unit tests need a
-# Wolfram checkout (at least v0.28.0). They compile its update sources directly
-# rather than linking the whole library.
+# The updater and the entropy seed use wolfram/update.h, and the touch input uses
+# wolfram/drag.h, so the unit tests need a Wolfram checkout (at least v0.30.0).
+# They compile those sources directly rather than linking the whole library.
 ifeq ($(HAVE_WOLFRAM),)
 $(error No Wolfram checkout at $(WOLFRAM_ROOT). Clone ewanc26/wolfram there, or set WOLFRAM_ROOT)
 endif
-WOLFRAM_UPDATE_SOURCES := $(WOLFRAM_ROOT)/src/update/update_core.c $(WOLFRAM_ROOT)/src/update/manifest.c \
-                         $(WOLFRAM_ROOT)/src/update/ed25519.c $(WOLFRAM_ROOT)/src/update/signature.c
+WOLFRAM_SOURCES := $(WOLFRAM_ROOT)/src/update/update_core.c $(WOLFRAM_ROOT)/src/update/manifest.c \
+                   $(WOLFRAM_ROOT)/src/update/ed25519.c $(WOLFRAM_ROOT)/src/update/signature.c \
+                   $(WOLFRAM_ROOT)/src/drag.c
 
 CFLAGS  := -std=gnu11 -g -O1 -Wall -Wextra -I$(SRC) -I$(WOLFRAM_ROOT)/include $(SDL_CFLAGS) $(CJSON_CFLAGS) $(CURL_CFLAGS) \
            $(IMAGE_CFLAGS) -include $(CURDIR)/host_sdl_compat.h
@@ -102,7 +103,7 @@ UNIT_SOURCES := \
 	$(SRC)/atproto/feed.c \
 	$(SRC)/atproto/prefs.c \
 	$(SRC)/update/selfupdate.c \
-	$(WOLFRAM_UPDATE_SOURCES) \
+	$(WOLFRAM_SOURCES) \
 	$(SRC)/app/update.c \
 	$(SRC)/app/entropyview.c \
 	$(SRC)/util/entropy_gather.c \

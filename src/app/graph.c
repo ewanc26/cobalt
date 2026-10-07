@@ -172,6 +172,8 @@ cobalt_graph_view_update(cobalt_graph_view *view, const cobalt_input *in)
    }
 
    cobalt_list_clamp(&view->selected, &view->scroll, list->count);
+   cobalt_input_drag_list(in, &view->selected, list->count, view->hit_valid ? view->hit : NULL,
+                          view->hit_count);
 
    if (cobalt_input_pressed(in, COBALT_BTN_DOWN) &&
        view->selected < list->count - 1) {

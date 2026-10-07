@@ -66,6 +66,8 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
     * that shrinks the feed also rewinds the view, but that is a property of
     * the call graph rather than an invariant, so clamp here too. */
    cobalt_list_clamp(&view->selected, &view->scroll, feed->count);
+   cobalt_input_drag_list(in, &view->selected, feed->count, view->hit_valid ? view->hit : NULL,
+                          view->hit_count);
 
    if (cobalt_input_pressed(in, COBALT_BTN_DOWN)) {
       if (view->selected < feed->count - 1) {
