@@ -68,14 +68,19 @@ WOLFRAM_CJSON := $(firstword $(wildcard \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.a))
 
 # The updater and the entropy seed use wolfram/update.h, and the touch input uses
-# wolfram/drag.h, so the unit tests need a Wolfram checkout (at least v0.30.0).
+# wolfram/drag.h, so the unit tests need a Wolfram checkout (at least v0.31.0).
 # They compile those sources directly rather than linking the whole library.
 ifeq ($(HAVE_WOLFRAM),)
 $(error No Wolfram checkout at $(WOLFRAM_ROOT). Clone ewanc26/wolfram there, or set WOLFRAM_ROOT)
 endif
 WOLFRAM_SOURCES := $(WOLFRAM_ROOT)/src/update/update_core.c $(WOLFRAM_ROOT)/src/update/manifest.c \
                    $(WOLFRAM_ROOT)/src/update/ed25519.c $(WOLFRAM_ROOT)/src/update/signature.c \
-                   $(WOLFRAM_ROOT)/src/drag.c
+                   $(WOLFRAM_ROOT)/src/drag.c $(WOLFRAM_ROOT)/src/failure.c \
+                   $(WOLFRAM_ROOT)/src/time.c $(WOLFRAM_ROOT)/src/agent/muted_words.c \
+                   $(WOLFRAM_ROOT)/src/agent/moderation.c
+# time.c's datetime check is C++, so it is built apart and the link needs the C++ runtime.
+WOLFRAM_CXX_OBJ := $(OUT)/wf_syntax.o
+CXXRT := $(if $(filter Darwin,$(shell uname -s)),-lc++,-lstdc++)
 
 CFLAGS  := -std=gnu11 -g -O1 -Wall -Wextra -I$(SRC) -I$(WOLFRAM_ROOT)/include $(SDL_CFLAGS) $(CJSON_CFLAGS) $(CURL_CFLAGS) \
            $(IMAGE_CFLAGS) -include $(CURDIR)/host_sdl_compat.h
@@ -99,7 +104,7 @@ UNIT_SOURCES := \
 	$(SRC)/ui/popup.c \
 	$(SRC)/ui/imageview.c \
 	$(SRC)/util/rng.c \
-	$(SRC)/util/timefmt.c \
+	$(SRC)/util/clock.c \
 	$(SRC)/atproto/feed.c \
 	$(SRC)/atproto/prefs.c \
 	$(SRC)/update/selfupdate.c \
@@ -246,9 +251,13 @@ check: $(TEST_BIN)
 	@$(ROOT)/tools/make-update-manifest.sh 9.9.9 $(SCRATCH)/sample.wuhb $(SCRATCH)/sample-notes.txt > $(SCRATCH)/update-sample.json
 	@./$(TEST_BIN) $(SCRATCH) $(SCRATCH)/update-sample.json $(SCRATCH)/sample.wuhb
 
-$(TEST_BIN): $(UNIT_SOURCES)
+$(WOLFRAM_CXX_OBJ): $(WOLFRAM_ROOT)/cpp/wolfram/syntax.cpp
 	@mkdir -p $(OUT)
-	@$(CC) $(CFLAGS) -o $@ $(UNIT_SOURCES) $(LDLIBS) $(CJSON_LIBS)
+	@$(CXX) -std=c++17 -O1 -I$(WOLFRAM_ROOT)/include -c -o $@ $<
+
+$(TEST_BIN): $(UNIT_SOURCES) $(WOLFRAM_CXX_OBJ)
+	@mkdir -p $(OUT)
+	@$(CC) $(CFLAGS) -o $@ $(UNIT_SOURCES) $(WOLFRAM_CXX_OBJ) $(LDLIBS) $(CXXRT) $(CJSON_LIBS)
 
 #---------------------------------------------------------------------------------
 clean:

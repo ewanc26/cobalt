@@ -29,7 +29,7 @@
 #include "input/input.h"
 #include "util/entropy.h"
 #include "util/rng.h"
-#include "util/timefmt.h"
+#include "util/clock.h"
 
 #include <SDL.h>
 
@@ -581,93 +581,6 @@ test_keyboard_display(void)
 }
 
 
-/* --- timestamps --- */
-
-static void
-test_time_parse(void)
-{
-   begin("RFC 3339 parsing");
-
-   int64_t epoch = 0;
-
-   /* The epoch itself, and a value checked against a known Unix time. */
-   CHECK(cobalt_time_parse_rfc3339("1970-01-01T00:00:00Z", &epoch));
-   CHECK(epoch == 0);
-
-   CHECK(cobalt_time_parse_rfc3339("2026-07-29T10:15:30Z", &epoch));
-   CHECK(epoch == 1785320130);
-
-   /* Fractional seconds are what a PDS actually emits, so this is the common
-    * case rather than an edge one. */
-   CHECK(cobalt_time_parse_rfc3339("2026-07-29T10:15:30.123Z", &epoch));
-   CHECK(epoch == 1785320130);
-
-   /* Leap-day handling, which is where hand-rolled date maths usually breaks:
-    * 2000 is a leap year, 1900 and 2100 are not. */
-   CHECK(cobalt_time_parse_rfc3339("2000-02-29T00:00:00Z", &epoch));
-   CHECK(epoch == 951782400);
-   CHECK(cobalt_time_parse_rfc3339("2024-02-29T12:00:00Z", &epoch));
-   CHECK(epoch == 1709208000);
-
-   /* Lowercase separators are legal RFC 3339. */
-   CHECK(cobalt_time_parse_rfc3339("2026-07-29t10:15:30z", &epoch));
-   CHECK(epoch == 1785320130);
-
-   /*
-    * A numeric offset must be refused, not read as if it were UTC. Accepting
-    * it would put posts hours out of order in the feed, which is worse than
-    * showing no timestamp at all.
-    */
-   CHECK(!cobalt_time_parse_rfc3339("2026-07-29T10:15:30+01:00", &epoch));
-
-   /* Malformed input of various shapes. */
-   CHECK(!cobalt_time_parse_rfc3339("", &epoch));
-   CHECK(!cobalt_time_parse_rfc3339(NULL, &epoch));
-   CHECK(!cobalt_time_parse_rfc3339("2026-07-29", &epoch));
-   CHECK(!cobalt_time_parse_rfc3339("2026-07-29T10:15:30", &epoch));
-   CHECK(!cobalt_time_parse_rfc3339("not-a-timestamp-at-all", &epoch));
-   CHECK(!cobalt_time_parse_rfc3339("2026-13-01T00:00:00Z", &epoch));
-   CHECK(!cobalt_time_parse_rfc3339("2026-07-29T10:15:30Ztrailing", &epoch));
-}
-
-static void
-test_time_relative(void)
-{
-   begin("relative timestamps");
-
-   char out[COBALT_RELATIVE_MAX];
-   const int64_t now = 1785320130;
-
-   cobalt_time_relative(now, now, out, sizeof(out));
-   CHECK_STR(out, "0s");
-
-   cobalt_time_relative(now - 45, now, out, sizeof(out));
-   CHECK_STR(out, "45s");
-
-   cobalt_time_relative(now - 60, now, out, sizeof(out));
-   CHECK_STR(out, "1m");
-
-   cobalt_time_relative(now - 3599, now, out, sizeof(out));
-   CHECK_STR(out, "59m");
-
-   cobalt_time_relative(now - 3600, now, out, sizeof(out));
-   CHECK_STR(out, "1h");
-
-   cobalt_time_relative(now - 86400 * 3, now, out, sizeof(out));
-   CHECK_STR(out, "3d");
-
-   cobalt_time_relative(now - 86400 * 20, now, out, sizeof(out));
-   CHECK_STR(out, "2w");
-
-   cobalt_time_relative(now - 86400 * 800, now, out, sizeof(out));
-   CHECK_STR(out, "2y");
-
-   /* A console with a slow clock produces future-dated posts. Clamping to
-    * "now" is odd; "-4h" on every post would be worse. */
-   cobalt_time_relative(now + 9999, now, out, sizeof(out));
-   CHECK_STR(out, "0s");
-}
-
 /* --- feed formatting --- */
 
 static void
@@ -783,14 +696,19 @@ test_prefs(void)
    cobalt_prefs p;
    cobalt_prefs_clear(&p);
    CHECK(!cobalt_prefs_text_is_muted(&p, "anything", NULL, 0));
-   CHECK(!cobalt_prefs_add_word(&p, "", true, false));
+   CHECK(!wf_muted_list_add(&p.muted, "", true, false, false, NULL));
 
-   /* Matching itself is Wolfram's (wf_mod_match_mute_words) and is exercised in
-    * tests/e2e_main.c, which links it; this binary has no SDK, so a word list
-    * here never matches. */
-   CHECK(cobalt_prefs_add_word(&p, "cat", true, false));
-   CHECK(!cobalt_prefs_text_is_muted(&p, "I like my cat.", NULL, 0));
-   CHECK(p.count == 1);
+   /* The matching rules are Wolfram's and pinned by its vectors; here, that a
+    * list reaches them and that a tag mute applies to a post's tag facets. */
+   CHECK(wf_muted_list_add(&p.muted, "cat", true, false, false, NULL));
+   CHECK(wf_muted_list_add(&p.muted, "spoilers", false, true, false, NULL));
+   CHECK(cobalt_prefs_text_is_muted(&p, "I like my cat.", NULL, 0));
+   CHECK(!cobalt_prefs_text_is_muted(&p, "a category", NULL, 0));
+   const char *tags[] = {"Spoilers"};
+   CHECK(cobalt_prefs_text_is_muted(&p, "text", tags, 1));
+   CHECK(!cobalt_prefs_text_is_muted(&p, "spoilers in the text", NULL, 0));
+   CHECK(!cobalt_prefs_text_is_muted(NULL, "cat", NULL, 0));
+   CHECK(p.muted.count == 2);
 
    /* Hide reposts is Cobalt's own rule, and only on the home timeline. */
    static cobalt_feed feed;
@@ -1602,41 +1520,6 @@ test_notification_wording(void)
    CHECK(list.count == 0);
    CHECK(list.unread == 0);
 }
-
-static void
-test_time_format(void)
-{
-   begin("RFC 3339 formatting");
-
-   char out[32];
-
-   CHECK(cobalt_time_format_rfc3339(0, out, sizeof(out)));
-   CHECK_STR(out, "1970-01-01T00:00:00Z");
-
-   CHECK(cobalt_time_format_rfc3339(1785320130, out, sizeof(out)));
-   CHECK_STR(out, "2026-07-29T10:15:30Z");
-
-   /* Leap day, the case the arithmetic is most likely to get wrong. */
-   CHECK(cobalt_time_format_rfc3339(1709208000, out, sizeof(out)));
-   CHECK_STR(out, "2024-02-29T12:00:00Z");
-
-   /* Round-trips with the parser, which is the property that actually
-    * matters — the two have to agree about the same instant. */
-   const int64_t samples[] = { 0, 1, 951782400, 1709208000, 1785320130,
-                               2000000000 };
-   for (size_t i = 0; i < sizeof(samples) / sizeof(samples[0]); i++) {
-      CHECK(cobalt_time_format_rfc3339(samples[i], out, sizeof(out)));
-      int64_t back = -1;
-      CHECK(cobalt_time_parse_rfc3339(out, &back));
-      CHECK(back == samples[i]);
-   }
-
-   /* Too small a buffer is refused rather than truncated into a wrong date. */
-   char tiny[8];
-   CHECK(!cobalt_time_format_rfc3339(0, tiny, sizeof(tiny)));
-   CHECK(!cobalt_time_format_rfc3339(0, NULL, 32));
-}
-
 
 /* --- regressions --- */
 
@@ -2660,9 +2543,6 @@ main(int argc, char **argv)
    test_keyboard_bounds();
    test_keyboard_multibyte();
    test_keyboard_display();
-   test_time_parse();
-   test_time_relative();
-   test_time_format();
    test_feed_text();
    test_feed_counts();
    test_feed_embeds();
