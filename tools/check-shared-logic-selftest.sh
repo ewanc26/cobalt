@@ -26,4 +26,7 @@ expect fail "semver comparison grows back"
 echo 'int x;' > "$tmp/src/atproto/ver.c"
 echo 'static long days_from_civil(long y) { return y; }' > "$tmp/src/atproto/t.c"
 expect fail "civil-date conversion grows back"
+echo 'int x;' > "$tmp/src/atproto/t.c"
+echo 'const char *m = "image/jpeg";' > "$tmp/src/atproto/mime.c"
+expect fail "attachment MIME mapping grows back"
 [ "$bad" -eq 0 ] && echo "all shared-logic selftests passed" || exit 1

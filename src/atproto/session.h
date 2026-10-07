@@ -239,15 +239,10 @@ bool cobalt_session_begin_repost(const char *uri, const char *cid);
  */
 /*
  * An optional image (`attach_path`, NULL or "" for none, with `attach_alt` text) is uploaded and
- * embedded, on new posts, quotes and replies. Limits and MIME mapping: cobalt_attach_*.
+ * embedded, on new posts, quotes and replies. Limits and MIME mapping: wolfram/attach.h.
  */
 #define COBALT_ATTACH_PATH_MAX  256
 #define COBALT_ATTACH_ALT_MAX   1001
-/* Bluesky's blob limit is 1,000,000 bytes; leave headroom. */
-#define COBALT_ATTACH_MAX_BYTES 950000
-
-/* "image/jpeg" or "image/png" from a file name, NULL for anything else. */
-const char *cobalt_attach_mime(const char *path);
 
 bool cobalt_session_begin_post(const char *text, const char *parent_uri,
                                const char *parent_cid, const char *root_uri,

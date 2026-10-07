@@ -14,6 +14,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Changed
 
+- Attaching an image uses Wolfram v0.33.0's `wolfram/attach.h` for the type and size filter, the folder scan and the upload; Cobalt's copies are deleted. This also stops leaking the uploaded blob's strings on every attach. ([#190](https://github.com/ewanc26/cobalt/pull/190))
 - Timestamps, muted-word matching and failure classification now come from Wolfram v0.31.0 (`wf_time_*`, `wf_muted_list`, `wf_failure_classify`); Cobalt's own copies are deleted. A server-side failure now says the server had a problem instead of reporting a refused request. ([#186](https://github.com/ewanc26/cobalt/pull/186))
 
 ## [0.7.0] - 2026-10-07

@@ -16,6 +16,7 @@
 #include <wolfram/actor_typed.h>
 #include <wolfram/feed_gen_typed.h>
 #include <wolfram/agent.h>
+#include <wolfram/attach.h>
 #include <wolfram/embed.h>
 #include <wolfram/failure.h>
 #include <wolfram/feed_typed.h>
@@ -390,22 +391,6 @@ save_post_lang(void)
    }
    fprintf(f, "%s\n", POST_LANGS[s.post_lang]);
    fclose(f);
-}
-
-const char *
-cobalt_attach_mime(const char *path)
-{
-   const char *dot = path ? strrchr(path, '.') : NULL;
-   if (!dot) {
-      return NULL;
-   }
-   if (!strcasecmp(dot, ".jpg") || !strcasecmp(dot, ".jpeg")) {
-      return "image/jpeg";
-   }
-   if (!strcasecmp(dot, ".png")) {
-      return "image/png";
-   }
-   return NULL;
 }
 
 const char *
@@ -1233,39 +1218,11 @@ run_delete_post(const job_input *in, cobalt_job_result *r,
 static cJSON *
 upload_attachment(const char *path, const char *alt)
 {
-   FILE *f = fopen(path, "rb");
-   if (!f) {
-      COBALT_LOGW("session: cannot open attachment %s", path);
-      return NULL;
-   }
-   unsigned char *buf = malloc(COBALT_ATTACH_MAX_BYTES + 1);
-   if (!buf) {
-      fclose(f);
-      return NULL;
-   }
-   const size_t n = fread(buf, 1, COBALT_ATTACH_MAX_BYTES + 1, f);
-   fclose(f);
-   if (n == 0 || n > COBALT_ATTACH_MAX_BYTES) {
-      COBALT_LOGW("session: attachment %s has bad size %d", path, (int) n);
-      free(buf);
-      return NULL;
-   }
-
-   const char *mime = cobalt_attach_mime(path);
-   wf_uploaded_blob blob;
-   memset(&blob, 0, sizeof(blob));
-   wf_status st = mime ? wf_agent_upload_blob_ex(s.wf, buf, n, mime, &blob)
-                       : WF_ERR_INVALID_ARG;
-   free(buf);
+   cJSON *embed = NULL;
+   const wf_status st = wf_agent_upload_image_file(s.wf, path, alt, &embed);
    if (st != WF_OK) {
-      COBALT_LOGW("session: blob upload failed (%d)", (int) st);
+      COBALT_LOGW("session: attachment %s failed (%d)", path, (int) st);
       return NULL;
-   }
-
-   cJSON *embed = wf_embed_images_new();
-   if (embed && wf_embed_images_add_image(embed, &blob, alt ? alt : "") != WF_OK) {
-      cJSON_Delete(embed);
-      embed = NULL;
    }
    return embed;
 }

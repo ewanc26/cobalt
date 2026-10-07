@@ -3,7 +3,8 @@
 #include "util/log.h"
 #include "util/paths.h"
 
-#include <dirent.h>
+#include <wolfram/attach.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,50 +54,6 @@ confirm_label(const cobalt_compose *compose, int id)
    }
 }
 
-static int
-name_cmp(const void *a, const void *b)
-{
-   return strcmp((const char *) a, (const char *) b);
-}
-
-static int s_scan_too_large;
-
-int
-cobalt_compose_scan_images(const char *dir, char names[][COBALT_PICKER_NAME_MAX],
-                           int max)
-{
-   DIR *d = dir ? opendir(dir) : NULL;
-   if (!d) {
-      return 0;
-   }
-   int n = 0;
-   s_scan_too_large = 0;
-   struct dirent *e;
-   while (n < max && (e = readdir(d)) != NULL) {
-      if (e->d_name[0] == '.' || !cobalt_attach_mime(e->d_name) ||
-          strlen(e->d_name) >= COBALT_PICKER_NAME_MAX) {
-         continue;
-      }
-      char path[COBALT_ATTACH_PATH_MAX];
-      if (snprintf(path, sizeof(path), "%s/%s", dir, e->d_name) >=
-          (int) sizeof(path)) {
-         continue;
-      }
-      struct stat st;
-      if (stat(path, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size <= 0) {
-         continue;
-      }
-      if (st.st_size > COBALT_ATTACH_MAX_BYTES) {
-         s_scan_too_large++;
-         continue;
-      }
-      snprintf(names[n++], COBALT_PICKER_NAME_MAX, "%s", e->d_name);
-   }
-   closedir(d);
-   qsort(names, (size_t) n, COBALT_PICKER_NAME_MAX, name_cmp);
-   return n;
-}
-
 void
 cobalt_compose_open_picker(cobalt_compose *compose, const char *dir)
 {
@@ -105,8 +62,9 @@ cobalt_compose_open_picker(cobalt_compose *compose, const char *dir)
    }
    snprintf(compose->picker_dir, sizeof(compose->picker_dir), "%s", dir);
    mkdir(dir, 0777);
-   compose->picker_count = cobalt_compose_scan_images(
-      dir, compose->picker_names, COBALT_PICKER_MAX);
+   compose->picker_count = wf_attach_scan_images(
+      dir, &compose->picker_names[0][0], COBALT_PICKER_NAME_MAX, COBALT_PICKER_MAX,
+      &compose->picker_too_large);
    compose->picker_sel = 0;
    compose->picking = true;
 }
@@ -575,11 +533,11 @@ draw_picker(cobalt_compose *compose, cobalt_render *r, cobalt_surface_id surface
 
    if (compose->picker_count == 0) {
       char msg[240];
-      if (s_scan_too_large > 0) {
+      if (compose->picker_too_large > 0) {
          snprintf(msg, sizeof(msg),
                   "%d image(s) are over 950 KB, which Bluesky will not accept. "
                   "Shrink them, or copy smaller .jpg or .png files into the "
-                  "folder below.", s_scan_too_large);
+                  "folder below.", compose->picker_too_large);
       } else {
          snprintf(msg, sizeof(msg),
                   "No images found. Copy .jpg or .png files (under 950 KB) "
