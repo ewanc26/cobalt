@@ -344,6 +344,7 @@ Protocol, OAuth, moderation, parsing, muted words, pagination of protocol result
 - **List navigation.** Not Wolfram's (it is input and drawing), but shared by every scrolling screen in `src/ui/listnav.c`: selection, scroll, the follow-the-selection rule and the touch hit rectangles. A list screen embeds a `cobalt_listnav`, calls `cobalt_listnav_move` first and `cobalt_listnav_follow` last in its update, and brackets its draw loop with `cobalt_listnav_draw_*`. Do not copy that block into a new screen (cobalt#185).
 - **Image attachments.** `wolfram/attach.h` (v0.33.0): the type and size filter, the folder scan and the upload to an image embed. `src/app/compose.c` only draws the picker; the guard fails if the MIME mapping grows back.
 - **Reply gates.** `wf_agent_set_reply_gate` (`wolfram/threadgate_postgate.h`, v0.34.0); `apply_reply_gate` in `session_post.c` only logs a failure.
+- **Saved feeds.** `wf_agent_get_saved_feeds` (`wolfram/saved_feeds.h`, v0.35.0); `cobalt_session_run_saved_feeds` only copies the result.
 - **Failure kinds.** `wolfram/failure.h`; `cobalt_session_describe_failure` in `session.c` only chooses the wording.
 
 `tools/check-shared-logic.sh` (CI job `shared-logic`) fails if the old matcher grows back or the pairing method names appear in `src/` at all. Its self-test has a deliberate violation per rule. When Wolfram takes something over, delete the local copy and tighten the allow-list in the same PR.

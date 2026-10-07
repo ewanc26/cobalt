@@ -39,6 +39,7 @@
 #include <wolfram/list_typed.h>
 #include <wolfram/moderation_typed.h>
 #include <wolfram/oauth_pairing.h>
+#include <wolfram/saved_feeds.h>
 #include <wolfram/session.h>
 #include <wolfram/thread_typed.h>
 #include <wolfram/threadgate_postgate.h>

@@ -77,7 +77,7 @@ WOLFRAM_SOURCES := $(WOLFRAM_ROOT)/src/update/update_core.c $(WOLFRAM_ROOT)/src/
                    $(WOLFRAM_ROOT)/src/update/ed25519.c $(WOLFRAM_ROOT)/src/update/signature.c \
                    $(WOLFRAM_ROOT)/src/drag.c $(WOLFRAM_ROOT)/src/failure.c \
                    $(WOLFRAM_ROOT)/src/time.c $(WOLFRAM_ROOT)/src/agent/muted_words.c \
-                   $(WOLFRAM_ROOT)/src/agent/moderation.c $(WOLFRAM_ROOT)/src/qr.c $(WOLFRAM_ROOT)/src/attach.c
+                   $(WOLFRAM_ROOT)/src/agent/moderation.c $(WOLFRAM_ROOT)/src/qr.c $(WOLFRAM_ROOT)/src/attach.c $(WOLFRAM_ROOT)/src/util.c
 # time.c's datetime check is C++, so it is built apart and the link needs the C++ runtime.
 WOLFRAM_CXX_OBJ := $(OUT)/wf_syntax.o
 CXXRT := $(if $(filter Darwin,$(shell uname -s)),-lc++,-lstdc++)
