@@ -5,6 +5,11 @@ All notable changes to Cobalt. Versions follow [Semantic Versioning](https://sem
 `tools/release.sh` reads the section for a version out of this file to build
 the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
+## [0.9.1] - 2026-10-08
+
+### Fixed
+- Browser sign-in reports failure with HTTP status. (closes #208)
+
 ## [Unreleased]
 
 ### Changed
