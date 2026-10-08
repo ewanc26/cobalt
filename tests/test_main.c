@@ -2141,7 +2141,7 @@ test_signin_validation(void)
 
    /* Submitting with nothing filled in must not fire a request; it should say
     * what is missing and move the focus there. */
-   form.focus = 3;
+   form.focus = COBALT_SIGNIN_ROWS - 1;
    cobalt_input confirm = tap(COBALT_BTN_CONFIRM);
    CHECK(cobalt_signin_update(&form, &confirm) == COBALT_SIGNIN_STAY);
    CHECK(form.status[0] != '\0');
@@ -2150,12 +2150,12 @@ test_signin_validation(void)
 
    /* Identifier but no password: this now selects browser OAuth. */
    snprintf(form.identifier, sizeof(form.identifier), "someone.bsky.social");
-   form.focus = 3;
+   form.focus = COBALT_SIGNIN_ROWS - 1;
    CHECK(cobalt_signin_update(&form, &confirm) == COBALT_SIGNIN_SUBMIT);
 
    /* Supplying an app password still selects the legacy direct-login path. */
    snprintf(form.password, sizeof(form.password), "abcd-efgh-ijkl-mnop");
-   form.focus = 3;
+   form.focus = COBALT_SIGNIN_ROWS - 1;
    CHECK(cobalt_signin_update(&form, &confirm) == COBALT_SIGNIN_SUBMIT);
 
    /* Signing out of the screen wipes the password rather than leaving it in
