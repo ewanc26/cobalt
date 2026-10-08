@@ -5,6 +5,23 @@ All notable changes to Cobalt. Versions follow [Semantic Versioning](https://sem
 `tools/release.sh` reads the section for a version out of this file to build
 the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
+## [0.9.1] - 2026-10-08
+
+### Fixed
+
+- Fix OAuth sign-in failure (#212); wire COBALT_JOB_OAUTH; improve error message.
+- Fix build environment for Wii U (build-wiiu/libwolfram.a v0.39.0).
+- Fix version string (0.9.1 from src/util/version.h).
+
+### Added
+
+- Diagnostics include Wolfram build info in app_diag.c.
+
+### Changed
+
+- Cobalt version: 0.9.1 (linear from 0.9.0).
+
+
 ## [Unreleased]
 
 ### Changed
@@ -178,8 +195,9 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.9.1...HEAD
 [0.9.0]: https://github.com/ewanc26/cobalt/compare/v0.8.1...v0.9.0
+[0.9.1]: https://github.com/ewanc26/cobalt/compare/v0.9.0...v0.9.1
 [0.8.1]: https://github.com/ewanc26/cobalt/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ewanc26/cobalt/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ewanc26/cobalt/compare/v0.6.0...v0.7.0
