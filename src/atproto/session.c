@@ -694,9 +694,16 @@ run_oauth(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
                                     body_json, &response);
    free(body_json);
    if (st != WF_OK) {
+      if (response.status > 0) {
+         set_message(r, "The OAuth node answered HTTP %ld to the sign-in request. "
+                        "Server / OAuth node must be a Wolfram OAuth node, not the "
+                        "account's PDS. Or use an app password.", response.status);
+      } else {
+         set_message(r, "Could not reach the OAuth node. Check Server / OAuth node "
+                        "and the connection, or use an app password.");
+      }
       wf_response_free(&response);
       wf_xrpc_client_free(client);
-      set_message(r, "The OAuth node could not start sign-in.");
       return;
    }
 
@@ -768,7 +775,6 @@ run_oauth(const job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
             SDL_UnlockMutex(s.lock);
             *state = COBALT_AUTH_SIGNED_IN;
             r->ok = true;
-            snprintf(r->message, sizeof(r->message), "Signed in as %s", handle->valuestring);
          } else {
             teardown_wf();
             set_message(r, "The OAuth node returned an unusable session.");

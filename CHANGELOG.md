@@ -20,7 +20,11 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 - The docs no longer say OAuth is not planned. Cobalt has had browser OAuth sign-in through a Wolfram OAuth node since 0.5.0; the README, AGENTS.md and the sign-in header comment now say so, and `docs/PARITY.md` records both sign-in flows as separate rows next to Indigo and Platinum.
 - The right stick navigates like the left: both sticks drive the D-pad directions, and letting go of one does not release a direction the other is still holding.
 
+### Fixed
+- Browser sign-in reports its failure on the sign-in screen. Before, a failed OAuth sign-in left no message at all. A node that is missing, unreachable or is a PDS (not a Wolfram OAuth node) now says so, with the HTTP status when there is one, and points at the app-password path.
+
 ### Internal
+- The snapshot harness's "profile" frame is a profile again: a stray Back press had dropped it to Home, so the frame showed the Feeds picker. Each frame now checks its screen before it is taken.
 - The image cache takes its slot and loader counts at creation (`cobalt_imagecache_create_sized`) rather than fixing them at compile time. The viewer's caches are two slots and one loader each — a person looks at one picture at a time — decoded at the surface's own height (720 on the TV, 480 on the GamePad), where a card thumbnail stays capped at 320.
 
 ## [0.5.0] - 2026-10-04

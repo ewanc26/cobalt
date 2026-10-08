@@ -265,7 +265,7 @@ main(int argc, char **argv)
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
    }
 
-   frame(COBALT_BTN_BACK); settle(3);
+   CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
    frame(COBALT_BTN_DOWN); settle(3);
    frame(COBALT_BTN_ALT_Y); settle(5);
    shoot("timeline-menu-facets");
@@ -277,6 +277,7 @@ main(int argc, char **argv)
    frame(COBALT_BTN_ALT_Y); settle(5);
    frame(COBALT_BTN_CONFIRM);
    settle(40);
+   CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE);
    shoot("profile");
 
    frame(COBALT_BTN_BACK);
