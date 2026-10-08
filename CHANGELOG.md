@@ -17,6 +17,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Fixed
 
+- On the TV home screen, a long tile label such as "Notifications" no longer breaks mid-word. The label uses half the tile padding on each side. ([#210](https://github.com/ewanc26/cobalt/pull/210))
 - The snapshot harness's `profile` frame showed Feeds: each menu step now returns to the timeline, picks its card by index and its row by popup kind, and checks the screen and popup before pressing. ([#204](https://github.com/ewanc26/cobalt/pull/204))
 - Backing out of a profile's followers or following list keeps the profile's selection and scroll, rather than rewinding it to the header. The rule is `cobalt_listnav_restore`. Checked on the host; not on a Wii U ([#203](https://github.com/ewanc26/cobalt/pull/203), [#110](https://github.com/ewanc26/cobalt/issues/110)).
 
