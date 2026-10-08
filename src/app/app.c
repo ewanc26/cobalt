@@ -142,6 +142,7 @@ static void
 handle_job_result(cobalt_app *app, const cobalt_job_result *result)
 {
    switch (result->kind) {
+      case COBALT_JOB_OAUTH:
       case COBALT_JOB_LOGIN:
          if (result->ok) {
             /* Wolfram has its own copy now, so this one has no reason to live

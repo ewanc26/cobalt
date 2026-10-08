@@ -211,7 +211,8 @@ cobalt_session_run_oauth(const cobalt_job_input *in, cobalt_job_result *r, cobal
          cobalt_session_set_message(r, "The OAuth node sent a response Cobalt could not use.");
          return;
       default:
-         cobalt_session_set_message(r, "The OAuth node could not start sign-in.");
+         cobalt_session_set_message(r, "Could not reach the OAuth node. Check Server / OAuth node "
+                                       "and the network connection, or use an app password instead.");
          return;
    }
 
