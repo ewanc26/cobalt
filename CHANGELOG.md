@@ -8,6 +8,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ## [0.9.1] - 2026-10-08
 
 ### Fixed
+<<<<<<< HEAD
 
 - Fix OAuth sign-in failure (#212); wire COBALT_JOB_OAUTH; improve error message.
 - Fix build environment for Wii U (build-wiiu/libwolfram.a v0.39.0).
@@ -21,6 +22,9 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 - Cobalt version: 0.9.1 (linear from 0.9.0).
 
+=======
+- Browser sign-in reports failure with HTTP status. (closes #208)
+>>>>>>> release/0.9.1
 
 ## [Unreleased]
 
