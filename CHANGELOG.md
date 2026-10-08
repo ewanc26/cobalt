@@ -10,6 +10,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Changed
 
 - Signing in needs only the handle and password: the account's PDS is discovered from its DID document (Wolfram's `wf_agent_login_discovered`), so the host the account lives on no longer has to be typed. An empty Server field starts from the default host. ([#201](https://github.com/ewanc26/cobalt/pull/201))
+- Merge the v0.9.1 release into main. ([#213](https://github.com/ewanc26/cobalt/pull/213))
 ### Added
 
 - The sign-in screen has a Show app password toggle, off by default. Turned on, the app password is drawn in plain text on the form and in the keyboard; it hides again when the screen is left. ([#PR](https://github.com/ewanc26/cobalt/pull/209))
@@ -21,6 +22,23 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 - On the TV home screen, a long tile label such as "Notifications" no longer breaks mid-word. The label uses half the tile padding on each side. ([#210](https://github.com/ewanc26/cobalt/pull/210))
 - The snapshot harness's `profile` frame showed Feeds: each menu step now returns to the timeline, picks its card by index and its row by popup kind, and checks the screen and popup before pressing. ([#204](https://github.com/ewanc26/cobalt/pull/204))
 - Backing out of a profile's followers or following list keeps the profile's selection and scroll, rather than rewinding it to the header. The rule is `cobalt_listnav_restore`. Checked on the host; not on a Wii U ([#203](https://github.com/ewanc26/cobalt/pull/203), [#110](https://github.com/ewanc26/cobalt/issues/110)).
+
+## [0.9.1] - 2026-10-08
+
+### Fixed
+
+- Fix OAuth sign-in failure (#212); wire COBALT_JOB_OAUTH; improve error message.
+- Fix build environment for Wii U (build-wiiu/libwolfram.a v0.39.0).
+- Fix version string (0.9.1 from src/util/version.h).
+- Browser sign-in reports failure with HTTP status. (closes #208)
+
+### Added
+
+- Diagnostics include Wolfram build info in app_diag.c.
+
+### Changed
+
+- Cobalt version: 0.9.1 (linear from 0.9.0).
 
 ## [0.9.0] - 2026-10-07
 
@@ -178,8 +196,9 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.9.1...HEAD
 [0.9.0]: https://github.com/ewanc26/cobalt/compare/v0.8.1...v0.9.0
+[0.9.1]: https://github.com/ewanc26/cobalt/compare/v0.9.0...v0.9.1
 [0.8.1]: https://github.com/ewanc26/cobalt/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ewanc26/cobalt/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ewanc26/cobalt/compare/v0.6.0...v0.7.0
