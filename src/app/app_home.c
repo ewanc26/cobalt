@@ -499,12 +499,16 @@ cobalt_app_draw_home_tv(cobalt_app *app, cobalt_render *r)
       cobalt_draw_tile(r, &tile, app->focus[i]);
 
       SDL_Color label = menu_enabled(i) ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM;
+      /* Half the tile padding on each side for the label: at six tiles a row a
+       * long word such as "Notifications" otherwise breaks mid-word. */
+      const int label_inset = m->pad_tile / 2;
+      const int label_max = tile.w - 2 * label_inset;
       int label_w = 0;
       cobalt_text_size(r, COBALT_FONT_BODY, menu_label(i), &label_w, NULL);
-      cobalt_draw_text_wrapped(r, label_w > tile.w - 2 * m->pad_tile ? COBALT_FONT_CAPTION
-                                                                      : COBALT_FONT_BODY,
-                               menu_label(i), tile.x + m->pad_tile, tile.y + m->pad_tile,
-                               tile.w - 2 * m->pad_tile, 2, label);
+      cobalt_draw_text_wrapped(r, label_w > label_max ? COBALT_FONT_CAPTION
+                                                      : COBALT_FONT_BODY,
+                               menu_label(i), tile.x + label_inset, tile.y + m->pad_tile,
+                               label_max, 2, label);
 
       if (!menu_enabled(i)) {
          cobalt_draw_text(r, COBALT_FONT_CAPTION,
