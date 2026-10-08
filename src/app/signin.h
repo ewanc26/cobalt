@@ -26,8 +26,8 @@
 extern "C" {
 #endif
 
-/* Server, identifier, app password, then the sign-in button. */
-#define COBALT_SIGNIN_ROWS 4
+/* Server, identifier, app password, the show-password toggle, then the sign-in button. */
+#define COBALT_SIGNIN_ROWS 5
 
 typedef enum {
    COBALT_SIGNIN_STAY = 0,
@@ -42,6 +42,7 @@ typedef struct {
 
    int focus;        /* 0..COBALT_SIGNIN_ROWS-1 */
    int editing;      /* field index being edited, or -1 */
+   bool show_password; /* opt-in: draw the app password in plain text */
    cobalt_keyboard kb;
 
    char status[COBALT_MESSAGE_MAX];

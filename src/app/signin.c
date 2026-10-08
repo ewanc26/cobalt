@@ -7,7 +7,8 @@
 #define FIELD_SERVICE    0
 #define FIELD_IDENTIFIER 1
 #define FIELD_PASSWORD   2
-#define ROW_SUBMIT       3
+#define ROW_SHOW_PASSWORD 3
+#define ROW_SUBMIT       4
 
 typedef struct {
    const char *label;
@@ -67,6 +68,8 @@ cobalt_signin_clear_password(cobalt_signin *s)
    for (size_t i = 0; i < sizeof(s->password); i++) {
       p[i] = '\0';
    }
+   /* Leaving the screen hides the password again, so the next visit starts masked. */
+   s->show_password = false;
 }
 
 void
@@ -91,7 +94,9 @@ begin_edit(cobalt_signin *s, int field)
    }
 
    s->editing = field;
-   cobalt_keyboard_open(&s->kb, buffer, capacity, FIELDS[field].masked);
+   /* The editor masks the app password unless the user has asked to see it. */
+   const bool masked = FIELDS[field].masked && !s->show_password;
+   cobalt_keyboard_open(&s->kb, buffer, capacity, masked);
    COBALT_LOGD("signin: editing field %d", field);
 }
 
@@ -156,6 +161,11 @@ cobalt_signin_update(cobalt_signin *s, const cobalt_input *in)
       return COBALT_SIGNIN_STAY;
    }
 
+   if (activated == ROW_SHOW_PASSWORD) {
+      s->show_password = !s->show_password;
+      return COBALT_SIGNIN_STAY;
+   }
+
    if (activated != ROW_SUBMIT) {
       begin_edit(s, activated);
       return COBALT_SIGNIN_STAY;
@@ -206,8 +216,12 @@ field_display(const cobalt_signin *s, int index, char *scratch, size_t scratch_s
       return value;
    }
 
-   /* Never draw a password, even the one the user just typed — the TV is a
-    * shared screen and this app is meant to be used in a living room. */
+   /* Hidden unless the user has turned on the show-password toggle. The TV is
+    * a shared screen and this app is used in a living room, so the default
+    * stays masked. */
+   if (s->show_password) {
+      return value;
+   }
    size_t chars = strlen(value);
    if (chars > scratch_size - 1) {
       chars = scratch_size - 1;
@@ -307,26 +321,37 @@ draw_fields(cobalt_signin *s, cobalt_render *r, cobalt_surface_id surface)
    }
 
    int y = top;
-   for (int i = 0; i < ROW_SUBMIT; i++) {
+   for (int i = 0; i <= ROW_SHOW_PASSWORD; i++) {
       SDL_Rect row = { m->pad_edge, y, row_w, row_h };
       const bool focused = (s->focus == i);
       cobalt_draw_tile(r, &row, focused ? 1.0f : 0.0f);
 
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, FIELDS[i].label,
-                       row.x + m->pad_tile, row.y + m->pad_tile / 2,
-                       COBALT_COLOUR_TEXT_DIM);
+      if (i == ROW_SHOW_PASSWORD) {
+         /* A toggle, not a field: its value is On or Off, never the password. */
+         cobalt_draw_text(r, COBALT_FONT_CAPTION, "Show app password",
+                          row.x + m->pad_tile, row.y + m->pad_tile / 2,
+                          COBALT_COLOUR_TEXT_DIM);
+         cobalt_draw_text(r, COBALT_FONT_BODY, s->show_password ? "On" : "Off",
+                          row.x + m->pad_tile,
+                          row.y + m->pad_tile / 2 + label_h,
+                          COBALT_COLOUR_TEXT);
+      } else {
+         cobalt_draw_text(r, COBALT_FONT_CAPTION, FIELDS[i].label,
+                          row.x + m->pad_tile, row.y + m->pad_tile / 2,
+                          COBALT_COLOUR_TEXT_DIM);
 
-      char scratch[COBALT_PASSWORD_MAX];
-      const char *shown = field_display(s, i, scratch, sizeof(scratch));
+         char scratch[COBALT_PASSWORD_MAX];
+         const char *shown = field_display(s, i, scratch, sizeof(scratch));
 
-      size_t capacity = 0;
-      const char *raw = field_buffer(s, i, &capacity);
-      const bool empty = (!raw || raw[0] == '\0');
+         size_t capacity = 0;
+         const char *raw = field_buffer(s, i, &capacity);
+         const bool empty = (!raw || raw[0] == '\0');
 
-      cobalt_draw_text(r, COBALT_FONT_BODY, shown,
-                       row.x + m->pad_tile,
-                       row.y + m->pad_tile / 2 + label_h,
-                       empty ? COBALT_COLOUR_TEXT_DIM : COBALT_COLOUR_TEXT);
+         cobalt_draw_text(r, COBALT_FONT_BODY, shown,
+                          row.x + m->pad_tile,
+                          row.y + m->pad_tile / 2 + label_h,
+                          empty ? COBALT_COLOUR_TEXT_DIM : COBALT_COLOUR_TEXT);
+      }
 
       if (touchable) {
          s->hit[i] = row;
