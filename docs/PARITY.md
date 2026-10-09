@@ -45,7 +45,7 @@ OAuth on a console is not the AT Protocol browser flow running on the console. T
 | Link cards | implemented | implemented | issue platinum#32 | |
 | Who liked or reposted a post | implemented | implemented | issue platinum#36 | |
 | Compose, reply, quote | implemented | implemented | partial, issue platinum#27 | Platinum posts only |
-| Attach an image when composing | implemented | partial, issue indigo#19 | issue platinum#33 | Cobalt: `wf_agent_upload_blob_ex`, picker in `src/app/compose.c` |
+| Attach an image when composing | implemented | implemented | issue platinum#33 | Cobalt: `wf_agent_upload_blob_ex`, picker in `src/app/compose.c`. Indigo: picker and upload path are implemented; host-verified, but upload and DCIM listing have not been verified on a console (#19 remains open for that). |
 | Reply gates | implemented | implemented | issue platinum#29 | |
 | Like and repost, with undo | implemented | implemented | issue platinum#28 | |
 | Delete your own post | implemented | issue indigo#22 | issue platinum#42 | Cobalt: `confirm_delete` in `src/app/thread.h` |
@@ -58,7 +58,7 @@ OAuth on a console is not the AT Protocol browser flow running on the console. T
 | Post to a thread (several posts at once) | implemented | issue indigo#22 | issue platinum#42 | Cobalt: `cobalt_compose_extend` (`src/app/compose.c`) and `wf_agent_post_thread`; text only. Host-tested for the compose state; the posting call is tested in Wolfram against a mock PDS. |
 | Video poster and external-media embeds | partial, issue #102 | issue indigo#22 | issue platinum#42 | Link cards are done. A video embed shows its poster frame on the card, downscaled to the thumbnail cap (320 px), with a line saying it cannot play on the Wii U (#200). Other external media is not drawn. |
 | Open a link on a phone via QR code | implemented | issue indigo#22 | issue platinum#42 | Cobalt: `cobalt_popup_show_text` in `src/ui/popup.c` encodes with Wolfram's `wf_qr_encode`; host-tested for the matrix, not scanned from a screen. |
-| Auto-update from GitHub releases | implemented | issue indigo#23 | issue platinum#47 | Cobalt: Home, Updates (`src/app/update.c`, `src/update/`); confirm, SHA-256 checked, replaced on quit, previous build kept. Manifest signed (Ed25519, `update.json.sig`) and refused if unsigned. Host-verified only; the console run is #139. Manifest, version comparison and SHA-256 are Wolfram's `wolfram/update.h` (wolfram#106, v0.27.0). |
+| Auto-update from GitHub releases | implemented | implemented | issue platinum#47 | Cobalt: Home, Updates (`src/app/update.c`, `src/update/`); confirm, SHA-256 checked, replaced on quit, previous build kept. Manifest signed (Ed25519, `update.json.sig`) and refused if unsigned. Host-verified only; the console run is #139. Indigo: implemented in More > Check for updates; host-verified only, not run on emulator or hardware (#23 closed). Manifest, version comparison and SHA-256 are Wolfram's `wolfram/update.h` (wolfram#106, v0.27.0). |
 | Video and GIF playback | declined | declined | declined | Cobalt README: no decoder in the dependency and performance budget. This is a decision; I have not tried a decoder, so it is not recorded as impossible. |
 | Push notifications | declined | declined | declined | No push service a homebrew or Classic Mac application can register with; notifications are fetched when the screen is opened. |
 
