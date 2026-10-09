@@ -6,12 +6,17 @@ tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 bad=0
 expect() { if python3 "$here/tools/check-guide.py" "$2" >/dev/null 2>&1; then got=pass; else got=fail; fi
   [ "$got" = "$1" ] && echo "ok   selftest: $3 ($1)" || { echo "FAIL selftest: $3 wanted $1, got $got"; bad=$((bad + 1)); }; }
+# GNU sed takes the in-place script as its next argument; BSD sed (macOS) takes
+# the backup suffix first, so a bare `sed -i 's/x/y/' f` edits nothing there.
+sed_i() {
+  if sed --version >/dev/null 2>&1; then sed -i "$@"; else sed -i '' "$@"; fi
+}
 mkdir -p "$tmp/screenshots"
 cp "$here/docs/guide.md" "$tmp/guide.md"; cp "$here"/docs/screenshots/*.png "$tmp/screenshots/"
 expect pass "$tmp/guide.md" "the real guide"
 printf '\n![x](screenshots/nope.png)\n' >> "$tmp/guide.md"
 expect fail "$tmp/guide.md" "an image that does not exist"
 cp "$here/docs/guide.md" "$tmp/guide.md"
-sed -i 's/Diagnostics/Dx/g' "$tmp/guide.md"
+sed_i 's/Diagnostics/Dx/g' "$tmp/guide.md"
 expect fail "$tmp/guide.md" "a home entry the guide forgot"
 [ "$bad" -eq 0 ] && echo "all guide selftests passed" || exit 1
