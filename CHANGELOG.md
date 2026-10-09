@@ -13,11 +13,13 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 - Merge the v0.9.1 release into main. ([#213](https://github.com/ewanc26/cobalt/pull/213))
 ### Added
 
+- Releasing now refuses to publish without a fresh TLS trust store. `tools/fetch_cacert.sh --check` validates an existing bundle (present, enough certificates, not older than 30 days) and `tools/publish.sh` re-fetches and re-checks before a release is tagged, so a build cannot ship a stale trust store that fails on a console as a network bug. ([#PR](https://github.com/ewanc26/cobalt/pull/PR))
 - The sign-in screen has a Show app password toggle, off by default. Turned on, the app password is drawn in plain text on the form and in the keyboard; it hides again when the screen is left. ([#PR](https://github.com/ewanc26/cobalt/pull/209))
 - The image picker on a new post also lists the console's camera folder, `sd:/DCIM`, with photos one folder down, next to Cobalt's own images folder. Each row says where it came from. Needs Wolfram v0.39.0's `wf_attach_scan_images_tree`. ([#PR](https://github.com/ewanc26/cobalt/pull/206))
 
 ### Fixed
 
+- The Updates screen now says why a check or download failed. `net/http.c` records a reason for every failed fetch, classified with Wolfram's `wf_failure_classify`, so a stale or missing TLS trust store, an unseeded entropy store, DNS/connect, a timeout, a rate limit and an HTTP status are told apart instead of all reading "Could not reach GitHub". The diagnostics screen shows the fetch client's state alongside the trust store. ([#PR](https://github.com/ewanc26/cobalt/pull/PR))
 - Browser sign-in now reports its failure on the sign-in screen. A failed OAuth begin that left no message now says why: an unreachable node says to check the Server field and network; any other transport failure points at app-password sign-in as an alternative. A missing `COBALT_JOB_OAUTH` case in `handle_job_result` also meant the failure was never shown at all — fixed. ([#211](https://github.com/ewanc26/cobalt/pull/211), closes [#208](https://github.com/ewanc26/cobalt/issues/208))
 - On the TV home screen, a long tile label such as "Notifications" no longer breaks mid-word. The label uses half the tile padding on each side. ([#210](https://github.com/ewanc26/cobalt/pull/210))
 - The snapshot harness's `profile` frame showed Feeds: each menu step now returns to the timeline, picks its card by index and its row by popup kind, and checks the screen and popup before pressing. ([#204](https://github.com/ewanc26/cobalt/pull/204))
