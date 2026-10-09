@@ -1,6 +1,7 @@
 /* The diagnostics screen. */
 
 #include "app/app_internal.h"
+#include "net/http.h"
 
 void
 cobalt_app_draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
@@ -17,6 +18,7 @@ cobalt_app_draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id
    const cobalt_net_status net = cobalt_net_get_status();
    const char *ca = cobalt_session_ca_path();
    const char *blocker = cobalt_session_blocker();
+   const cobalt_http_state http = cobalt_http_get_state();
 
    char lines[20][160];
    int count = 0;
@@ -34,6 +36,8 @@ cobalt_app_draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id
             cobalt_net_status_string(net), cobalt_net_local_address());
    snprintf(lines[count++], sizeof(lines[0]), "Trust store: %s",
             ca ? ca : "MISSING - run `make cacert`");
+   snprintf(lines[count++], sizeof(lines[0]), "Fetch client: %s",
+            cobalt_http_reason());
    snprintf(lines[count++], sizeof(lines[0]), "%s / %s",
             app->sdl_version, app->curl_version);
    snprintf(lines[count++], sizeof(lines[0]), "ATProto SDK: %s",
@@ -119,6 +123,8 @@ cobalt_app_draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id
       bool bad = (strstr(lines[i], "NOT FOUND") != NULL) ||
                  (strstr(lines[i], "MISSING") != NULL) ||
                  (strstr(lines[i], "SYNCHRONOUS") != NULL) ||
+                 (http != COBALT_HTTP_STATE_READY &&
+                  strncmp(lines[i], "Fetch client:", 13) == 0) ||
                  (blocker != NULL && strncmp(lines[i], "Sign-in:", 8) == 0) ||
                  (net != COBALT_NET_UP && strncmp(lines[i], "Network:", 8) == 0);
 
