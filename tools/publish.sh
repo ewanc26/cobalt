@@ -31,7 +31,19 @@ runs=$(gh api "repos/{owner}/{repo}/commits/$sha/check-runs?per_page=100" \
 
 git tag -a "v$new" -m "Cobalt $new"
 git push -q origin "v$new"
+
+# The trust store Cobalt ships must be fresh at release time. A stale or
+# missing bundle fails on a console the same way a network outage does
+# (AGENTS.md §13) — mbedTLS reports verification as a connection error — so a
+# release is not allowed to leave with one. Re-fetch if it is stale, then
+# re-check after the build and refuse to tag-publish without a good store.
+if ! tools/fetch_cacert.sh --check romfs/cacert.pem 2>/dev/null; then
+  echo "trust store: missing or stale - re-fetching for this release"
+  rm -f romfs/cacert.pem
+fi
 DEVKITPRO=${DEVKITPRO:-/opt/devkitpro} DEVKITPPC=${DEVKITPPC:-/opt/devkitpro/devkitPPC} make bundle
+tools/fetch_cacert.sh --check romfs/cacert.pem \
+  || { echo "refusing to publish: no fresh TLS trust store (HTTPS would fail on the console)" >&2; exit 1; }
 cp dist/wiiu/apps/cobalt.wuhb "dist/cobalt-$new.wuhb"
 
 # Belt and braces: `make bundle` refuses to run without Wolfram linked, but a
