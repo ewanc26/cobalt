@@ -154,7 +154,7 @@ When setting up the initial project skeleton, start from the WUT sample's CMake/
 
 ## 9. Coding Conventions
 
-- Language: C, with C++ acceptable for UI/state-management code where it meaningfully reduces boilerplate (RAII for WUT resource cleanup is a reasonable use case). Don't mix idioms gratuitously within a single file.
+- Language: C-first, with C++ acceptable where it meaningfully reduces boilerplate (especially RAII for WUT resource cleanup). Keep C translation units under the existing `src/` module tree and place new C++ translation units only in top-level `cpp/`; the Makefile keeps `SOURCES` and `CPPSOURCES` separate. Don't mix idioms gratuitously within a single file.
 - Match the WUT ecosystem's general style: snake_case for functions/variables, explicit resource cleanup (`OSScreen`/GX2/SDL objects freed on every exit path, including error paths — the Wii U does not forgive a leaked GX2 context the way a desktop OS forgives a leaked file handle).
 - Every `ProcUI` foreground/background transition must be handled — don't assume the app stays foregrounded for its whole lifetime; the OS can background it (e.g. HOME menu overlays even though the button press itself isn't delivered to the app the same way).
 - Log liberally during development (to console via any available debug output, or to a log file on SD) since on-device debugging is much harder than on a desktop target. Strip or gate verbose logging behind a debug build flag before release builds.
