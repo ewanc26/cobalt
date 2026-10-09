@@ -9,6 +9,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Changed
 
+- Keep C modules under `src/` and discover C++ translation units only under `cpp/`, with separate Makefile source lists. ([#218](https://github.com/ewanc26/cobalt/pull/218))
+
 - Signing in needs only the handle and password: the account's PDS is discovered from its DID document (Wolfram's `wf_agent_login_discovered`), so the host the account lives on no longer has to be typed. An empty Server field starts from the default host. ([#201](https://github.com/ewanc26/cobalt/pull/201))
 - Merge the v0.9.1 release into main. ([#213](https://github.com/ewanc26/cobalt/pull/213))
 ### Added
