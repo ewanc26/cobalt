@@ -403,9 +403,9 @@ cobalt_update_view_draw(cobalt_update_view *v, cobalt_render *r, int top)
          cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, line, x, y, w, 2, COBALT_COLOUR_ACCENT_TEXT);
          y += lh * 2;
          if (man.notes[0]) {
-            cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, man.notes, x, y, w, 8,
+            cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, man.notes, x, y, w, 5,
                                      COBALT_COLOUR_TEXT);
-            y += lh * 4;
+            y += lh * 2;
          }
          cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION,
                                   "Nothing is downloaded until you choose. The file is checked "
