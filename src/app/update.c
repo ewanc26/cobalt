@@ -15,6 +15,13 @@
 #define JOB_CHECK 1
 #define JOB_INSTALL 2
 
+/*
+ * Why the last fetch failed, so the worker can put the reason on the screen.
+ * default_fetch runs on the one update worker (v->fetch has no channel for a
+ * reason and the test fakes replace it), so a file-scope buffer is safe here.
+ */
+static char s_fetch_reason[160];
+
 static bool
 default_fetch(const char *url, size_t max_bytes, unsigned char **data, size_t *size)
 {
@@ -22,9 +29,18 @@ default_fetch(const char *url, size_t max_bytes, unsigned char **data, size_t *s
 
    memset(&resp, 0, sizeof(resp));
    if (!cobalt_http_get(url, max_bytes, &resp)) {
+      const char *why = resp.error_text[0] ? resp.error_text : cobalt_http_reason();
+      snprintf(s_fetch_reason, sizeof(s_fetch_reason), "%s", why);
       return false;
    }
    if (resp.status != 200 || !resp.data || resp.size == 0) {
+      if (resp.status != 0) {
+         snprintf(s_fetch_reason, sizeof(s_fetch_reason),
+                  "the server returned HTTP %ld", resp.status);
+      } else {
+         snprintf(s_fetch_reason, sizeof(s_fetch_reason),
+                  "the server returned an empty answer");
+      }
       cobalt_http_response_free(&resp);
       return false;
    }
@@ -33,6 +49,7 @@ default_fetch(const char *url, size_t max_bytes, unsigned char **data, size_t *s
    *size = resp.size;
    resp.data = NULL;
    cobalt_http_response_free(&resp);
+   s_fetch_reason[0] = '\0';
    return true;
 }
 
@@ -145,7 +162,11 @@ do_check(cobalt_update_view *v)
    wf_update_manifest m;
 
    if (!v->fetch(COBALT_UPDATE_MANIFEST_URL, COBALT_UPDATE_MANIFEST_MAX, &body, &len)) {
-      set_state(v, COBALT_UPDATE_FAILED, "Could not reach GitHub. Check the network and try again.");
+      if (s_fetch_reason[0]) {
+         set_state(v, COBALT_UPDATE_FAILED, "Could not reach GitHub: %s.", s_fetch_reason);
+      } else {
+         set_state(v, COBALT_UPDATE_FAILED, "Could not reach GitHub. Check the network and try again.");
+      }
       return;
    }
    /* The signature is checked on the bytes as downloaded, before anything is parsed. A
@@ -205,7 +226,12 @@ do_install(cobalt_update_view *v)
       return;
    }
    if (!v->fetch(m.asset.url, m.asset.size, &data, &len)) {
-      set_state(v, COBALT_UPDATE_FAILED, "The download failed. Nothing was changed.");
+      if (s_fetch_reason[0]) {
+         set_state(v, COBALT_UPDATE_FAILED,
+                   "The download failed: %s. Nothing was changed.", s_fetch_reason);
+      } else {
+         set_state(v, COBALT_UPDATE_FAILED, "The download failed. Nothing was changed.");
+      }
       return;
    }
    if (len != m.asset.size) {

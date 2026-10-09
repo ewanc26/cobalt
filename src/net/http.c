@@ -5,6 +5,7 @@
 #include <SDL.h>
 
 #ifdef COBALT_HAS_WOLFRAM
+#include <wolfram/failure.h>
 #include <wolfram/xrpc.h>
 #endif
 
@@ -15,7 +16,7 @@
 
 /* Give up rather than hang a screen waiting on an image nobody will see. */
 #define TOTAL_TIMEOUT_MS      30000
-#define MAX_REDIRECTS         3
+#define MAX_REDIRECTS         5
 #define USER_AGENT            "cobalt (Wii U)"
 
 /* Wolfram wants a base URL for every client; a generic GET never uses it. */
@@ -41,6 +42,8 @@ typedef struct {
 
 static struct {
    bool initialised;
+   cobalt_http_state state;
+   char reason[128];
 
 #ifdef COBALT_HAS_WOLFRAM
    /*
@@ -69,10 +72,14 @@ cobalt_http_init(const char *ca_path)
       return true;
    }
 
+   s.state = COBALT_HTTP_STATE_UNINITIALISED;
+   s.reason[0] = '\0';
+
 #ifdef COBALT_HAS_WOLFRAM
    s.client = wf_xrpc_client_new(PLACEHOLDER_BASE_URL);
    if (!s.client) {
       COBALT_LOGE("http: could not create the fetch client");
+      snprintf(s.reason, sizeof(s.reason), "could not create the network client");
       return false;
    }
 
@@ -87,7 +94,13 @@ cobalt_http_init(const char *ca_path)
    if (ca_path && ca_path[0]) {
       wf_xrpc_client_set_ca_bundle(s.client, ca_path);
    } else {
-      COBALT_LOGW("http: no CA bundle — image loads will fail verification");
+      /* Keep running (image loads still degrade to placeholders), but say so
+       * loudly: verification will fail and the reason must be on the screen,
+       * not mistaken for a network problem. */
+      s.state = COBALT_HTTP_STATE_NO_CA;
+      snprintf(s.reason, sizeof(s.reason),
+               "no TLS trust store - requests fail verification (run `make cacert`)");
+      COBALT_LOGW("http: no CA bundle - image loads will fail verification");
    }
 
    /* The same DRBG the session installs; see util/rng.h. */
@@ -98,14 +111,25 @@ cobalt_http_init(const char *ca_path)
    rng = WF_OK;
 #endif
    if (rng != WF_OK) {
+      s.state = COBALT_HTTP_STATE_NO_TLS_RNG;
+      snprintf(s.reason, sizeof(s.reason),
+               "no TLS handshake RNG (%d) - is the entropy seed present?", (int) rng);
       COBALT_LOGE("http: could not install the TLS RNG (%d) — refusing to hand "
                   "the handshake to a tick-seeded generator", (int) rng);
       wf_xrpc_client_free(s.client);
       s.client = NULL;
       return false;
    }
+
+   if (s.state == COBALT_HTTP_STATE_UNINITIALISED) {
+      s.state = COBALT_HTTP_STATE_READY;
+      snprintf(s.reason, sizeof(s.reason), "ready");
+   }
 #else
    (void) ca_path;
+   s.state = COBALT_HTTP_STATE_NO_WOLFRAM;
+   snprintf(s.reason, sizeof(s.reason),
+            "built without Wolfram support - nothing can fetch");
 #endif
 
    if (!s.body_lock) {
@@ -138,9 +162,95 @@ cobalt_http_shutdown(void)
       s.body_lock = NULL;
    }
    s.initialised = false;
+   s.state = COBALT_HTTP_STATE_UNINITIALISED;
+   s.reason[0] = '\0';
+}
+
+cobalt_http_state
+cobalt_http_get_state(void)
+{
+   return s.state;
+}
+
+const char *
+cobalt_http_reason(void)
+{
+   if (s.reason[0]) {
+      return s.reason;
+   }
+   switch (s.state) {
+   case COBALT_HTTP_STATE_READY:
+      return "ready";
+   case COBALT_HTTP_STATE_NO_WOLFRAM:
+      return "built without Wolfram support - nothing can fetch";
+   case COBALT_HTTP_STATE_NO_CA:
+      return "no TLS trust store - run `make cacert`";
+   case COBALT_HTTP_STATE_NO_TLS_RNG:
+      return "no TLS handshake RNG - is the entropy seed present?";
+   case COBALT_HTTP_STATE_UNINITIALISED:
+   default:
+      return "not initialised";
+   }
 }
 
 /* --- requests --- */
+
+#ifdef COBALT_HAS_WOLFRAM
+/*
+ * Turn a failed Wolfram fetch into a reason a person can act on. The update
+ * path and the diagnostics screen both show this; without it every failure
+ * reads as "could not reach the network", whether it was TLS verification, no
+ * entropy seed, DNS or a rate limit.
+ */
+static void
+fill_error(cobalt_http_response *out, const wf_status st, long http)
+{
+   out->error = (int) st;
+   switch (wf_failure_classify(st, http, NULL)) {
+   case WF_FAIL_TLS:
+      snprintf(out->error_text, sizeof(out->error_text),
+               "TLS handshake failed - does this build bundle a trust store?");
+      return;
+   case WF_FAIL_NETWORK:
+      snprintf(out->error_text, sizeof(out->error_text),
+               "network error (DNS or connect)");
+      return;
+   case WF_FAIL_TIMEOUT:
+      snprintf(out->error_text, sizeof(out->error_text), "the request timed out");
+      return;
+   case WF_FAIL_RATE_LIMIT:
+      snprintf(out->error_text, sizeof(out->error_text),
+               "rate limited - wait and retry");
+      return;
+   case WF_FAIL_BAD_RESPONSE:
+      snprintf(out->error_text, sizeof(out->error_text),
+               "the server sent an unreadable answer");
+      return;
+   case WF_FAIL_SERVER:
+      if (http != 0) {
+         snprintf(out->error_text, sizeof(out->error_text),
+                  "server error (HTTP %ld)", http);
+      } else {
+         snprintf(out->error_text, sizeof(out->error_text),
+                  "the service did not answer");
+      }
+      return;
+   case WF_FAIL_NOT_READY:
+      snprintf(out->error_text, sizeof(out->error_text),
+               "this build cannot fetch");
+      return;
+   default:
+      break;
+   }
+   if (http != 0) {
+      snprintf(out->error_text, sizeof(out->error_text),
+               "server returned HTTP %ld", http);
+   } else {
+      snprintf(out->error_text, sizeof(out->error_text),
+               "request failed (wolfram status %d)", (int) st);
+   }
+}
+#endif
 
 static bool
 fetch_network(const char *url, size_t max_bytes, cobalt_http_response *out)
@@ -151,6 +261,13 @@ fetch_network(const char *url, size_t max_bytes, cobalt_http_response *out)
    memset(out, 0, sizeof(*out));
 
    if (!s.initialised || !url || !url[0] || max_bytes == 0) {
+      /* If init was attempted and refused, that reason is the real answer;
+       * otherwise the client was never brought up at all. */
+      if (!s.initialised) {
+         out->error = -1;
+         snprintf(out->error_text, sizeof(out->error_text), "%s",
+                  cobalt_http_reason());
+      }
       return false;
    }
 
@@ -166,11 +283,19 @@ fetch_network(const char *url, size_t max_bytes, cobalt_http_response *out)
    if (st != WF_OK) {
       COBALT_LOGW("http: %.48s failed (status %d, http %ld)", url, (int) st,
                   res.status);
+      fill_error(out, st, res.status);
       wf_response_free(&res);
       return false;
    }
    if (res.body_len == 0) {
       COBALT_LOGW("http: %.48s returned %ld (0 bytes)", url, res.status);
+      if (res.status != 0) {
+         snprintf(out->error_text, sizeof(out->error_text),
+                  "server returned HTTP %ld (empty body)", res.status);
+      } else {
+         snprintf(out->error_text, sizeof(out->error_text),
+                  "server returned an empty body");
+      }
       wf_response_free(&res);
       return false;
    }
@@ -185,6 +310,8 @@ fetch_network(const char *url, size_t max_bytes, cobalt_http_response *out)
    return true;
 #else
    COBALT_LOGW("http: built without Wolfram, cannot fetch %.48s", url);
+   out->error = -1;
+   snprintf(out->error_text, sizeof(out->error_text), "%s", cobalt_http_reason());
    return false;
 #endif
 }

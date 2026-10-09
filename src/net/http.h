@@ -28,8 +28,31 @@ extern "C" {
 typedef struct {
    unsigned char *data;   /* heap, NUL-terminated for convenience */
    size_t size;
-   long status;
+   long status;           /* HTTP status, 0 when the request never completed */
+   int error;             /* Wolfram wf_status on a failed fetch, else 0 */
+   char error_text[96];   /* short reason when the fetch failed, else "" */
 } cobalt_http_response;
+
+/* How the fetch client is wired up; see cobalt_http_reason() for the prose.
+ * The diagnostics screen prints the reason, and the updater appends it to a
+ * failed-"Could not reach GitHub" message instead of leaving every failure
+ * looking like the network.
+ */
+typedef enum {
+   COBALT_HTTP_STATE_UNINITIALISED = 0, /* init not attempted or refused */
+   COBALT_HTTP_STATE_READY,             /* client + trust store + TLS RNG */
+   COBALT_HTTP_STATE_NO_WOLFRAM,        /* built without Wolfram: nothing fetches */
+   COBALT_HTTP_STATE_NO_CA,             /* running, but no trust store: verification fails */
+   COBALT_HTTP_STATE_NO_TLS_RNG         /* init refused: the handshake would be tick-seeded */
+} cobalt_http_state;
+
+/* The fetch client's current state, for the diagnostics screen. */
+cobalt_http_state cobalt_http_get_state(void);
+
+/* A short reason for the current state ("not initialised", "no TLS trust
+ * store - run `make cacert`", ...). Never NULL; used by the diagnostics
+ * screen and as the fallback when a fetch has no error text of its own. */
+const char *cobalt_http_reason(void);
 
 /*
  * `ca_path` may be NULL, in which case requests will fail verification on this
