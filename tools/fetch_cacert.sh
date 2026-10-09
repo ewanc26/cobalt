@@ -32,7 +32,39 @@ URL="https://curl.se/ca/cacert.pem"
 
 # The Mozilla set is a little over 100 certificates; anything far below that is
 # a truncated download or an error page that happened to save successfully.
+# The trimmed bundle below keeps only the roots the AT Protocol network actually
+# chains to (about 40), so a checked bundle only needs MIN_CHECK_CERTS.
 MIN_CERTS=50
+MIN_CHECK_CERTS=20
+
+# How old a checked bundle may be before a caller refuses it. The Mozilla set
+# expires, and a stale trust store fails on a console the same way a network
+# outage does (AGENTS.md §13), so tools/publish.sh refuses to release with one
+# older than this and re-fetches first.
+MAX_CA_AGE_DAYS="${MAX_CA_AGE_DAYS:-30}"
+
+# `tools/fetch_cacert.sh --check [path]` validates an existing bundle without
+# fetching: present and non-empty, at least MIN_CHECK_CERTS certificates, and
+# no older than MAX_CA_AGE_DAYS. Exit 0 if publishable, 1 otherwise, so a
+# release gate can hard-fail on a stale or missing store.
+if [ "${1:-}" = "--check" ]; then
+   FILE="${2:-romfs/cacert.pem}"
+   if [ ! -s "$FILE" ]; then
+      echo "fetch_cacert: $FILE is missing or empty" >&2
+      exit 1
+   fi
+   count=$(grep -c -- '-----BEGIN CERTIFICATE-----' "$FILE" || true)
+   if [ "${count:-0}" -lt "$MIN_CHECK_CERTS" ]; then
+      echo "fetch_cacert: $FILE has only ${count:-0} certificates" >&2
+      exit 1
+   fi
+   if [ -n "$(find "$FILE" -mtime +"$MAX_CA_AGE_DAYS")" ]; then
+      echo "fetch_cacert: $FILE is older than ${MAX_CA_AGE_DAYS} days; re-fetch it" >&2
+      exit 1
+   fi
+   echo "fetch_cacert: $FILE is fresh ($count certificates)" >&2
+   exit 0
+fi
 
 TMP="${OUT}.tmp.$$"
 cleanup() { rm -f "$TMP"; }
