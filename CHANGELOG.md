@@ -18,6 +18,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 - Releasing now refuses to publish without a fresh TLS trust store. `tools/fetch_cacert.sh --check` validates an existing bundle (present, enough certificates, not older than 30 days) and `tools/publish.sh` re-fetches and re-checks before a release is tagged, so a build cannot ship a stale trust store that fails on a console as a network bug. ([#215](https://github.com/ewanc26/cobalt/pull/215))
 - The sign-in screen has a Show app password toggle, off by default. Turned on, the app password is drawn in plain text on the form and in the keyboard; it hides again when the screen is left. ([#PR](https://github.com/ewanc26/cobalt/pull/209))
 - The image picker on a new post also lists the console's camera folder, `sd:/DCIM`, with photos one folder down, next to Cobalt's own images folder. Each row says where it came from. Needs Wolfram v0.39.0's `wf_attach_scan_images_tree`. ([#PR](https://github.com/ewanc26/cobalt/pull/206))
+- The user guide now shows a profile screenshot, generated from the snapshot harness's `profile` frame. ([#166](https://github.com/ewanc26/cobalt/issues/166))
 
 ### Fixed
 
