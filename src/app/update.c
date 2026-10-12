@@ -4,6 +4,7 @@
 #include "ui/theme.h"
 #include "util/log.h"
 #include "util/version.h"
+#include "util/wuhb.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -348,6 +349,13 @@ cobalt_update_view_apply_on_quit(cobalt_update_view *v)
    if (!v->have_paths || cobalt_update_view_state(v) != COBALT_UPDATE_READY ||
        !cobalt_update_has_staged(&v->paths)) {
       return false;
+   }
+   /* Aroma holds the running .wuhb mounted for the life of the process and will
+    * not let it be renamed while it is (util/wuhb.h), so the replacement would
+    * fail. Release it first. Silent when there is nothing that can release it
+    * (a bare-RPX install, an emulator): the replacement is still attempted. */
+   if (cobalt_wuhb_unmount_running()) {
+      COBALT_LOGI("update: released the running bundle so its file can be replaced");
    }
    if (cobalt_update_apply(&v->paths)) {
       COBALT_LOGI("update: installed %s; the previous build is kept until it has run", v->manifest.version);

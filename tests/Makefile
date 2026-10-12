@@ -115,6 +115,7 @@ UNIT_SOURCES := \
 	$(SRC)/update/selfupdate.c \
 	$(WOLFRAM_SOURCES) \
 	$(SRC)/app/update.c \
+	$(SRC)/util/wuhb.c \
 	$(SRC)/app/entropyview.c \
 	$(SRC)/util/entropy_gather.c \
 	$(SRC)/util/entropy.c \
