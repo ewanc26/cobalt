@@ -27,6 +27,7 @@ FRAMES = {
     "notifications": "notifications-tv",
     "more-menu": "timeline-menu-tv",
     "feeds": "feeds-tv",
+    "profile": "profile-tv",
 }
 
 src = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "tests/build/snapshot")

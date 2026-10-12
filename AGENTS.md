@@ -362,7 +362,7 @@ The listing is `tools/make-hbas-listing.py` output, validated by `tools/check-hb
 
 ### The user guide
 
-`docs/guide.md` is written from the code (`src/app/*.c`), one section per screen. Its screenshots come from `tools/make-guide-images.py` (host snapshot renderer, fixture data, TV frames); regenerate them with `make -C tests snapshot` then the script when a screen changes visibly. `tools/check-guide.py` (with a self-test) fails CI if an image is missing or a Home menu entry is not mentioned. When you change a button binding, change the guide in the same PR; nothing checks the binding text. The snapshot harness's `profile` frame currently shows the Feeds screen, so there is no profile screenshot (cobalt#166).
+`docs/guide.md` is written from the code (`src/app/*.c`), one section per screen. Its screenshots come from `tools/make-guide-images.py` (host snapshot renderer, fixture data, TV frames); regenerate them with `make -C tests snapshot` then the script when a screen changes visibly. `tools/check-guide.py` (with a self-test) fails CI if an image is missing or a Home menu entry is not mentioned. When you change a button binding, change the guide in the same PR; nothing checks the binding text. The snapshot harness registers `getProfile`/`getAuthorFeed` on the mock and asserts `cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE` before `shoot("profile")`, so the `profile` frame is a real profile and the guide shows one (cobalt#166).
 
 ### Assets and font
 
