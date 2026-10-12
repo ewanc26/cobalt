@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Fixed
+
+- The Updater can put the new build in place on a real console. Aroma holds the running `.wuhb`'s content mounted for the life of the process and refuses to rename the file while it is, so a downloaded update was verified and staged but never installed. Cobalt now releases the mount through Aroma's RPXLoadingModule immediately before the replacement, on the quit path. ([#139](https://github.com/ewanc26/cobalt/issues/139))
+
 ## [0.10.0] - 2026-10-12
 
 ### Changed
