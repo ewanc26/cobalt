@@ -76,6 +76,8 @@ Replies, mentions, quotes, likes, reposts and follows. A opens the post or the f
 
 ## Profiles
 
+![Profile](screenshots/profile.png)
+
 A on a name or avatar opens a profile. On the header row: A follows or unfollows, Left mutes, Right blocks (none of these on your own profile). Y opens the More menu on any row. It lists followers, following and the next tab (posts, replies, media and, on your own profile, likes) and, on a post, the same entries as on the timeline. Posts work like the timeline.
 
 ## Search, feeds and lists
