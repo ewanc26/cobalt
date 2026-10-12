@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-12
+
 ### Changed
 
 - Keep C modules under `src/` and discover C++ translation units only under `cpp/`, with separate Makefile source lists. ([#218](https://github.com/ewanc26/cobalt/pull/218))
@@ -201,7 +203,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/ewanc26/cobalt/compare/v0.9.1...v0.10.0
 [0.9.0]: https://github.com/ewanc26/cobalt/compare/v0.8.1...v0.9.0
 [0.9.1]: https://github.com/ewanc26/cobalt/compare/v0.9.0...v0.9.1
 [0.8.1]: https://github.com/ewanc26/cobalt/compare/v0.8.0...v0.8.1
