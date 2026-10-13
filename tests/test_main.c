@@ -2166,6 +2166,40 @@ test_signin_validation(void)
    cobalt_session_shutdown();
 }
 
+static void
+test_signin_show_password_toggle(void)
+{
+   begin("sign-in shows the app password only when the toggle is on");
+
+   cobalt_session_init();
+
+   cobalt_signin form;
+   cobalt_signin_init(&form);
+
+   /* Off by default: the password stays masked on the form. */
+   CHECK(!form.show_password);
+
+   /* The toggle is the row above Sign in, and pressing it flips the flag. */
+   form.focus = COBALT_SIGNIN_ROWS - 2;
+   cobalt_input press = tap(COBALT_BTN_CONFIRM);
+   CHECK(cobalt_signin_update(&form, &press) == COBALT_SIGNIN_STAY);
+   CHECK(form.show_password);
+   CHECK(form.editing == -1);
+
+   press = tap(COBALT_BTN_CONFIRM);
+   CHECK(cobalt_signin_update(&form, &press) == COBALT_SIGNIN_STAY);
+   CHECK(!form.show_password);
+
+   /* Leaving the screen hides it again, so the next visit starts masked. */
+   press = tap(COBALT_BTN_CONFIRM);
+   cobalt_signin_update(&form, &press);
+   CHECK(form.show_password);
+   cobalt_signin_clear_password(&form);
+   CHECK(!form.show_password);
+
+   cobalt_session_shutdown();
+}
+
 /* --- image scaling --- */
 
 static void
@@ -2792,6 +2826,7 @@ main(int argc, char **argv)
    test_selection_survives_a_shrinking_list();
    test_session_request_handshake();
    test_signin_validation();
+  test_signin_show_password_toggle();
    test_image_fit_geometry();
    test_image_resample();
    test_image_circle_mask();
