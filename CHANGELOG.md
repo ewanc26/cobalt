@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Added
+
+- The direct message inbox's data layer: `src/atproto/chat.c` flattens Wolfram's `listConvos` page into rows with the counterpart named, the last message as a preview and the unread count, and picks the counterpart by DID so the viewer is never shown as the other person. Not on screen yet; the inbox screen and reading messages are the next steps in [#107](https://github.com/ewanc26/cobalt/issues/107).
+
 ## [0.10.1] - 2026-10-15
 
 ### Fixed
