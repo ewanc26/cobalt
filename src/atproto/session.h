@@ -95,6 +95,7 @@ typedef enum {
    COBALT_JOB_CHAT_MESSAGES,
    COBALT_JOB_CHAT_SEND,
    COBALT_JOB_CHAT_START,
+   COBALT_JOB_CHAT_REQUESTS,
 } cobalt_job_kind;
 
 typedef struct {
@@ -308,6 +309,16 @@ bool cobalt_session_begin_chat_inbox(bool paging);
 
 /* The inbox as last fetched; never NULL. */
 const cobalt_chat_inbox *cobalt_session_chat_inbox(void);
+
+/*
+ * Fetch the request inbox: conversations someone else started that the viewer
+ * has not accepted. `paging` appends the next page; false replaces the list.
+ * Read-only: nothing here accepts a request.
+ */
+bool cobalt_session_begin_chat_requests(bool paging);
+
+/* The request inbox as last fetched; never NULL. */
+const cobalt_chat_inbox *cobalt_session_chat_requests(void);
 
 /*
  * Fetch the newest messages of one conversation, by its convo id. Read-only.

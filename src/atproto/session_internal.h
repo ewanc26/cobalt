@@ -150,6 +150,8 @@ typedef struct {
    cobalt_thread conversation;
    cobalt_notifications notifications;
    cobalt_chat_inbox chat;
+   /* Conversations the viewer has not accepted yet. Same shape as `chat`. */
+   cobalt_chat_inbox requests;
    cobalt_chat_thread chat_thread;
    /* Set by a successful CHAT_START, read by the app once it has ok. */
    char chat_started[COBALT_CHAT_ID_MAX];
@@ -222,6 +224,7 @@ void cobalt_session_run_mute(const cobalt_job_input *in, cobalt_job_result *r, c
 void cobalt_session_run_muted_list(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_notifications(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_chat_inbox(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_chat_requests(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_chat_messages(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_chat_send(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_chat_start(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
