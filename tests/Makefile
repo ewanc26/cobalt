@@ -123,6 +123,7 @@ UNIT_SOURCES := \
 	$(SRC)/app/compose.c \
 	$(SRC)/app/notify.c \
 	$(SRC)/app/chat_thread.c \
+	$(SRC)/app/messages.c \
 	$(SRC)/atproto/notifications.c \
 	$(SRC)/atproto/chat.c \
 	$(SRC)/atproto/actor_profile.c \
