@@ -11,6 +11,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 - Messages on the home menu opens a read-only direct message inbox: each conversation shows who it is with (groups say "Group"), the last message and how many are unread, and the list pages. Opening a conversation and replying come next, so confirm does nothing yet ([#107](https://github.com/ewanc26/cobalt/issues/107)).
 
+### Changed
+
+- On the TV the timeline uses the width: the list takes two-fifths on the left, and the selected post is drawn in full on the right, so a long post no longer has to be cut to fit a card. The GamePad keeps the single column. ([#111](https://github.com/ewanc26/cobalt/issues/111))
+
 ## [0.10.1] - 2026-10-15
 
 ### Fixed
@@ -25,6 +29,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 - Signing in needs only the handle and password: the account's PDS is discovered from its DID document (Wolfram's `wf_agent_login_discovered`), so the host the account lives on no longer has to be typed. An empty Server field starts from the default host. ([#201](https://github.com/ewanc26/cobalt/pull/201))
 - Merge the v0.9.1 release into main. ([#213](https://github.com/ewanc26/cobalt/pull/213))
+
 ### Added
 
 - Releasing now refuses to publish without a fresh TLS trust store. `tools/fetch_cacert.sh --check` validates an existing bundle (present, enough certificates, not older than 30 days) and `tools/publish.sh` re-fetches and re-checks before a release is tagged, so a build cannot ship a stale trust store that fails on a console as a network bug. ([#215](https://github.com/ewanc26/cobalt/pull/215))
