@@ -427,6 +427,12 @@ main(int argc, char **argv)
    settle(40);
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_MESSAGES);
    shoot("messages");
+   /* X starts a conversation: the keyboard takes the list's place. */
+   frame(COBALT_BTN_ALT_X);
+   settle(5);
+   shoot("messages-start");
+   tap(668, 372);
+   settle(5);
    /* Opening the conversation fetches its messages and shows them as bubbles. */
    frame(COBALT_BTN_CONFIRM);
    settle(40);
