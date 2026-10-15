@@ -20,6 +20,7 @@
 #include "atproto/notifications.h"
 #include "atproto/chat.h"
 #include "app/chat_thread.h"
+#include "app/messages.h"
 #include "atproto/prefs.h"
 #include "cache/session_store.h"
 #include "update/selfupdate.h"
@@ -1763,6 +1764,110 @@ test_chat_thread_state(void)
    CHECK(view.reply[0] == '\0');
 }
 
+/* --- starting a conversation from the inbox --- */
+
+/* Keyboard OK is the function row's fifth key, Cancel the sixth. */
+#define KB_FN_ROW  4
+#define KB_OK_COL  4
+#define KB_CANCEL_COL 5
+
+static void
+test_messages_start(void)
+{
+   begin("starting a conversation from the inbox");
+
+   cobalt_messages_view view;
+   cobalt_messages_view_init(&view);
+   CHECK(!view.start.editing);
+   CHECK(!view.start.pending);
+
+   /* X opens the keyboard, and nothing is sent yet. */
+   cobalt_input x = tap(COBALT_BTN_ALT_X);
+   CHECK(cobalt_messages_view_update(&view, &x) == COBALT_MESSAGES_STAY);
+   CHECK(view.start.editing);
+   CHECK(view.start.target[0] == '\0');
+
+   /* While the keyboard is open, B is its backspace, not back out of the screen. */
+   snprintf(view.start.target, sizeof(view.start.target), "%s", "alice.test");
+   cobalt_input b = tap(COBALT_BTN_BACK);
+   CHECK(cobalt_messages_view_update(&view, &b) == COBALT_MESSAGES_STAY);
+   CHECK(view.start.editing);
+   CHECK_STR(view.start.target, "alice.tes");
+
+   /* OK on nothing stays on the keyboard. */
+   snprintf(view.start.target, sizeof(view.start.target), "%s", "");
+   view.start.kb.row = KB_FN_ROW;
+   view.start.kb.col = KB_OK_COL;
+   cobalt_input ok = tap(COBALT_BTN_CONFIRM);
+   CHECK(cobalt_messages_view_update(&view, &ok) == COBALT_MESSAGES_STAY);
+   CHECK(view.start.editing);
+
+   /* OK on a handle hands it to the caller to begin the job, and closes the keyboard. */
+   snprintf(view.start.target, sizeof(view.start.target), "%s", "@alice.test");
+   view.start.kb.row = KB_FN_ROW;
+   view.start.kb.col = KB_OK_COL;
+   CHECK(cobalt_messages_view_update(&view, &ok) == COBALT_MESSAGES_START);
+   CHECK(!view.start.editing);
+   CHECK(!view.start.pending);
+
+   /* The job began: the name is shown without the '@', and X does nothing while in flight. */
+   cobalt_messages_start_began(&view.start, true);
+   CHECK(view.start.pending);
+   char name[COBALT_CHAT_TARGET_MAX];
+   CHECK(cobalt_messages_start_name(&view.start, name, sizeof(name)));
+   CHECK_STR(name, "alice.test");
+   CHECK(cobalt_messages_view_update(&view, &x) == COBALT_MESSAGES_STAY);
+   CHECK(!view.start.editing);
+
+   /* A finish with no id is a failure: the typed handle stays for another try. */
+   CHECK(cobalt_messages_start_finished(&view.start, true, "") == COBALT_MESSAGES_START_FAILED);
+   CHECK(!view.start.pending);
+   CHECK_STR(view.start.target, "@alice.test");
+
+   /* A failed job is a failure whatever id it names. */
+   cobalt_messages_start_began(&view.start, true);
+   CHECK(cobalt_messages_start_finished(&view.start, false, "convo-1") ==
+         COBALT_MESSAGES_START_FAILED);
+   CHECK_STR(view.start.target, "@alice.test");
+
+   /* A finish with an id opens that conversation, and the field is clear for next time. */
+   cobalt_messages_start_began(&view.start, true);
+   CHECK(cobalt_messages_start_finished(&view.start, true, "convo-alice") ==
+         COBALT_MESSAGES_START_OPEN);
+   CHECK(!view.start.pending);
+   CHECK(view.start.target[0] == '\0');
+
+   /* A finish that was not ours is ignored, so a stray result cannot open anything. */
+   CHECK(cobalt_messages_start_finished(&view.start, true, "convo-x") ==
+         COBALT_MESSAGES_START_NONE);
+   CHECK(cobalt_messages_start_finished(NULL, true, "convo-x") == COBALT_MESSAGES_START_NONE);
+
+   /* A refused start (no job) opens the keyboard again on the same text. */
+   cobalt_messages_start_open(&view.start);
+   snprintf(view.start.target, sizeof(view.start.target), "%s", "did:plc:abc");
+   view.start.kb.row = KB_FN_ROW;
+   view.start.kb.col = KB_OK_COL;
+   CHECK(cobalt_messages_view_update(&view, &ok) == COBALT_MESSAGES_START);
+   cobalt_messages_start_began(&view.start, false);
+   CHECK(view.start.editing);
+   CHECK(!view.start.pending);
+   CHECK_STR(view.start.target, "did:plc:abc");
+
+   /* Cancel on the keyboard leaves it, with the text as it was. */
+   view.start.kb.row = KB_FN_ROW;
+   view.start.kb.col = KB_CANCEL_COL;
+   cobalt_input cancel = tap(COBALT_BTN_CONFIRM);
+   CHECK(cobalt_messages_view_update(&view, &cancel) == COBALT_MESSAGES_STAY);
+   CHECK(!view.start.editing);
+   CHECK_STR(view.start.target, "did:plc:abc");
+
+   /* A name that is not a target at all is refused by the caller, not normalised into one. */
+   CHECK(!cobalt_messages_start_name(NULL, name, sizeof(name)));
+   CHECK(!cobalt_messages_start_name(&view.start, NULL, sizeof(name)));
+   snprintf(view.start.target, sizeof(view.start.target), "%s", "   ");
+   CHECK(!cobalt_messages_start_name(&view.start, name, sizeof(name)));
+}
+
 /* --- notifications --- */
 
 static void
@@ -3042,6 +3147,7 @@ main(int argc, char **argv)
    test_notification_wording();
    test_chat_inbox_counterpart();
    test_chat_thread_state();
+   test_messages_start();
    test_chat_start_target();
    test_paging_stops_when_the_window_fills();
    test_selection_survives_a_shrinking_list();

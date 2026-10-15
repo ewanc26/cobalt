@@ -272,6 +272,35 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          }
          break;
 
+      case COBALT_JOB_CHAT_START: {
+         /* The name is read first: a finished start clears the field. */
+         char name[COBALT_CHAT_TARGET_MAX];
+         cobalt_messages_start_name(&app->messages.start, name, sizeof(name));
+         const cobalt_messages_start_outcome outcome =
+            cobalt_messages_start_finished(&app->messages.start, result->ok,
+                                           cobalt_session_chat_started_convo());
+         if (outcome == COBALT_MESSAGES_START_OPEN) {
+            const char *convo = cobalt_session_chat_started_convo();
+            if (app->screen != COBALT_SCREEN_MESSAGES) {
+               /* The person left Messages while the job ran. Do not pull them
+                * into a thread they did not ask to see. */
+               set_notice(app, "Conversation started. Refresh Messages to see it.", false);
+            } else if (cobalt_session_begin_chat_messages(convo)) {
+               cobalt_chat_thread_view_open(&app->chat_view, name, convo);
+               app->screen = COBALT_SCREEN_CHAT_THREAD;
+               COBALT_LOGI("messages: opened a new conversation");
+            } else {
+               set_notice(app, "Conversation started, but it could not be opened. "
+                               "Refresh Messages, then open it.", true);
+            }
+         } else if (outcome == COBALT_MESSAGES_START_FAILED) {
+            set_notice(app, result->message[0] ? result->message
+                                               : "Could not open a conversation with that account.",
+                       true);
+         }
+         break;
+      }
+
       case COBALT_JOB_NOTIFICATIONS:
       case COBALT_JOB_CHAT_INBOX:
       case COBALT_JOB_CHAT_MESSAGES:
@@ -585,6 +614,15 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                                                inbox->items[sel].id);
                   app->screen = COBALT_SCREEN_CHAT_THREAD;
                   COBALT_LOGI("messages: opened a conversation");
+               }
+               break;
+            }
+            case COBALT_MESSAGES_START: {
+               const bool began = cobalt_session_begin_chat_start(app->messages.start.target);
+               cobalt_messages_start_began(&app->messages.start, began);
+               if (!began) {
+                  set_notice(app, "Could not start that conversation. Check the handle or DID.",
+                             true);
                }
                break;
             }
