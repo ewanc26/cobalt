@@ -261,6 +261,17 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          }
          break;
 
+      case COBALT_JOB_CHAT_SEND:
+         /* A sent reply clears the draft and reloads the thread so it shows. A
+          * failed one keeps the draft, so the person can send it again. */
+         if (result->ok) {
+            cobalt_chat_thread_view_sent(&app->chat_view);
+            cobalt_session_begin_chat_messages(app->chat_view.convo_id);
+         } else {
+            set_notice(app, result->message, true);
+         }
+         break;
+
       case COBALT_JOB_NOTIFICATIONS:
       case COBALT_JOB_CHAT_INBOX:
       case COBALT_JOB_CHAT_MESSAGES:
