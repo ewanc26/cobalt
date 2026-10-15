@@ -9,6 +9,7 @@
 
 #include "app/compose.h"
 #include "app/post_queue.h"
+#include "app/queue_store.h"
 #include "app/graph.h"
 #include "app/search.h"
 #include "app/signin.h"
@@ -2684,6 +2685,44 @@ test_listnav(void)
    CHECK(nav.selected == 0 && nav.scroll == 0 && nav.last_visible == -1);
 }
 
+/* The queue on the SD card: what is saved comes back exactly, and a damaged or
+ * truncated file is refused rather than loaded half-way. */
+static void
+test_queue_store(void)
+{
+   begin("the queue file round-trips, and a damaged file is refused");
+   static cobalt_post_queue q, back;
+   static char buf[8192];
+   const char *path = "queue-test.dat";
+
+   cobalt_post_queue_init(&q);
+   CHECK(cobalt_post_queue_add(&q, "line one\nline two\twith a tab \\ slash", 100));
+   CHECK(cobalt_post_queue_add(&q, "plain", 200));
+
+   CHECK(cobalt_queue_encode(&q, buf, sizeof(buf)));
+   CHECK(cobalt_queue_decode(buf, strlen(buf), &back));
+   CHECK(back.count == 2);
+   CHECK(strcmp(back.items[0].text, q.items[0].text) == 0);
+   CHECK(back.items[1].queued_at == 200);
+
+   /* Cut short: no "end" line, so the whole file is refused and nothing loads. */
+   CHECK(!cobalt_queue_decode(buf, strlen(buf) - 4, &back));
+   CHECK(back.count == 0);
+   CHECK(!cobalt_queue_decode("not a queue\n", 12, &back));
+   CHECK(back.count == 0);
+
+   /* Through the filesystem. A missing file is an empty queue, not an error. */
+   remove(path);
+   cobalt_post_queue_init(&back);
+   CHECK(cobalt_queue_load(path, &back));
+   CHECK(back.count == 0);
+   CHECK(cobalt_queue_save(path, &q));
+   CHECK(cobalt_queue_load(path, &back));
+   CHECK(back.count == 2);
+   CHECK(strcmp(back.items[1].text, "plain") == 0);
+   remove(path);
+}
+
 static void
 test_post_queue(void)
 {
@@ -2844,6 +2883,7 @@ main(int argc, char **argv)
    test_listnav();
    test_listnav_restore();
    test_post_queue();
+   test_queue_store();
    test_post_refuses_partial_refs();
    test_notification_wording();
    test_paging_stops_when_the_window_fills();

@@ -122,6 +122,7 @@ UNIT_SOURCES := \
 	$(SRC)/util/entropy.c \
 	$(SRC)/app/timeline.c \
 	$(SRC)/app/post_queue.c \
+	$(SRC)/app/queue_store.c \
 	$(SRC)/app/thread.c \
 	$(SRC)/app/compose.c \
 	$(SRC)/app/notify.c \
