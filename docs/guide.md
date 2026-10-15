@@ -24,7 +24,7 @@ The footer names the buttons that work on the current screen. A prompt that name
 
 ![Home](screenshots/home-signedin.png)
 
-Timeline, New post, Search, Feeds, Lists, Notifications, Account (or Sign in), Updates, Diagnostics, TV display and Quit. Timeline, New post, Search, Feeds, Lists and Notifications need you signed in; the rest do not.
+Timeline, New post, Search, Feeds, Lists, Notifications, Messages, Account (or Sign in), Updates, Diagnostics, TV display and Quit. Timeline, New post, Search, Feeds, Lists, Notifications and Messages need you signed in; the rest do not.
 
 TV display switches between TV plus GamePad and Off-TV Play, where the TV goes idle and everything happens on the GamePad.
 
@@ -48,6 +48,8 @@ The first time Cobalt runs without a seed file it asks you to scribble on the Ga
 | Left | Like (again to undo). |
 | Right | Repost (again to undo). |
 | X | New post. |
+
+On the TV the list is a column on the left, and the post you have selected is shown in full on the right. The GamePad keeps the full-width list. A very long post is cut to the lines that fit the screen.
 | Y | The More menu. |
 | + | Refresh. |
 | B | Back to home. |
@@ -62,6 +64,8 @@ The More menu lists, for the highlighted post: the author's profile, View image,
 
 Shows the conversation around a post. Like and repost work as on the timeline. A on the post you opened is Reply; A on any other post opens the conversation from that post. X quotes, + replies, Y opens the More menu, which here also has Quote post and, on your own posts, Delete post (it asks first).
 
+On the TV the conversation is a column on the left, and the post you have selected is shown in full on the right, with a scrollbar when its text is longer than the screen. The GamePad keeps the full-width view.
+
 ## Writing a post
 
 ![New post](screenshots/compose.png)
@@ -73,6 +77,10 @@ You type on Cobalt's own keyboard: move with the D-pad or tap on the GamePad. Po
 ![Notifications](screenshots/notifications.png)
 
 Replies, mentions, quotes, likes, reposts and follows. A opens the post or the follower's profile. Y opens the More menu: the account's profile, the post, and refresh. + also refreshes.
+
+## Messages
+
+Direct messages, fetched from the chat.bsky.convo service. The list shows your conversations with their last message, unread count, and the age of the last message. A opens a conversation, B and the back pill both return to the previous screen. + refreshes. The home menu entry is Messages.
 
 ## Profiles
 

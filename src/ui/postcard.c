@@ -492,6 +492,11 @@ draw_link_card(cobalt_render *r, const cobalt_post *post, int x, int y,
                                      text_x, ty, text_width, 1,
                                      COBALT_COLOUR_TEXT);
    }
+   if (post->link.duration[0]) {
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, post->link.duration,
+                       text_x, ty, COBALT_COLOUR_TEXT_DIM);
+      ty += caption_h;
+   }
    if (post->link.description[0]) {
       ty += cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION,
                                      post->link.description, text_x, ty,

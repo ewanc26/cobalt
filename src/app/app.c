@@ -37,6 +37,7 @@ cobalt_app_create(void)
    cobalt_graph_view_init(&app->graph);
    cobalt_search_view_init(&app->search);
    cobalt_lists_view_init(&app->lists);
+   cobalt_dms_view_init(&app->dms);
 
    curl_version_info_data *curl_info = curl_version_info(CURLVERSION_NOW);
    snprintf(app->curl_version, sizeof(app->curl_version), "curl %s / %s",
@@ -75,9 +76,14 @@ cobalt_app_view_position(const cobalt_app *app, cobalt_screen screen, int *selec
             sel = app->notify.nav.selected;
             scr = app->notify.nav.scroll;
             break;
-         case COBALT_SCREEN_PROFILE:
-            sel = app->profile.nav.selected;
-            scr = app->profile.nav.scroll;
+          case COBALT_SCREEN_PROFILE:
+             sel = app->profile.nav.selected;
+             scr = app->profile.nav.scroll;
+             break;
+          case COBALT_SCREEN_DMS:
+             sel = app->dms.nav.selected;
+             scr = app->dms.nav.scroll;
+             break;
             break;
          default:
             break;
@@ -204,6 +210,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
    cobalt_graph_view_init(&app->graph);
    cobalt_search_view_init(&app->search);
    cobalt_lists_view_init(&app->lists);
+   cobalt_dms_view_init(&app->dms);
          app->screen = COBALT_SCREEN_HOME;
          app->selected = 1;
          break;
@@ -283,10 +290,20 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          }
          break;
 
+      case COBALT_JOB_DMS_CONVOS:
+      case COBALT_JOB_DMS_MESSAGES:
+      case COBALT_JOB_DMS_SEND:
+         if (!result->ok) {
+            set_notice(app, result->message, true);
+         } else if (result->message[0]) {
+            set_notice(app, result->message, false);
+         }
+         break;
+
       case COBALT_JOB_NONE:
       default:
          break;
-   }
+    }
 }
 
 
@@ -689,6 +706,21 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
          }
          break;
 
+      case COBALT_SCREEN_DMS:
+         switch (cobalt_dms_view_update(&app->dms, in)) {
+            case COBALT_DMS_ACTION_BACK:
+               app->screen = COBALT_SCREEN_HOME;
+               break;
+            case COBALT_DMS_ACTION_OPEN_CONVO:
+               app->screen = COBALT_SCREEN_HOME;
+               break;
+            case COBALT_DMS_ACTION_COMPOSE_CLOSED:
+            case COBALT_DMS_ACTION_STAY:
+            default:
+               break;
+         }
+         break;
+
       case COBALT_SCREEN_HOME:
       default:
          cobalt_app_update_home(app, in);
@@ -872,6 +904,10 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_LISTS:
          cobalt_lists_view_draw(&app->lists, r, surface);
+         break;
+
+      case COBALT_SCREEN_DMS:
+         cobalt_dms_view_draw(&app->dms, r, surface);
          break;
 
       case COBALT_SCREEN_HOME:

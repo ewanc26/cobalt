@@ -20,6 +20,7 @@
 #include "atproto/prefs.h"
 #include "atproto/notifications.h"
 #include "atproto/actor_profile.h"
+#include "atproto/dms.h"
 #include "cache/session_store.h"
 #include "util/clock.h"
 #include "util/log.h"
@@ -46,6 +47,8 @@
 #include <wolfram/threadgate_postgate.h>
 #include <wolfram/time.h>
 #include <wolfram/xrpc.h>
+#include <wolfram/chat_typed.h>
+#include <wolfram/agent.h>
 #endif
 
 #include <SDL.h>
@@ -95,6 +98,10 @@ typedef struct {
 
    /* Composing a quote post: `uri`/`cid` name the quoted post, not a parent. */
    bool quote;
+
+   /* DMs: convo id and message text for send. */
+   char convo_id[COBALT_POST_URI_MAX];
+   char message_text[COBALT_COMPOSE_TEXT_MAX];
 
    /* Optional image to attach (SD path); empty for none. */
    char attach_path[COBALT_ATTACH_PATH_MAX];
@@ -169,6 +176,12 @@ typedef struct {
    cobalt_saved_feeds saved_feeds;
    cobalt_actor_list list_members;
 
+   /* Direct messages */
+   cobalt_convos convos;
+   cobalt_messages messages;
+   /* Result of the last sent message, for display in a confirmation. */
+   char sent_message_id[COBALT_POST_URI_MAX];
+
 #ifdef COBALT_HAS_WOLFRAM
    /* Owned by the worker while a job runs; only touched off-thread when idle. */
    wf_agent *wf;
@@ -205,6 +218,9 @@ bool cobalt_session_publish(void);
 void cobalt_session_run_block(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_blocked_list(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_delete_post(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_dms_convos(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_dms_messages(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_dms_send(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_feed(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_follow(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_followers(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);

@@ -33,6 +33,7 @@
 #include "atproto/curated_lists.h"
 #include "atproto/notifications.h"
 #include "atproto/actor_profile.h"
+#include "atproto/dms.h"
 #include "cache/session_store.h"
 
 #include <stdbool.h>
@@ -90,6 +91,9 @@ typedef enum {
    COBALT_JOB_SAVED_FEEDS,
    COBALT_JOB_LIKES,
    COBALT_JOB_REPOSTED_BY,
+   COBALT_JOB_DMS_CONVOS,
+   COBALT_JOB_DMS_MESSAGES,
+   COBALT_JOB_DMS_SEND,
 } cobalt_job_kind;
 
 typedef struct {
@@ -395,6 +399,30 @@ const cobalt_saved_feeds *cobalt_session_saved_feeds(void);
 bool cobalt_session_begin_saved_feeds(void);
 bool cobalt_session_begin_list_members(const char *list_uri, bool paging);
 const cobalt_actor_list *cobalt_session_list_members(void);
+
+/* --- direct messages (chat.bsky.convo.*) --- */
+
+/*
+ * Fetch the signed-in account's conversations. `paging` appends the next
+ * page; false replaces the list.
+ */
+bool cobalt_session_begin_dms_convos(bool paging);
+const cobalt_convos *cobalt_session_dms_convos(void);
+
+/*
+ * Fetch messages from `convo_id`. Non-paging replaces; paging appends.
+ */
+bool cobalt_session_begin_dms_messages(const char *convo_id, bool paging);
+const cobalt_messages *cobalt_session_dms_messages(void);
+
+/*
+ * Send a message to `convo_id`.
+ */
+bool cobalt_session_begin_dms_send(const char *convo_id, const char *text);
+
+/* The result of the last send, valid only after cobalt_session_poll returns
+ * a completed COBALT_JOB_DMS_SEND result. */
+const char *cobalt_session_dms_sent_id(void);
 
 /*
  * Guard for the shared snapshots above.

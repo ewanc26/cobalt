@@ -130,11 +130,11 @@ open_home_item(int idx)
       /* The GamePad list steps one row at a time, TV or not. */
       const int start = cobalt_app_home_selection(g_app);
       frame(COBALT_BTN_DOWN); settle(2);
-      CHECK(cobalt_app_home_selection(g_app) == (start + 1) % 11);
+      CHECK(cobalt_app_home_selection(g_app) == (start + 1) % 12);
       frame(COBALT_BTN_UP); settle(2);
       CHECK(cobalt_app_home_selection(g_app) == start);
    }
-   for (int n = (idx - cobalt_app_home_selection(g_app) + 11) % 11; n > 0; n--) {
+   for (int n = (idx - cobalt_app_home_selection(g_app) + 12) % 12; n > 0; n--) {
       frame(COBALT_BTN_RIGHT);
       settle(2);
    }
@@ -421,7 +421,13 @@ main(int argc, char **argv)
 
    frame(COBALT_BTN_BACK);
    settle(10);
-   open_home_item(8);
+   open_home_item(6);
+   settle(40);
+   shoot("dms");
+
+   frame(COBALT_BTN_BACK);
+   settle(10);
+   open_home_item(9);
    settle(10);
    shoot("diagnostics");
 
@@ -444,7 +450,7 @@ main(int argc, char **argv)
    settle(2);
    frame(COBALT_BTN_CONFIRM);
    settle(5);
-   open_home_item(6);
+   open_home_item(7);
    settle(10);
    shoot("account");
 
@@ -484,11 +490,11 @@ main(int argc, char **argv)
 
    /* The Back pill is drawn on every screen that does not give B to the
     * keyboard, and tapping it must leave each one (cobalt#112). The home items
-    * are: timeline 0, notifications 5, account 6, updates 7, diagnostics 8, and
-    * the two lists, feeds 3 and lists 4. Compose and search are left out on
-    * purpose: B types there, so they have no pill. */
+    * are: timeline 0, notifications 5, dms 6, account 7, updates 8, diagnostics
+    * 9, and the two lists, feeds 3 and lists 4. Compose and search are left
+    * out on purpose: B types there, so they have no pill. */
    {
-      static const int items[] = {0, 3, 4, 5, 6, 7, 8};
+       static const int items[] = {0, 3, 4, 5, 6, 7, 8, 9};
       for (size_t k = 0; k < sizeof items / sizeof items[0]; k++) {
          open_home_item(items[k]);
          settle(20);

@@ -7,6 +7,16 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Added
+
+- Storage for posts written while offline: a queue of up to 16 posts that only leaves it when the person sends one. It has no screen yet; how it is shown and when posts are queued is still to be decided.
+- Direct messages `COBALT_SCREEN_DMS` and a Messages entry on the home menu, listing conversations, fetching messages, and sending new messages via `chat.bsky.convo.*` through Wolfram. ([#107](https://github.com/ewanc26/cobalt/issues/107))
+- Added a `duration` field to `cobalt_post_link` and display code for video poster frames, ready for Wolfram to expose video length. ([#102](https://github.com/ewanc26/cobalt/issues/102))
+
+### Changed
+
+- On the TV the timeline and the thread are two-column views: the list on the left and the selected post in full on the right, using the width that was left as margin around one narrow card. The GamePad layout is unchanged. ([#111](https://github.com/ewanc26/cobalt/issues/111))
+
 ## [0.10.0] - 2026-10-12
 
 ### Changed

@@ -178,12 +178,19 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
 
    cobalt_listnav_draw_begin(&view->nav, touchable);
 
+   /* On the TV the list is a column and the selected post is shown in full
+    * beside it, so the width of the screen is used rather than left as margin
+    * around one narrow card. The GamePad keeps the full-width list. */
+   const bool split = (surface == COBALT_SURFACE_TV);
+   const int list_w = split ? (m->width - 2 * m->pad_edge - m->gap) * 2 / 5
+                            : m->width - 2 * m->pad_edge;
+
    int y = top;
    int last_fitted = view->nav.scroll;
 
    for (int i = view->nav.scroll; i < feed->count; i++) {
       const cobalt_post *post = &feed->posts[i];
-      int lines = cobalt_postcard_text_total(r, post, m->width - 2 * m->pad_edge, 0);
+      int lines = cobalt_postcard_text_total(r, post, list_w, 0);
       if (lines > TEXT_LINES) {
          lines = TEXT_LINES;
       } else if (lines < 1) {
@@ -198,13 +205,36 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
          break;
       }
 
-      SDL_Rect rect = { m->pad_edge, y, m->width - 2 * m->pad_edge, h };
+      SDL_Rect rect = { m->pad_edge, y, list_w, h };
       cobalt_postcard_draw(r, post, &rect, i == view->nav.selected, lines, 0);
 
       cobalt_listnav_draw_add(&view->nav, touchable, &rect, i);
 
       last_fitted = i;
       y += h + m->gap;
+   }
+
+   if (split && view->nav.selected < feed->count) {
+      /* The selected post in the right-hand column, with as many of its lines
+       * as fit the viewport. Lines beyond that are cut, not wrapped onto the
+       * left column: a later pass can scroll the detail. */
+      const cobalt_post *sel = &feed->posts[view->nav.selected];
+      const int x = m->pad_edge + list_w + m->gap;
+      const int w = m->width - m->pad_edge - x;
+      const int avail = bottom - top;
+      int lines = cobalt_postcard_text_total(r, sel, w, 0);
+
+      if (lines < 1) {
+         lines = 1;
+      }
+      while (lines > 1 && cobalt_postcard_height(r, sel, lines, true) > avail) {
+         lines--;
+      }
+      {
+         const SDL_Rect rect = { x, top, w,
+                                 cobalt_postcard_height(r, sel, lines, true) };
+         cobalt_postcard_draw(r, sel, &rect, true, lines, 0);
+      }
    }
 
    cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);
