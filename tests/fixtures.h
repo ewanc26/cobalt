@@ -84,6 +84,24 @@ register_fixtures(wf_mock_pds *pds)
       "{\"uri\":\"at://did:plc:abc/app.bsky.graph.follow/2\",\"cid\":\"c2\","
       "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"bob.test\",\"displayName\":\"Bob\"},"
       "\"reason\":\"follow\",\"record\":{},\"isRead\":true,\"indexedAt\":\"2026-10-01T09:00:00.000Z\"}]}");
+   /* Direct messages: one conversation with a message from Bob, and the
+    * thread itself, newest first as the server sends it. */
+   wf_mock_pds_register(pds, "chat.bsky.convo.listConvos",
+      "{\"convos\":[{\"id\":\"convo-bob\",\"rev\":\"3\","
+      "\"members\":[{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\",\"displayName\":\"Alice Example\"},"
+      "{\"did\":\"did:plc:bob\",\"handle\":\"bob.test\",\"displayName\":\"Bob\"}],"
+      "\"lastMessage\":{\"$type\":\"chat.bsky.convo.defs#messageView\",\"id\":\"m3\",\"rev\":\"3\","
+      "\"text\":\"See you Saturday. Bring the good scissors.\",\"sender\":{\"did\":\"did:plc:bob\"},"
+      "\"sentAt\":\"2026-10-01T10:00:00.000Z\"},\"unreadCount\":2}]}");
+   wf_mock_pds_register(pds, "chat.bsky.convo.getMessages",
+      "{\"messages\":["
+      "{\"$type\":\"chat.bsky.convo.defs#messageView\",\"id\":\"m3\",\"rev\":\"3\","
+      "\"text\":\"See you Saturday. Bring the good scissors.\",\"sender\":{\"did\":\"did:plc:bob\"},\"sentAt\":\"2026-10-01T10:00:00.000Z\"},"
+      "{\"$type\":\"chat.bsky.convo.defs#messageView\",\"id\":\"m2\",\"rev\":\"2\","
+      "\"text\":\"Yes, still on for Saturday?\",\"sender\":{\"did\":\"did:plc:abc\"},\"sentAt\":\"2026-10-01T09:30:00.000Z\"},"
+      "{\"$type\":\"chat.bsky.convo.defs#messageView\",\"id\":\"m1\",\"rev\":\"1\","
+      "\"text\":\"Hello! Did you get my note about the hedge?\",\"sender\":{\"did\":\"did:plc:bob\"},\"sentAt\":\"2026-10-01T09:00:00.000Z\"}"
+      "]}");
    char sr[2048];
    snprintf(sr, sizeof sr, "{\"actors\":[{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\",\"displayName\":\"Alice Example\"}]}");
    wf_mock_pds_register(pds, "app.bsky.actor.searchActors", sr);
