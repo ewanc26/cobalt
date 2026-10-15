@@ -517,6 +517,96 @@ cobalt_session_run_chat_send(const cobalt_job_input *in, cobalt_job_result *r,
    r->ok = true;
 }
 
+void
+cobalt_session_run_chat_start(const cobalt_job_input *in, cobalt_job_result *r,
+                              cobalt_auth_state *state)
+{
+   SDL_LockMutex(g_session.lock);
+   g_session.chat_started[0] = '\0';
+   SDL_UnlockMutex(g_session.lock);
+
+   if (!g_session.wf || !g_session.did[0]) {
+      cobalt_session_set_message(r, "Sign in to send messages.");
+      return;
+   }
+
+   char target[COBALT_CHAT_TARGET_MAX];
+   const cobalt_chat_target_kind kind =
+      cobalt_chat_target_normalise(in->uri, target, sizeof(target))
+         ? cobalt_chat_target_kind_of(target)
+         : COBALT_CHAT_TARGET_INVALID;
+   if (kind == COBALT_CHAT_TARGET_INVALID) {
+      cobalt_session_set_message(r, "Enter a handle or DID to message.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   char did[COBALT_CHAT_TARGET_MAX];
+   if (kind == COBALT_CHAT_TARGET_HANDLE) {
+      char *resolved = NULL;
+
+      COBALT_LOGI("session: resolveHandle");
+      wf_status status = wf_agent_resolve_handle(g_session.wf, target, &resolved);
+      const bool fits = resolved && strlen(resolved) < sizeof(did);
+      if (status == WF_OK && fits) {
+         snprintf(did, sizeof(did), "%s", resolved);
+      }
+      free(resolved);
+
+      if (status != WF_OK || !fits) {
+         /* The service answers an unknown handle with an HTTP error, so that
+          * reads as "no such account" rather than as a network fault. */
+         if (status == WF_OK || status == WF_ERR_HTTP) {
+            cobalt_session_set_message(r, "No account has that handle.");
+         } else {
+            COBALT_LOGW("session: resolveHandle failed (%d)", (int) status);
+            cobalt_session_describe_failure(r, status, COBALT_JOB_CHAT_START);
+         }
+         *state = COBALT_AUTH_SIGNED_IN;
+         return;
+      }
+   } else {
+      snprintf(did, sizeof(did), "%s", target);
+   }
+
+   if (cobalt_chat_is_self(g_session.did, did)) {
+      cobalt_session_set_message(r, "That is your own account.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   /* getConvoForMembers takes every member, the viewer included. */
+   const char *members[2] = { g_session.did, did };
+   wf_chat_convo convo;
+   memset(&convo, 0, sizeof(convo));
+
+   COBALT_LOGI("session: getConvoForMembers");
+   wf_status status = wf_agent_chat_get_convo_for_members_typed(g_session.wf, members, 2, &convo);
+   char id[COBALT_CHAT_ID_MAX];
+   const bool copied = status == WF_OK && cobalt_chat_convo_id_copy(id, sizeof(id), convo.id);
+   wf_chat_convo_free(&convo);
+
+   if (!copied) {
+      if (status == WF_OK) {
+         cobalt_session_set_message(r, "The server did not return a conversation.");
+      } else {
+         COBALT_LOGW("session: getConvoForMembers failed (%d)", (int) status);
+         cobalt_session_describe_failure(r, status, COBALT_JOB_CHAT_START);
+      }
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(g_session.lock);
+   snprintf(g_session.chat_started, sizeof(g_session.chat_started), "%s", id);
+   SDL_UnlockMutex(g_session.lock);
+
+   cobalt_session_publish();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
 #endif /* COBALT_HAS_WOLFRAM */
 
 bool
@@ -643,6 +733,27 @@ const cobalt_chat_thread *
 cobalt_session_chat_thread(void)
 {
    return &g_session.chat_thread;
+}
+
+bool
+cobalt_session_begin_chat_start(const char *handle_or_did)
+{
+   char target[COBALT_CHAT_TARGET_MAX];
+   if (!cobalt_chat_target_normalise(handle_or_did, target, sizeof(target)) ||
+       cobalt_chat_target_kind_of(target) == COBALT_CHAT_TARGET_INVALID) {
+      return false;
+   }
+
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", target);
+   return cobalt_session_submit(COBALT_JOB_CHAT_START, &in);
+}
+
+const char *
+cobalt_session_chat_started_convo(void)
+{
+   return g_session.chat_started;
 }
 
 bool
