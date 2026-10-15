@@ -74,8 +74,19 @@ WOLFRAM_ROOT	?=	$(TOPDIR)/../wolfram
 WOLFRAM_BUILD	?=	$(WOLFRAM_ROOT)/build-wiiu
 WOLFRAM_LIB	:=	$(WOLFRAM_BUILD)/libwolfram.a
 
+# The version of the Wolfram checkout being linked, read from its CMake project()
+# line. Wolfram exposes no version header to a plain Makefile build, so this is the
+# only place the number can come from. wolfram.ref is the pin; a mismatch is a
+# warning, not an error, so a developer can build against a newer checkout.
+WOLFRAM_VERSION	:=	$(shell sed -n 's/^  VERSION \([0-9.]*\).*/\1/p' $(WOLFRAM_ROOT)/CMakeLists.txt 2>/dev/null | head -1)
+WOLFRAM_PIN	:=	$(shell tr -d '[:space:]' < $(TOPDIR)/wolfram.ref 2>/dev/null | sed 's/^v//')
+ifneq ($(WOLFRAM_VERSION),$(WOLFRAM_PIN))
+$(warning *** Wolfram checkout is $(or $(WOLFRAM_VERSION),unknown), but wolfram.ref pins $(or $(WOLFRAM_PIN),nothing). ***)
+endif
+
 ifneq ($(wildcard $(WOLFRAM_LIB)),)
 	WOLFRAM_CFLAGS	:=	-DCOBALT_HAS_WOLFRAM=1 \
+				-DCOBALT_WOLFRAM_VERSION=\"$(or $(WOLFRAM_VERSION),unknown)\" \
 				-I$(WOLFRAM_ROOT)/include \
 				-I$(WOLFRAM_BUILD)/_deps/cjson-src
 	WOLFRAM_LIBS	:=	$(WOLFRAM_LIB) \
