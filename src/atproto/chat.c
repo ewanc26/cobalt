@@ -76,6 +76,20 @@ cobalt_chat_other_member_count(const char *const *member_dids, size_t count,
    return others;
 }
 
+bool
+cobalt_chat_reply_valid(const char *text)
+{
+   if (!text || text[0] == '\0' || strlen(text) >= COBALT_CHAT_REPLY_MAX) {
+      return false;
+   }
+   for (const char *p = text; *p; p++) {
+      if (*p != ' ' && *p != '\t' && *p != '\n' && *p != '\r') {
+         return true;
+      }
+   }
+   return false;
+}
+
 void
 cobalt_chat_thread_reset(cobalt_chat_thread *thread)
 {
