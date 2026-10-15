@@ -16,6 +16,12 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 - On the TV the timeline uses the width: the list takes two-fifths on the left, and the selected post is drawn in full on the right, so a long post no longer has to be cut to fit a card. The GamePad keeps the single column. ([#111](https://github.com/ewanc26/cobalt/issues/111))
 
+## [0.10.1] - 2026-10-15
+
+### Fixed
+
+- The Updater can put the new build in place on a real console. Aroma holds the running `.wuhb`'s content mounted for the life of the process and refuses to rename the file while it is, so a downloaded update was verified and staged but never installed. Cobalt now releases the mount through Aroma's RPXLoadingModule immediately before the replacement, on the quit path. ([#139](https://github.com/ewanc26/cobalt/issues/139))
+
 ## [0.10.0] - 2026-10-12
 
 ### Changed
@@ -212,7 +218,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/ewanc26/cobalt/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/ewanc26/cobalt/compare/v0.9.1...v0.10.0
 [0.9.0]: https://github.com/ewanc26/cobalt/compare/v0.8.1...v0.9.0
 [0.9.1]: https://github.com/ewanc26/cobalt/compare/v0.9.0...v0.9.1

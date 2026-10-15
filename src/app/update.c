@@ -4,6 +4,7 @@
 #include "ui/theme.h"
 #include "util/log.h"
 #include "util/version.h"
+#include "util/wuhb.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -349,6 +350,13 @@ cobalt_update_view_apply_on_quit(cobalt_update_view *v)
        !cobalt_update_has_staged(&v->paths)) {
       return false;
    }
+   /* Aroma holds the running .wuhb mounted for the life of the process and will
+    * not let it be renamed while it is (util/wuhb.h), so the replacement would
+    * fail. Release it first. Silent when there is nothing that can release it
+    * (a bare-RPX install, an emulator): the replacement is still attempted. */
+   if (cobalt_wuhb_unmount_running()) {
+      COBALT_LOGI("update: released the running bundle so its file can be replaced");
+   }
    if (cobalt_update_apply(&v->paths)) {
       COBALT_LOGI("update: installed %s; the previous build is kept until it has run", v->manifest.version);
       return true;
@@ -403,9 +411,9 @@ cobalt_update_view_draw(cobalt_update_view *v, cobalt_render *r, int top)
          cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, line, x, y, w, 2, COBALT_COLOUR_ACCENT_TEXT);
          y += lh * 2;
          if (man.notes[0]) {
-            cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, man.notes, x, y, w, 8,
+            cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, man.notes, x, y, w, 5,
                                      COBALT_COLOUR_TEXT);
-            y += lh * 4;
+            y += lh * 2;
          }
          cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION,
                                   "Nothing is downloaded until you choose. The file is checked "
