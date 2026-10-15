@@ -11,7 +11,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 - Messages on the home menu opens a read-only direct message inbox: each conversation shows who it is with (groups say "Group"), the last message and how many are unread, and the list pages. Confirm opens a conversation as bubbles, newest at the bottom, with Up and Down to reach older messages (the newest 50 are held). A writes a reply on the keyboard, Y sends it, and a reply that fails to send stays as the draft ([#107](https://github.com/ewanc26/cobalt/issues/107)).
 - Messages can start a new conversation: X on the inbox opens the keyboard for a handle or DID, and the conversation opens once the service has found or created it. A refusal or failure keeps what was typed to correct. ([#227](https://github.com/ewanc26/cobalt/pull/227))
-- Save a new post for later, with Save for later in the confirm list. Queued posts are kept on the SD card (up to 16), and a Queued posts screen on the home menu sends or discards each one. Nothing is sent without you choosing it; a failed send stays queued with the reason shown.
+- Save a new post for later, with Save for later in the confirm list. Queued posts are kept on the SD card (up to 16), and a Queued posts screen on the home menu sends or discards each one. Nothing is sent without you choosing it; a failed send stays queued with the reason shown. ([#233](https://github.com/ewanc26/cobalt/pull/233))
 - Direct messages `COBALT_SCREEN_DMS` and a Messages entry on the home menu, listing conversations, fetching messages, and sending new messages via `chat.bsky.convo.*` through Wolfram. ([#107](https://github.com/ewanc26/cobalt/issues/107))
 - Added a `duration` field to `cobalt_post_link` and display code for video poster frames, ready for Wolfram to expose video length. ([#102](https://github.com/ewanc26/cobalt/issues/102))
 
@@ -25,7 +25,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Fixed
 
-- The Account screen's error line no longer runs under the button hints, and the Home menu's Notifications tile no longer breaks the word in two on the TV.
+- The Account screen's error line no longer runs under the button hints, and the Home menu's Notifications tile no longer breaks the word in two on the TV. ([#111](https://github.com/ewanc26/cobalt/issues/111))
 
 ## [0.10.0] - 2026-10-12
 
