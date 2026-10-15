@@ -93,6 +93,7 @@ typedef enum {
    COBALT_JOB_REPOSTED_BY,
    COBALT_JOB_CHAT_INBOX,
    COBALT_JOB_CHAT_MESSAGES,
+   COBALT_JOB_CHAT_SEND,
 } cobalt_job_kind;
 
 typedef struct {
@@ -314,6 +315,12 @@ bool cobalt_session_begin_chat_messages(const char *convo_id);
 
 /* The thread as last fetched; never NULL. */
 const cobalt_chat_thread *cobalt_session_chat_thread(void);
+
+/*
+ * Send `text` to a conversation. Refused, without a job, if the text is not a
+ * reply the service will take (see cobalt_chat_reply_valid).
+ */
+bool cobalt_session_begin_chat_send(const char *convo_id, const char *text);
 
 /*
  * Fetch an actor's profile and their posts together. `actor` is a handle or a

@@ -1600,6 +1600,17 @@ test_chat_inbox_counterpart(void)
    CHECK(!cobalt_chat_inbox_can_page(&inbox));
 }
 
+/* A string one byte longer than a reply may be. */
+static const char *
+std_pad_1024(void)
+{
+   static char big[COBALT_CHAT_REPLY_MAX + 1];
+
+   memset(big, 'a', sizeof(big) - 1);
+   big[sizeof(big) - 1] = '\0';
+   return big;
+}
+
 static void
 test_chat_thread_state(void)
 {
@@ -1622,6 +1633,25 @@ test_chat_thread_state(void)
    CHECK(view.offset == 0);
    CHECK(strcmp(view.title, "Bob") == 0);
    CHECK(strcmp(view.convo_id, "convo-bob") == 0);
+
+   /* A reply must have something other than spaces in it, and fit the buffer. */
+   CHECK(!cobalt_chat_reply_valid(NULL));
+   CHECK(!cobalt_chat_reply_valid(""));
+   CHECK(!cobalt_chat_reply_valid("   \t "));
+   CHECK(cobalt_chat_reply_valid("  see you  "));
+   CHECK(!cobalt_chat_reply_valid(std_pad_1024()));
+
+   /* The draft survives reopening the same conversation, and a sent reply clears
+    * it. A different conversation starts with no draft, so it cannot be sent by
+    * mistake. */
+   snprintf(view.reply, sizeof(view.reply), "%s", "half a thought");
+   cobalt_chat_thread_view_open(&view, "Bob", "convo-bob");
+   CHECK(strcmp(view.reply, "half a thought") == 0);
+   cobalt_chat_thread_view_open(&view, "Cat", "convo-cat");
+   CHECK(view.reply[0] == '\0');
+   snprintf(view.reply, sizeof(view.reply), "%s", "thanks");
+   cobalt_chat_thread_view_sent(&view);
+   CHECK(view.reply[0] == '\0');
 }
 
 /* --- notifications --- */
