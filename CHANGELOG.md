@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-15
+
 ### Added
 
 - Messages on the home menu opens a read-only direct message inbox: each conversation shows who it is with (groups say "Group"), the last message and how many are unread, and the list pages. Confirm opens a conversation as bubbles, newest at the bottom, with Up and Down to reach older messages (the newest 50 are held). A writes a reply on the keyboard, Y sends it, and a reply that fails to send stays as the draft ([#107](https://github.com/ewanc26/cobalt/issues/107)).
