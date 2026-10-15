@@ -239,11 +239,17 @@ main(int argc, char **argv)
    char svc[64];
    snprintf(svc, sizeof svc, "http://127.0.0.1:%d", port);
    CHECK(cobalt_session_begin_login(svc, "alice.test", "app-pass"));
-   for (int i = 0; i < 300 && cobalt_session_state() != COBALT_AUTH_SIGNED_IN; i++) {
+   /* Bounded by time, not by poll count: a loaded machine can take well over
+    * a second to finish the login against the mock PDS (cobalt#226). */
+   const uint32_t signin_deadline = SDL_GetTicks() + 10000;
+   while (cobalt_session_state() != COBALT_AUTH_SIGNED_IN && SDL_GetTicks() < signin_deadline) {
       cobalt_job_result jr;
       (void) cobalt_session_poll(&jr);
       SDL_Delay(5);
    }
+   if (cobalt_session_state() != COBALT_AUTH_SIGNED_IN)
+      printf("sign-in did not finish within 10 s against the mock PDS (state %d)\n",
+             (int) cobalt_session_state());
    CHECK(cobalt_session_state() == COBALT_AUTH_SIGNED_IN);
    settle(30);
    shoot("timeline");
