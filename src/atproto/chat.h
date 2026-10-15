@@ -10,8 +10,9 @@
  * member DIDs against the signed-in account, which is the one thing a row
  * cannot show without.
  *
- * Only the inbox lives here. Reading a conversation's messages, replying and
- * the request inbox are later steps (cobalt#107).
+ * The inbox and the request inbox's list live here. Accepting a request, the
+ * request screen, reading a conversation's messages and replying are later
+ * steps (cobalt#107).
  */
 
 #include "atproto/feed.h"
@@ -50,6 +51,13 @@ void cobalt_chat_inbox_reset(cobalt_chat_inbox *inbox);
 
 /* As cobalt_feed_can_page, for the same reason. */
 bool cobalt_chat_inbox_can_page(const cobalt_chat_inbox *inbox);
+
+/*
+ * The request inbox's badge text: "No requests" for 0 (and below), "1 request"
+ * for 1, "N requests" otherwise. False when `out` is NULL, `cap` is 0, or the
+ * text does not fit in `cap` bytes with its terminator.
+ */
+bool cobalt_chat_requests_count_label(int count, char *out, size_t cap);
 
 /*
  * Index of the first member whose DID is not the viewer's, or -1 when every
