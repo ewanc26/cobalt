@@ -431,6 +431,9 @@ run_job(cobalt_job_kind kind, const cobalt_job_input *in, cobalt_auth_state *sta
       case COBALT_JOB_NOTIFICATIONS:
          cobalt_session_run_notifications(in, &r, state);
          break;
+      case COBALT_JOB_CHAT_INBOX:
+         cobalt_session_run_chat_inbox(in, &r, state);
+         break;
       case COBALT_JOB_PROFILE:  cobalt_session_run_profile(in, &r, state);   break;
       case COBALT_JOB_FOLLOW:   cobalt_session_run_follow(in, &r, state);    break;
       case COBALT_JOB_MUTE:     cobalt_session_run_mute(in, &r, state);      break;

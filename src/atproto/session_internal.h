@@ -19,6 +19,7 @@
 #include "atproto/feed.h"
 #include "atproto/prefs.h"
 #include "atproto/notifications.h"
+#include "atproto/chat.h"
 #include "atproto/actor_profile.h"
 #include "cache/session_store.h"
 #include "util/clock.h"
@@ -148,6 +149,7 @@ typedef struct {
    /* Named to stay clear of `thread`, which is the worker. */
    cobalt_thread conversation;
    cobalt_notifications notifications;
+   cobalt_chat_inbox chat;
    cobalt_profile profile;
    cobalt_feed author_feed;
    int profile_tab;
@@ -216,6 +218,7 @@ void cobalt_session_run_lists(const cobalt_job_input *in, cobalt_job_result *r, 
 void cobalt_session_run_mute(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_muted_list(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_notifications(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_chat_inbox(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_post(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_profile(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_profile_tab(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
