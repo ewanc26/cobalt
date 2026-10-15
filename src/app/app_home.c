@@ -10,6 +10,7 @@ typedef enum {
    ACTION_LISTS,
    ACTION_NOTIFICATIONS,
    ACTION_MESSAGES,
+   ACTION_QUEUE,
    ACTION_ACCOUNT,
    ACTION_UPDATES,
    ACTION_DIAGNOSTICS,
@@ -31,6 +32,7 @@ static const menu_action MENU[] = {
    ACTION_LISTS,
    ACTION_NOTIFICATIONS,
    ACTION_MESSAGES,
+   ACTION_QUEUE,
    ACTION_ACCOUNT,
    ACTION_UPDATES,
    ACTION_DIAGNOSTICS,
@@ -119,6 +121,7 @@ menu_label(int index)
       case ACTION_LISTS:          return "Lists";
       case ACTION_NOTIFICATIONS:  return "Notifications";
       case ACTION_MESSAGES:       return "Messages";
+      case ACTION_QUEUE:          return "Queued posts";
       case ACTION_ACCOUNT:        return signed_in() ? "Account" : "Sign in";
       case ACTION_UPDATES:        return "Updates";
       case ACTION_DIAGNOSTICS:    return "Diagnostics";
@@ -149,6 +152,8 @@ menu_hint(int index)
       case ACTION_MESSAGES:
          return signed_in() ? "Your direct message conversations"
                             : "Sign in to see messages";
+      case ACTION_QUEUE:
+         return "Posts saved for later, to send or discard";
       case ACTION_ACCOUNT:
          if (signed_in()) {
             return cobalt_session_handle();
@@ -254,6 +259,12 @@ activate(cobalt_app *app, int index)
             cobalt_session_begin_chat_inbox(false);
          }
          COBALT_LOGI("menu: opened messages");
+         break;
+
+      case ACTION_QUEUE:
+         cobalt_queue_view_open(&app->queue_view);
+         app->screen = COBALT_SCREEN_QUEUE;
+         COBALT_LOGI("menu: opened queued posts");
          break;
 
       case ACTION_ACCOUNT:

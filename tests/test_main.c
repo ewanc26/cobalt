@@ -8,6 +8,8 @@
  */
 
 #include "app/compose.h"
+#include "app/post_queue.h"
+#include "app/queue_store.h"
 #include "app/graph.h"
 #include "app/search.h"
 #include "app/signin.h"
@@ -3067,6 +3069,100 @@ test_listnav(void)
    CHECK(nav.selected == 0 && nav.scroll == 0 && nav.last_visible == -1);
 }
 
+/* The queue on the SD card: what is saved comes back exactly, and a damaged or
+ * truncated file is refused rather than loaded half-way. */
+static void
+test_queue_store(void)
+{
+   begin("the queue file round-trips, and a damaged file is refused");
+   static cobalt_post_queue q, back;
+   static char buf[8192];
+   const char *path = "queue-test.dat";
+
+   cobalt_post_queue_init(&q);
+   CHECK(cobalt_post_queue_add(&q, "line one\nline two\twith a tab \\ slash", 100));
+   CHECK(cobalt_post_queue_add(&q, "plain", 200));
+
+   CHECK(cobalt_queue_encode(&q, buf, sizeof(buf)));
+   CHECK(cobalt_queue_decode(buf, strlen(buf), &back));
+   CHECK(back.count == 2);
+   CHECK(strcmp(back.items[0].text, q.items[0].text) == 0);
+   CHECK(back.items[1].queued_at == 200);
+
+   /* Cut short: no "end" line, so the whole file is refused and nothing loads. */
+   CHECK(!cobalt_queue_decode(buf, strlen(buf) - 4, &back));
+   CHECK(back.count == 0);
+   CHECK(!cobalt_queue_decode("not a queue\n", 12, &back));
+   CHECK(back.count == 0);
+
+   /* Through the filesystem. A missing file is an empty queue, not an error. */
+   remove(path);
+   cobalt_post_queue_init(&back);
+   CHECK(cobalt_queue_load(path, &back));
+   CHECK(back.count == 0);
+   CHECK(cobalt_queue_save(path, &q));
+   CHECK(cobalt_queue_load(path, &back));
+   CHECK(back.count == 2);
+   CHECK(strcmp(back.items[1].text, "plain") == 0);
+   remove(path);
+}
+
+static void
+test_post_queue(void)
+{
+   begin("offline queue keeps order, refuses what it would cut, and sends only on request");
+   static cobalt_post_queue q;
+   static cobalt_queued_post got;
+   cobalt_post_queue_init(&q);
+
+   CHECK(cobalt_post_queue_get(&q, 0) == NULL);
+   CHECK(!cobalt_post_queue_add(&q, "", 1));
+   CHECK(!cobalt_post_queue_add(&q, NULL, 1));
+   CHECK(q.count == 0);
+
+   CHECK(cobalt_post_queue_add(&q, "first", 100));
+   CHECK(cobalt_post_queue_add(&q, "second", 200));
+   CHECK(cobalt_post_queue_add(&q, "third", 300));
+   CHECK(q.count == 3);
+   CHECK(strcmp(cobalt_post_queue_get(&q, 0)->text, "first") == 0);
+   CHECK(cobalt_post_queue_get(&q, 2)->queued_at == 300);
+   CHECK(cobalt_post_queue_get(&q, 3) == NULL);
+
+   /* Discarding the middle one keeps the rest in order. */
+   CHECK(cobalt_post_queue_discard(&q, 1));
+   CHECK(q.count == 2);
+   CHECK(strcmp(cobalt_post_queue_get(&q, 0)->text, "first") == 0);
+   CHECK(strcmp(cobalt_post_queue_get(&q, 1)->text, "third") == 0);
+   CHECK(!cobalt_post_queue_discard(&q, 5));
+
+   /* Taking returns the post and removes it; only the person's own choice does
+    * this, one post at a time. */
+   CHECK(cobalt_post_queue_take(&q, 0, &got));
+   CHECK(strcmp(got.text, "first") == 0);
+   CHECK(q.count == 1);
+   CHECK(strcmp(cobalt_post_queue_get(&q, 0)->text, "third") == 0);
+   CHECK(!cobalt_post_queue_take(&q, 4, &got));
+
+   /* Text that would have to be cut is refused, not shortened. */
+   {
+      char big[COBALT_POST_QUEUE_TEXT_MAX + 1];
+      memset(big, 'a', sizeof big - 1);
+      big[sizeof big - 1] = '\0';
+      CHECK(!cobalt_post_queue_add(&q, big, 400));
+      CHECK(q.count == 1);
+   }
+
+   /* Full at COBALT_POST_QUEUE_MAX: the next add is refused and nothing moves. */
+   cobalt_post_queue_init(&q);
+   for (unsigned i = 0; i < COBALT_POST_QUEUE_MAX; i++) {
+      CHECK(cobalt_post_queue_add(&q, "p", (long long)i));
+   }
+   CHECK(!cobalt_post_queue_add(&q, "overflow", 999));
+   CHECK(q.count == COBALT_POST_QUEUE_MAX);
+   CHECK(cobalt_post_queue_get(&q, COBALT_POST_QUEUE_MAX - 1)->queued_at ==
+         (long long)(COBALT_POST_QUEUE_MAX - 1));
+}
+
 /* Backing out of a list restores the cursor it was left on (#110). */
 static void
 test_listnav_restore(void)
@@ -3170,6 +3266,8 @@ main(int argc, char **argv)
    test_popup_link_qr();
    test_listnav();
    test_listnav_restore();
+   test_post_queue();
+   test_queue_store();
    test_post_refuses_partial_refs();
    test_notification_wording();
    test_chat_inbox_counterpart();

@@ -4,6 +4,7 @@
  * BMPs. Checks the frames are drawn, not that they are pretty. See `make snapshot`.
  */
 #include "app/app.h"
+#include "app/app_internal.h"
 #include "atproto/session.h"
 #include "../../wolfram/test/mock_pds.h"
 #include "input/input.h"
@@ -133,11 +134,11 @@ open_home_item(int idx)
       /* The GamePad list steps one row at a time, TV or not. */
       const int start = cobalt_app_home_selection(g_app);
       frame(COBALT_BTN_DOWN); settle(2);
-      CHECK(cobalt_app_home_selection(g_app) == (start + 1) % HOME_MENU_COUNT);
+      CHECK(cobalt_app_home_selection(g_app) == (start + 1) % COBALT_HOME_MENU_COUNT);
       frame(COBALT_BTN_UP); settle(2);
       CHECK(cobalt_app_home_selection(g_app) == start);
    }
-   for (int n = (idx - cobalt_app_home_selection(g_app) + HOME_MENU_COUNT) % HOME_MENU_COUNT; n > 0; n--) {
+   for (int n = (idx - cobalt_app_home_selection(g_app) + COBALT_HOME_MENU_COUNT) % COBALT_HOME_MENU_COUNT; n > 0; n--) {
       frame(COBALT_BTN_RIGHT);
       settle(2);
    }
@@ -454,7 +455,7 @@ main(int argc, char **argv)
 
    frame(COBALT_BTN_BACK);
    settle(10);
-   open_home_item(9);
+   open_home_item(10);
    settle(10);
    shoot("diagnostics");
 
@@ -477,9 +478,25 @@ main(int argc, char **argv)
    settle(2);
    frame(COBALT_BTN_CONFIRM);
    settle(5);
-   open_home_item(7);
+   open_home_item(8);
    settle(10);
    shoot("account");
+
+   /* Queued posts: an empty queue, then one with two saved posts. */
+   frame(COBALT_BTN_BACK);
+   settle(10);
+   open_home_item(7);
+   settle(20);
+   CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_QUEUE);
+   shoot("queue-empty");
+   frame(COBALT_BTN_BACK);
+   settle(10);
+   CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
+   cobalt_post_queue_add(&g_app->queue, "Saved for later: a draft I wrote on the bus.", 1700000000);
+   cobalt_post_queue_add(&g_app->queue, "Second post, waiting until I am online.", 1700000600);
+   open_home_item(7);
+   settle(20);
+   shoot("queue");
 
    frame(COBALT_BTN_BACK);
    settle(10);
@@ -517,11 +534,11 @@ main(int argc, char **argv)
 
    /* The Back pill is drawn on every screen that does not give B to the
     * keyboard, and tapping it must leave each one (cobalt#112). The home items
-    * are: timeline 0, notifications 5, account 6, updates 7, diagnostics 8, and
-    * the two lists, feeds 3 and lists 4. Compose and search are left out on
-    * purpose: B types there, so they have no pill. */
+    * are: timeline 0, notifications 5, dms 6, queue 7, account 8, updates 9, diagnostics
+    * 10, and the two lists, feeds 3 and lists 4. Compose and search are left
+    * out on purpose: B types there, so they have no pill. */
    {
-      static const int items[] = {0, 3, 4, 5, 6, 7, 8, 9};
+       static const int items[] = {0, 3, 4, 5, 6, 8, 9, 10};
       for (size_t k = 0; k < sizeof items / sizeof items[0]; k++) {
          open_home_item(items[k]);
          settle(20);

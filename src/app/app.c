@@ -1,4 +1,35 @@
 #include "app/app_internal.h"
+#include "app/queue_store.h"
+
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+/* The offline queue's file in the app's data directory. */
+static bool
+queue_file(char *out, size_t size)
+{
+   return cobalt_data_path(out, size, "queue.dat");
+}
+
+/* Restore the queue from the SD card at start. A damaged file is kept beside
+ * the new one as queue.dat.bad rather than overwritten, so nothing the person
+ * saved is destroyed by a bad write. */
+static void
+load_queue(cobalt_app *app)
+{
+   char path[256];
+   char bad[272];
+
+   cobalt_post_queue_init(&app->queue);
+   if (!queue_file(path, sizeof(path))) {
+      return;
+   }
+   if (!cobalt_queue_load(path, &app->queue)) {
+      snprintf(bad, sizeof(bad), "%s.bad", path);
+      rename(path, bad);
+   }
+}
 
 /* Focus animation, in units of "fraction of the way there per frame". */
 #define FOCUS_RATE 0.25f
@@ -39,6 +70,8 @@ cobalt_app_create(void)
    cobalt_graph_view_init(&app->graph);
    cobalt_search_view_init(&app->search);
    cobalt_lists_view_init(&app->lists);
+   cobalt_queue_view_open(&app->queue_view);
+   load_queue(app);
 
    curl_version_info_data *curl_info = curl_version_info(CURLVERSION_NOW);
    snprintf(app->curl_version, sizeof(app->curl_version), "curl %s / %s",
@@ -140,6 +173,67 @@ set_notice(cobalt_app *app, const char *message, bool is_error)
 
 /* --- session plumbing --- */
 
+/* Mirror the queue to the SD card. A failed write is said out loud, because the
+ * post then lives only until the app closes and the person should know that. */
+static void
+persist_queue(cobalt_app *app)
+{
+   char path[256];
+
+   if (!queue_file(path, sizeof(path)) || !cobalt_queue_save(path, &app->queue)) {
+      set_notice(app, "Could not save the queue to the SD card.", true);
+   }
+}
+
+/* Start sending the queued post at `index`. It is held in queue_inflight until
+ * the post's result arrives, and the SD copy is only rewritten then: if the app
+ * closes mid-send, the post is still in the file and comes back to the queue. */
+static void
+queue_send(cobalt_app *app, unsigned index)
+{
+   cobalt_queued_post post;
+
+   if (app->queue_send_pending) {
+      set_notice(app, "A queued post is already being sent.", true);
+      return;
+   }
+   if (!cobalt_post_queue_take(&app->queue, index, &post)) {
+      return;
+   }
+   if (!cobalt_session_begin_post(post.text, "", "", "", "", 0, "", "")) {
+      /* It never started, so it goes back where the queue can still hold it. */
+      cobalt_post_queue_add(&app->queue, post.text, post.queued_at);
+      set_notice(app, "Could not start that post. It is still queued.", true);
+      return;
+   }
+   app->queue_inflight = post;
+   app->queue_send_pending = true;
+   set_notice(app, "Sending...", false);
+}
+
+static void
+cobalt_app_update_queue(cobalt_app *app, const cobalt_input *in)
+{
+   unsigned index = 0;
+
+   switch (cobalt_queue_view_update(&app->queue_view, &app->queue, in, &index)) {
+      case COBALT_QUEUE_BACK:
+         app->screen = COBALT_SCREEN_HOME;
+         break;
+      case COBALT_QUEUE_SEND:
+         queue_send(app, index);
+         break;
+      case COBALT_QUEUE_DISCARD:
+         if (cobalt_post_queue_discard(&app->queue, index)) {
+            persist_queue(app);
+            set_notice(app, "Discarded.", false);
+         }
+         break;
+      default:
+         break;
+   }
+}
+
 static void
 handle_job_result(cobalt_app *app, const cobalt_job_result *result)
 {
@@ -213,6 +307,25 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          break;
 
       case COBALT_JOB_POST:
+         if (app->queue_send_pending) {
+            /* A queued post, not one from the compose screen: the queue decides
+             * what happens to it, and the compose screen is left alone. */
+            app->queue_send_pending = false;
+            if (result->ok) {
+               persist_queue(app);
+               set_notice(app, "Sent from the queue.", false);
+            } else {
+               cobalt_post_queue_add(&app->queue, app->queue_inflight.text,
+                                     app->queue_inflight.queued_at);
+               persist_queue(app);
+               set_notice(app, result->message[0]
+                                  ? result->message
+                                  : "That post did not send. It is still queued.",
+                          true);
+            }
+            app->screen = COBALT_SCREEN_QUEUE;
+            break;
+         }
          if (result->ok) {
             if (result->partial) {
                set_notice(app, result->message, true);
@@ -668,10 +781,39 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                   set_notice(app, "Could not start that post.", true);
                }
                break;
+            case COBALT_COMPOSE_SAVE_LATER:
+               if (app->queue_send_pending) {
+                  set_notice(app, "Wait for the queued post to finish sending.", true);
+                  break;
+               }
+               if (app->compose.text[0] == '\0') {
+                  set_notice(app, "Nothing to save.", true);
+                  break;
+               }
+               if (strlen(app->compose.text) >= COBALT_POST_QUEUE_TEXT_MAX) {
+                  set_notice(app, "That post is too long to save for later.", true);
+                  break;
+               }
+               if (!cobalt_post_queue_add(&app->queue, app->compose.text,
+                                          (long long) time(NULL))) {
+                  set_notice(app, "The queue is full. Send or discard a post first.",
+                             true);
+                  break;
+               }
+               persist_queue(app);
+               cobalt_compose_init(&app->compose);
+               cobalt_queue_view_open(&app->queue_view);
+               app->screen = COBALT_SCREEN_QUEUE;
+               set_notice(app, "Saved for later.", false);
+               break;
             case COBALT_COMPOSE_STAY:
             default:
                break;
          }
+         break;
+
+      case COBALT_SCREEN_QUEUE:
+         cobalt_app_update_queue(app, in);
          break;
 
       case COBALT_SCREEN_SIGN_IN:
@@ -960,6 +1102,10 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_SEARCH:
          cobalt_search_view_draw(&app->search, r, surface);
+         break;
+
+      case COBALT_SCREEN_QUEUE:
+         cobalt_queue_view_draw(&app->queue_view, &app->queue, r);
          break;
 
       case COBALT_SCREEN_LISTS:
