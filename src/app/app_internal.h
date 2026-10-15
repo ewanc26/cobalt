@@ -17,6 +17,7 @@
 #include "app/graph.h"
 #include "app/lists.h"
 #include "app/notify.h"
+#include "app/messages.h"
 #include "app/profile.h"
 #include "app/search.h"
 #include "app/signin.h"
@@ -42,7 +43,7 @@
 #include <string.h>
 
 /* Entries on the home menu; app_home.c checks its table against this. */
-#define COBALT_HOME_MENU_COUNT 11
+#define COBALT_HOME_MENU_COUNT 12
 
 struct cobalt_app {
    cobalt_screen screen;
@@ -57,6 +58,7 @@ struct cobalt_app {
    cobalt_thread_view thread;
    cobalt_compose compose;
    cobalt_notify_view notify;
+   cobalt_messages_view messages;
    cobalt_profile_view profile;
    cobalt_graph_view graph;
    cobalt_search_view search;

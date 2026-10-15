@@ -1581,9 +1581,13 @@ test_chat_inbox_counterpart(void)
    memset(&inbox, 0, sizeof(inbox));
    inbox.count = 4;
    inbox.unread = 9;
+   inbox.has_more = true;
+   snprintf(inbox.cursor, sizeof(inbox.cursor), "%s", "page-2");
    cobalt_chat_inbox_reset(&inbox);
    CHECK(inbox.count == 0);
    CHECK(inbox.unread == 0);
+   CHECK(!inbox.has_more);
+   CHECK(inbox.cursor[0] == '\0');
    cobalt_chat_inbox_reset(NULL);
 
    CHECK(!cobalt_chat_inbox_can_page(NULL));

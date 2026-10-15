@@ -121,7 +121,10 @@ tap_rect_centre(const SDL_Rect *r)
    tap(r->x + r->w / 2, r->y + r->h / 2);
 }
 
-/* Home selection is linear and wraps; the app remembers it across screens. */
+/* Home selection is linear and wraps; the app remembers it across screens.
+ * Must match COBALT_HOME_MENU_COUNT in app/app_internal.h. */
+#define HOME_MENU_COUNT 12
+
 static void
 open_home_item(int idx)
 {
@@ -130,11 +133,11 @@ open_home_item(int idx)
       /* The GamePad list steps one row at a time, TV or not. */
       const int start = cobalt_app_home_selection(g_app);
       frame(COBALT_BTN_DOWN); settle(2);
-      CHECK(cobalt_app_home_selection(g_app) == (start + 1) % 11);
+      CHECK(cobalt_app_home_selection(g_app) == (start + 1) % HOME_MENU_COUNT);
       frame(COBALT_BTN_UP); settle(2);
       CHECK(cobalt_app_home_selection(g_app) == start);
    }
-   for (int n = (idx - cobalt_app_home_selection(g_app) + 11) % 11; n > 0; n--) {
+   for (int n = (idx - cobalt_app_home_selection(g_app) + HOME_MENU_COUNT) % HOME_MENU_COUNT; n > 0; n--) {
       frame(COBALT_BTN_RIGHT);
       settle(2);
    }
@@ -425,9 +428,15 @@ main(int argc, char **argv)
       CHECK(sel1 == sel0 && scr1 == scr0);
    }
 
+   /* The DM inbox is read-only: the screen opens and says what it can do. */
+   open_home_item(6);
+   settle(40);
+   CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_MESSAGES);
+   shoot("messages");
+
    frame(COBALT_BTN_BACK);
    settle(10);
-   open_home_item(8);
+   open_home_item(9);
    settle(10);
    shoot("diagnostics");
 
@@ -450,7 +459,7 @@ main(int argc, char **argv)
    settle(2);
    frame(COBALT_BTN_CONFIRM);
    settle(5);
-   open_home_item(6);
+   open_home_item(7);
    settle(10);
    shoot("account");
 
@@ -494,7 +503,7 @@ main(int argc, char **argv)
     * the two lists, feeds 3 and lists 4. Compose and search are left out on
     * purpose: B types there, so they have no pill. */
    {
-      static const int items[] = {0, 3, 4, 5, 6, 7, 8};
+      static const int items[] = {0, 3, 4, 5, 6, 7, 8, 9};
       for (size_t k = 0; k < sizeof items / sizeof items[0]; k++) {
          open_home_item(items[k]);
          settle(20);

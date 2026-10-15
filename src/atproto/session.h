@@ -32,6 +32,7 @@
 #include "atproto/feed.h"
 #include "atproto/curated_lists.h"
 #include "atproto/notifications.h"
+#include "atproto/chat.h"
 #include "atproto/actor_profile.h"
 #include "cache/session_store.h"
 
@@ -90,6 +91,7 @@ typedef enum {
    COBALT_JOB_SAVED_FEEDS,
    COBALT_JOB_LIKES,
    COBALT_JOB_REPOSTED_BY,
+   COBALT_JOB_CHAT_INBOX,
 } cobalt_job_kind;
 
 typedef struct {
@@ -294,6 +296,15 @@ bool cobalt_session_begin_notifications(bool paging);
 
 /* Notifications as last fetched; never NULL. */
 const cobalt_notifications *cobalt_session_notifications(void);
+
+/*
+ * Fetch the direct message inbox. `paging` appends the next page; false
+ * replaces the list. Read-only: nothing here marks a convo as read.
+ */
+bool cobalt_session_begin_chat_inbox(bool paging);
+
+/* The inbox as last fetched; never NULL. */
+const cobalt_chat_inbox *cobalt_session_chat_inbox(void);
 
 /*
  * Fetch an actor's profile and their posts together. `actor` is a handle or a
