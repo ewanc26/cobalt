@@ -12,6 +12,8 @@ permissions:
 jobs:
   flow:
     uses: ewanc26/wolfram/.github/workflows/flow-reusable.yml@main
+    with:
+      macos9_c89: false
 
   extras:
     # Rules Cobalt adds on top of the stack's: code changes carry a changelog
