@@ -18,6 +18,7 @@
 #include "atproto/session.h"
 #include "atproto/feed.h"
 #include "atproto/notifications.h"
+#include "atproto/chat.h"
 #include "atproto/prefs.h"
 #include "cache/session_store.h"
 #include "update/selfupdate.h"
@@ -1545,6 +1546,55 @@ test_post_refuses_partial_refs(void)
 }
 
 
+/* --- direct messages --- */
+
+static void
+test_chat_inbox_counterpart(void)
+{
+   begin("direct message counterpart and inbox reset");
+
+   const char *one_to_one[] = { "did:plc:them", "did:plc:me" };
+   const char *reversed[] = { "did:plc:me", "did:plc:them" };
+   const char *alone[] = { "did:plc:me" };
+   const char *group[] = { "did:plc:me", "did:plc:a", "did:plc:b" };
+   const char *blank[] = { "", "did:plc:them", "did:plc:me" };
+
+   /* The counterpart is whoever is not the viewer, wherever they sit. */
+   CHECK(cobalt_chat_pick_counterpart(one_to_one, 2, "did:plc:me") == 0);
+   CHECK(cobalt_chat_pick_counterpart(reversed, 2, "did:plc:me") == 1);
+
+   /* A convo with only the viewer has nobody to show. */
+   CHECK(cobalt_chat_pick_counterpart(alone, 1, "did:plc:me") == -1);
+   CHECK(cobalt_chat_pick_counterpart(NULL, 0, "did:plc:me") == -1);
+
+   /* A member with no DID is skipped rather than taken as the counterpart. */
+   CHECK(cobalt_chat_pick_counterpart(blank, 3, "did:plc:me") == 1);
+
+   /* Without a viewer DID, the first member is the counterpart. */
+   CHECK(cobalt_chat_pick_counterpart(one_to_one, 2, NULL) == 0);
+
+   CHECK(cobalt_chat_other_member_count(one_to_one, 2, "did:plc:me") == 1);
+   CHECK(cobalt_chat_other_member_count(group, 3, "did:plc:me") == 2);
+   CHECK(cobalt_chat_other_member_count(alone, 1, "did:plc:me") == 0);
+
+   cobalt_chat_inbox inbox;
+   memset(&inbox, 0, sizeof(inbox));
+   inbox.count = 4;
+   inbox.unread = 9;
+   cobalt_chat_inbox_reset(&inbox);
+   CHECK(inbox.count == 0);
+   CHECK(inbox.unread == 0);
+   cobalt_chat_inbox_reset(NULL);
+
+   CHECK(!cobalt_chat_inbox_can_page(NULL));
+   inbox.has_more = false;
+   CHECK(!cobalt_chat_inbox_can_page(&inbox));
+   inbox.has_more = true;
+   CHECK(cobalt_chat_inbox_can_page(&inbox));
+   inbox.count = COBALT_CHAT_CONVOS_MAX;
+   CHECK(!cobalt_chat_inbox_can_page(&inbox));
+}
+
 /* --- notifications --- */
 
 static void
@@ -2822,6 +2872,7 @@ main(int argc, char **argv)
    test_listnav_restore();
    test_post_refuses_partial_refs();
    test_notification_wording();
+   test_chat_inbox_counterpart();
    test_paging_stops_when_the_window_fills();
    test_selection_survives_a_shrinking_list();
    test_session_request_handshake();
