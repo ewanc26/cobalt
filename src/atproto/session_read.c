@@ -374,21 +374,44 @@ cobalt_session_run_search_posts(const cobalt_job_input *in, cobalt_job_result *r
    r->ok = true;
 }
 
+static void cobalt_session_run_convo_list(const cobalt_job_input *in, cobalt_job_result *r,
+                                          cobalt_auth_state *state, bool requests);
+
 void
 cobalt_session_run_chat_inbox(const cobalt_job_input *in, cobalt_job_result *r,
                               cobalt_auth_state *state)
+{
+   cobalt_session_run_convo_list(in, r, state, false);
+}
+
+void
+cobalt_session_run_chat_requests(const cobalt_job_input *in, cobalt_job_result *r,
+                                 cobalt_auth_state *state)
+{
+   cobalt_session_run_convo_list(in, r, state, true);
+}
+
+/* The inbox and the request inbox are the same listing with a different
+ * endpoint and a different list to fill, so both come through here. */
+static void
+cobalt_session_run_convo_list(const cobalt_job_input *in, cobalt_job_result *r,
+                              cobalt_auth_state *state, bool requests)
 {
    if (!g_session.wf) {
       cobalt_session_set_message(r, "Sign in to see messages.");
       return;
    }
 
+   cobalt_chat_inbox *box = requests ? &g_session.requests : &g_session.chat;
+   const cobalt_job_kind kind = requests ? COBALT_JOB_CHAT_REQUESTS : COBALT_JOB_CHAT_INBOX;
+   const char *what = requests ? "chat requests" : "chat inbox";
+
    char cursor_buf[COBALT_CURSOR_MAX];
    const char *cursor = NULL;
    if (in->paging) {
       SDL_LockMutex(g_session.lock);
-      if (g_session.chat.cursor[0]) {
-         snprintf(cursor_buf, sizeof(cursor_buf), "%s", g_session.chat.cursor);
+      if (box->cursor[0]) {
+         snprintf(cursor_buf, sizeof(cursor_buf), "%s", box->cursor);
          cursor = cursor_buf;
       }
       SDL_UnlockMutex(g_session.lock);
@@ -402,34 +425,34 @@ cobalt_session_run_chat_inbox(const cobalt_job_input *in, cobalt_job_result *r,
    wf_chat_convo_list list;
    memset(&list, 0, sizeof(list));
 
-   COBALT_LOGI("session: listConvos cursor=%s", cursor ? cursor : "(top)");
-   wf_status status = wf_agent_chat_list_convos(g_session.wf, COBALT_SESSION_PAGE,
-                                                cursor, &list);
+   COBALT_LOGI("session: %s cursor=%s", what, cursor ? cursor : "(top)");
+   wf_status status = requests
+      ? wf_agent_chat_list_convo_requests_typed(g_session.wf, COBALT_SESSION_PAGE, cursor, &list)
+      : wf_agent_chat_list_convos(g_session.wf, COBALT_SESSION_PAGE, cursor, &list);
    if (status != WF_OK) {
-      COBALT_LOGW("session: listConvos failed (%d)", (int) status);
-      cobalt_session_describe_failure(r, status, COBALT_JOB_CHAT_INBOX);
+      COBALT_LOGW("session: %s fetch failed (%d)", what, (int) status);
+      cobalt_session_describe_failure(r, status, kind);
       *state = COBALT_AUTH_SIGNED_IN;
       return;
    }
 
    SDL_LockMutex(g_session.lock);
    if (!in->paging) {
-      cobalt_chat_inbox_reset(&g_session.chat);
+      cobalt_chat_inbox_reset(box);
    }
-   const int added =
-      cobalt_chat_inbox_append_from_wolfram(&g_session.chat, &list, g_session.did);
+   const int added = cobalt_chat_inbox_append_from_wolfram(box, &list, g_session.did);
    if (in->paging && added == 0) {
-      g_session.chat.has_more = false;
-      g_session.chat.cursor[0] = '\0';
+      box->has_more = false;
+      box->cursor[0] = '\0';
    }
-   const int total = g_session.chat.count;
+   const int total = box->count;
    SDL_UnlockMutex(g_session.lock);
 
    wf_chat_convo_list_free(&list);
-   COBALT_LOGI("session: chat inbox +%d (%d held)", added, total);
+   COBALT_LOGI("session: %s +%d (%d held)", what, added, total);
 
    if (total == 0) {
-      cobalt_session_set_message(r, "No messages yet.");
+      cobalt_session_set_message(r, requests ? "No message requests." : "No messages yet.");
    }
 
    cobalt_session_publish();
@@ -700,6 +723,21 @@ const cobalt_chat_inbox *
 cobalt_session_chat_inbox(void)
 {
    return &g_session.chat;
+}
+
+bool
+cobalt_session_begin_chat_requests(bool paging)
+{
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   in.paging = paging;
+   return cobalt_session_submit(COBALT_JOB_CHAT_REQUESTS, &in);
+}
+
+const cobalt_chat_inbox *
+cobalt_session_chat_requests(void)
+{
+   return &g_session.requests;
 }
 
 bool
