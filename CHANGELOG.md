@@ -17,6 +17,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 - On the TV the timeline and the thread are two-column views: the list on the left and the selected post in full on the right, using the width that was left as margin around one narrow card. The GamePad layout is unchanged. ([#111](https://github.com/ewanc26/cobalt/issues/111))
 
+### Fixed
+
+- The Account screen's error line no longer runs under the button hints, and the Home menu's Notifications tile no longer breaks the word in two on the TV.
+
 ## [0.10.0] - 2026-10-12
 
 ### Changed
