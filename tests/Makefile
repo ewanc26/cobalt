@@ -103,7 +103,7 @@ UNIT_SOURCES := \
 	$(SRC)/atproto/session_lists.c \
 	$(SRC)/atproto/session_post.c \
 	$(SRC)/atproto/session_dms.c \
-	$(SRC)/atproto/dms.c \
+	$(SRC)/atproto/dms_model.c \
 	$(SRC)/app/signin.c \
 	$(SRC)/net/http.c \
 	$(SRC)/ui/imagecache.c \
