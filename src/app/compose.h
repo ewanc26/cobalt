@@ -39,6 +39,7 @@ typedef enum {
    COBALT_COMPOSE_STAY = 0,
    COBALT_COMPOSE_CANCELLED,  /* backed out; nothing was sent */
    COBALT_COMPOSE_SUBMIT,     /* the user confirmed */
+   COBALT_COMPOSE_SAVE_LATER, /* the user chose to keep the text in the queue */
 } cobalt_compose_action;
 
 /*

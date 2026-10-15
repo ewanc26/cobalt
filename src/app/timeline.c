@@ -169,15 +169,6 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
    const int top = cobalt_content_top(r);
    const int bottom = m->height - m->pad_edge - 24;
 
-   /* The TV is wide enough for two columns, and the GamePad is not: the list
-    * takes two-fifths on the left, and the selected post is drawn in full on
-    * the right, so the text the list cuts short is still readable. */
-   const bool side_detail = (surface == COBALT_SURFACE_TV);
-   const int content_w = m->width - 2 * m->pad_edge;
-   const int list_w = side_detail ? content_w * 2 / 5 : content_w;
-   const int detail_x = m->pad_edge + list_w + m->gap * 2;
-   const int detail_w = m->width - m->pad_edge - detail_x;
-
    if (feed->count == 0) {
       draw_empty(r, m, top);
       cobalt_listnav_draw_begin(&view->nav, touchable);
@@ -186,6 +177,13 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
    }
 
    cobalt_listnav_draw_begin(&view->nav, touchable);
+
+   /* On the TV the list is a column and the selected post is shown in full
+    * beside it, so the width of the screen is used rather than left as margin
+    * around one narrow card. The GamePad keeps the full-width list. */
+   const bool split = (surface == COBALT_SURFACE_TV);
+   const int list_w = split ? (m->width - 2 * m->pad_edge - m->gap) * 2 / 5
+                            : m->width - 2 * m->pad_edge;
 
    int y = top;
    int last_fitted = view->nav.scroll;
@@ -216,25 +214,30 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
       y += h + m->gap;
    }
 
-   cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);
-
-   /* The selected post in full, on the right. Every line of it is drawn; only
-    * when the whole post will not fit under the header are lines dropped, and
-    * then from the end, so the start of it is always there. */
-   if (side_detail && view->nav.selected < feed->count) {
-      const cobalt_post *post = &feed->posts[view->nav.selected];
+   if (split && view->nav.selected < feed->count) {
+      /* The selected post in the right-hand column, with as many of its lines
+       * as fit the viewport. Lines beyond that are cut, not wrapped onto the
+       * left column: a later pass can scroll the detail. */
+      const cobalt_post *sel = &feed->posts[view->nav.selected];
+      const int x = m->pad_edge + list_w + m->gap;
+      const int w = m->width - m->pad_edge - x;
       const int avail = bottom - top;
-      int lines = cobalt_postcard_text_total(r, post, detail_w, 0);
+      int lines = cobalt_postcard_text_total(r, sel, w, 0);
+
       if (lines < 1) {
          lines = 1;
       }
-      while (lines > 1 && cobalt_postcard_height(r, post, lines, false) > avail) {
+      while (lines > 1 && cobalt_postcard_height(r, sel, lines, true) > avail) {
          lines--;
       }
-      const SDL_Rect detail = { detail_x, top, detail_w,
-                                cobalt_postcard_height(r, post, lines, false) };
-      cobalt_postcard_draw(r, post, &detail, false, lines, 0);
+      {
+         const SDL_Rect rect = { x, top, w,
+                                 cobalt_postcard_height(r, sel, lines, true) };
+         cobalt_postcard_draw(r, sel, &rect, true, lines, 0);
+      }
    }
+
+   cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);
 
    /* A card taller than the viewport is still drawn whole; the strip keeps the
     * hint legible instead of printing it across the card. */
