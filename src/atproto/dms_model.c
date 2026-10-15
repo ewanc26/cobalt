@@ -5,6 +5,9 @@
 #include "atproto/feed.h"
 #include "util/clock.h"
 
+#include <stdio.h>
+#include <string.h>
+
 void
 cobalt_convos_reset(cobalt_convos *list)
 {
