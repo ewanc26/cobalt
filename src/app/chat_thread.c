@@ -151,7 +151,10 @@ cobalt_chat_thread_view_draw(cobalt_chat_thread_view *view, cobalt_render *r,
     * otherwise the footer hints do. */
    const int kb_h = cobalt_keyboard_height(surface);
    const int draft_y = m->height - kb_h - body_h - m->gap;
-   const int bottom = view->replying ? draft_y - m->gap : m->height - m->pad_edge - 28;
+   /* Otherwise the bubbles stop a gap above the footer's top edge, which is
+    * drawn at height - pad_edge/2 - one pill tall (render.c). */
+   const int footer_top = m->height - m->pad_edge / 2 - cobalt_pill_height(r);
+   const int bottom = view->replying ? draft_y - m->gap : footer_top - m->gap;
 
    if (thread->count == 0) {
       SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge, m->font_body * 4 };
