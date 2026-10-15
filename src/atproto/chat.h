@@ -18,6 +18,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -65,8 +66,37 @@ int cobalt_chat_pick_counterpart(const char *const *member_dids, size_t count,
 int cobalt_chat_other_member_count(const char *const *member_dids, size_t count,
                                    const char *viewer_did);
 
+#define COBALT_CHAT_MESSAGES_MAX 50
+
+typedef struct {
+   char text[COBALT_POST_TEXT_MAX];
+   char age[COBALT_RELATIVE_MAX];
+   bool mine;                             /* sent by the signed-in account */
+} cobalt_chat_message;
+
+/*
+ * One conversation's messages, oldest first, as the thread draws them. Only
+ * the newest COBALT_CHAT_MESSAGES_MAX are held: a longer history would need
+ * paging, which the read-only view does not have yet.
+ */
+typedef struct {
+   char convo_id[COBALT_CHAT_ID_MAX];
+   cobalt_chat_message items[COBALT_CHAT_MESSAGES_MAX];
+   int count;
+} cobalt_chat_thread;
+
+void cobalt_chat_thread_reset(cobalt_chat_thread *thread);
+
 #ifdef COBALT_HAS_WOLFRAM
 struct wf_chat_convo_list;
+struct wf_chat_message_list;
+
+/* Replace the thread with a getMessages page. The server sends newest first, so
+ * the page is reversed into place. Returns the number of messages held. */
+int cobalt_chat_thread_fill_from_wolfram(cobalt_chat_thread *out,
+                                         const struct wf_chat_message_list *list,
+                                         const char *viewer_did, int64_t now);
+
 
 /*
  * Append every convo in a parsed listConvos page that has a counterpart.

@@ -438,6 +438,54 @@ cobalt_session_run_chat_inbox(const cobalt_job_input *in, cobalt_job_result *r,
    r->ok = true;
 }
 
+void
+cobalt_session_run_chat_messages(const cobalt_job_input *in, cobalt_job_result *r,
+                                 cobalt_auth_state *state)
+{
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in to see messages.");
+      return;
+   }
+   if (!in->uri[0]) {
+      cobalt_session_set_message(r, "That conversation could not be opened.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   wf_chat_message_list list;
+   memset(&list, 0, sizeof(list));
+
+   COBALT_LOGI("session: getMessages");
+   wf_status status = wf_agent_chat_get_messages(g_session.wf, in->uri,
+                                                 COBALT_CHAT_MESSAGES_MAX, NULL, &list);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: getMessages failed (%d)", (int) status);
+      cobalt_session_describe_failure(r, status, COBALT_JOB_CHAT_MESSAGES);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   const int64_t now = cobalt_time_now();
+
+   SDL_LockMutex(g_session.lock);
+   snprintf(g_session.chat_thread.convo_id, sizeof(g_session.chat_thread.convo_id), "%s",
+            in->uri);
+   cobalt_chat_thread_fill_from_wolfram(&g_session.chat_thread, &list, g_session.did, now);
+   const int total = g_session.chat_thread.count;
+   SDL_UnlockMutex(g_session.lock);
+
+   wf_chat_message_list_free(&list);
+
+   if (total == 0) {
+      cobalt_session_set_message(r, "No messages in this conversation yet.");
+   }
+
+   cobalt_session_publish();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
 #endif /* COBALT_HAS_WOLFRAM */
 
 bool
@@ -531,6 +579,25 @@ const cobalt_chat_inbox *
 cobalt_session_chat_inbox(void)
 {
    return &g_session.chat;
+}
+
+bool
+cobalt_session_begin_chat_messages(const char *convo_id)
+{
+   if (!convo_id || !convo_id[0]) {
+      return false;
+   }
+
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", convo_id);
+   return cobalt_session_submit(COBALT_JOB_CHAT_MESSAGES, &in);
+}
+
+const cobalt_chat_thread *
+cobalt_session_chat_thread(void)
+{
+   return &g_session.chat_thread;
 }
 
 bool

@@ -92,6 +92,7 @@ typedef enum {
    COBALT_JOB_LIKES,
    COBALT_JOB_REPOSTED_BY,
    COBALT_JOB_CHAT_INBOX,
+   COBALT_JOB_CHAT_MESSAGES,
 } cobalt_job_kind;
 
 typedef struct {
@@ -305,6 +306,14 @@ bool cobalt_session_begin_chat_inbox(bool paging);
 
 /* The inbox as last fetched; never NULL. */
 const cobalt_chat_inbox *cobalt_session_chat_inbox(void);
+
+/*
+ * Fetch the newest messages of one conversation, by its convo id. Read-only.
+ */
+bool cobalt_session_begin_chat_messages(const char *convo_id);
+
+/* The thread as last fetched; never NULL. */
+const cobalt_chat_thread *cobalt_session_chat_thread(void);
 
 /*
  * Fetch an actor's profile and their posts together. `actor` is a handle or a
