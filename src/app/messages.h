@@ -25,6 +25,7 @@ extern "C" {
 typedef enum {
    COBALT_MESSAGES_STAY = 0,
    COBALT_MESSAGES_BACK,
+   COBALT_MESSAGES_OPEN,
 } cobalt_messages_action;
 
 typedef struct {

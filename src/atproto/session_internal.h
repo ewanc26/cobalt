@@ -150,6 +150,7 @@ typedef struct {
    cobalt_thread conversation;
    cobalt_notifications notifications;
    cobalt_chat_inbox chat;
+   cobalt_chat_thread chat_thread;
    cobalt_profile profile;
    cobalt_feed author_feed;
    int profile_tab;
@@ -219,6 +220,7 @@ void cobalt_session_run_mute(const cobalt_job_input *in, cobalt_job_result *r, c
 void cobalt_session_run_muted_list(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_notifications(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_chat_inbox(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_chat_messages(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_post(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_profile(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_profile_tab(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
