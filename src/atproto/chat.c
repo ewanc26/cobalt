@@ -3,6 +3,7 @@
 
 #ifdef COBALT_HAS_WOLFRAM
 #include <wolfram/chat_typed.h>
+#include <wolfram/time.h>
 #endif
 
 #include <stdio.h>
@@ -75,7 +76,51 @@ cobalt_chat_other_member_count(const char *const *member_dids, size_t count,
    return others;
 }
 
+void
+cobalt_chat_thread_reset(cobalt_chat_thread *thread)
+{
+   if (thread) {
+      thread->convo_id[0] = '\0';
+      thread->count = 0;
+   }
+}
+
 #ifdef COBALT_HAS_WOLFRAM
+
+int
+cobalt_chat_thread_fill_from_wolfram(cobalt_chat_thread *out,
+                                     const struct wf_chat_message_list *list,
+                                     const char *viewer_did, int64_t now)
+{
+   const wf_chat_message_list *typed = (const wf_chat_message_list *) list;
+
+   if (!out || !typed) {
+      return 0;
+   }
+
+   /* The newest messages come first on the wire. Take the first `n` and write
+    * them back to front, so index 0 ends up as the oldest of those held. */
+   const size_t n = typed->message_count < COBALT_CHAT_MESSAGES_MAX
+                       ? typed->message_count
+                       : COBALT_CHAT_MESSAGES_MAX;
+   out->count = 0;
+
+   for (size_t k = 0; k < n; k++) {
+      const wf_chat_message *src = &typed->messages[k];
+      cobalt_chat_message *dst = &out->items[n - 1 - k];
+      int64_t epoch = 0;
+
+      memset(dst, 0, sizeof(*dst));
+      cobalt_feed_copy_text(dst->text, sizeof(dst->text), src->text ? src->text : "");
+      dst->mine = viewer_did && src->sender && strcmp(src->sender, viewer_did) == 0;
+      if (src->sent_at && now > 0 && wf_time_parse_rfc3339(src->sent_at, &epoch) == WF_OK) {
+         wf_time_relative(epoch, now, dst->age, sizeof(dst->age));
+      }
+   }
+
+   out->count = (int) n;
+   return out->count;
+}
 
 int
 cobalt_chat_inbox_append_from_wolfram(cobalt_chat_inbox *out,

@@ -34,6 +34,7 @@ cobalt_app_create(void)
    cobalt_thread_view_init(&app->thread);
    cobalt_notify_view_init(&app->notify);
    cobalt_messages_view_init(&app->messages);
+   cobalt_chat_thread_view_init(&app->chat_view);
    cobalt_profile_view_init(&app->profile);
    cobalt_graph_view_init(&app->graph);
    cobalt_search_view_init(&app->search);
@@ -202,6 +203,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
    cobalt_thread_view_init(&app->thread);
    cobalt_notify_view_init(&app->notify);
    cobalt_messages_view_init(&app->messages);
+   cobalt_chat_thread_view_init(&app->chat_view);
    cobalt_profile_view_init(&app->profile);
    cobalt_graph_view_init(&app->graph);
    cobalt_search_view_init(&app->search);
@@ -261,6 +263,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
 
       case COBALT_JOB_NOTIFICATIONS:
       case COBALT_JOB_CHAT_INBOX:
+      case COBALT_JOB_CHAT_MESSAGES:
       case COBALT_JOB_PROFILE:
       case COBALT_JOB_FOLLOW:
       case COBALT_JOB_THREAD:
@@ -558,8 +561,31 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
          break;
 
       case COBALT_SCREEN_MESSAGES:
-         if (cobalt_messages_view_update(&app->messages, in) == COBALT_MESSAGES_BACK) {
-            app->screen = COBALT_SCREEN_HOME;
+         switch (cobalt_messages_view_update(&app->messages, in)) {
+            case COBALT_MESSAGES_BACK:
+               app->screen = COBALT_SCREEN_HOME;
+               break;
+            case COBALT_MESSAGES_OPEN: {
+               const cobalt_chat_inbox *inbox = cobalt_session_chat_inbox();
+               const int sel = (int) app->messages.nav.selected;
+               if (sel < inbox->count &&
+                   cobalt_session_begin_chat_messages(inbox->items[sel].id)) {
+                  cobalt_chat_thread_view_open(&app->chat_view, inbox->items[sel].name,
+                                               inbox->items[sel].id);
+                  app->screen = COBALT_SCREEN_CHAT_THREAD;
+                  COBALT_LOGI("messages: opened a conversation");
+               }
+               break;
+            }
+            case COBALT_MESSAGES_STAY:
+            default:
+               break;
+         }
+         break;
+
+      case COBALT_SCREEN_CHAT_THREAD:
+         if (cobalt_chat_thread_view_update(&app->chat_view, in) == COBALT_CHAT_THREAD_BACK) {
+            app->screen = COBALT_SCREEN_MESSAGES;
          }
          break;
 
@@ -854,6 +880,10 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_MESSAGES:
          cobalt_messages_view_draw(&app->messages, r, surface);
+         break;
+
+      case COBALT_SCREEN_CHAT_THREAD:
+         cobalt_chat_thread_view_draw(&app->chat_view, r, surface);
          break;
 
       case COBALT_SCREEN_PROFILE:
