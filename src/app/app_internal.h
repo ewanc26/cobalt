@@ -18,6 +18,7 @@
 #include "app/lists.h"
 #include "app/notify.h"
 #include "app/messages.h"
+#include "app/chat_thread.h"
 #include "app/profile.h"
 #include "app/search.h"
 #include "app/signin.h"
@@ -59,6 +60,7 @@ struct cobalt_app {
    cobalt_compose compose;
    cobalt_notify_view notify;
    cobalt_messages_view messages;
+   cobalt_chat_thread_view chat_view;
    cobalt_profile_view profile;
    cobalt_graph_view graph;
    cobalt_search_view search;

@@ -19,6 +19,7 @@
 #include "atproto/feed.h"
 #include "atproto/notifications.h"
 #include "atproto/chat.h"
+#include "app/chat_thread.h"
 #include "atproto/prefs.h"
 #include "cache/session_store.h"
 #include "update/selfupdate.h"
@@ -1599,6 +1600,30 @@ test_chat_inbox_counterpart(void)
    CHECK(!cobalt_chat_inbox_can_page(&inbox));
 }
 
+static void
+test_chat_thread_state(void)
+{
+   begin("direct message thread state");
+
+   cobalt_chat_thread thread;
+   memset(&thread, 0, sizeof(thread));
+   snprintf(thread.convo_id, sizeof(thread.convo_id), "%s", "convo-1");
+   thread.count = 3;
+   cobalt_chat_thread_reset(&thread);
+   CHECK(thread.count == 0);
+   CHECK(thread.convo_id[0] == '\0');
+   cobalt_chat_thread_reset(NULL);
+
+   /* Opening a conversation starts at the newest messages, with its name kept. */
+   cobalt_chat_thread_view view;
+   cobalt_chat_thread_view_init(&view);
+   view.offset = 4;
+   cobalt_chat_thread_view_open(&view, "Bob", "convo-bob");
+   CHECK(view.offset == 0);
+   CHECK(strcmp(view.title, "Bob") == 0);
+   CHECK(strcmp(view.convo_id, "convo-bob") == 0);
+}
+
 /* --- notifications --- */
 
 static void
@@ -2877,6 +2902,7 @@ main(int argc, char **argv)
    test_post_refuses_partial_refs();
    test_notification_wording();
    test_chat_inbox_counterpart();
+   test_chat_thread_state();
    test_paging_stops_when_the_window_fills();
    test_selection_survives_a_shrinking_list();
    test_session_request_handshake();

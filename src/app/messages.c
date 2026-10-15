@@ -53,6 +53,11 @@ cobalt_messages_view_update(cobalt_messages_view *view, const cobalt_input *in)
    cobalt_listnav_move(&view->nav, in, inbox->count);
    cobalt_listnav_follow(&view->nav);
 
+   if (!busy && cobalt_input_pressed(in, COBALT_BTN_CONFIRM) &&
+       view->nav.selected < inbox->count) {
+      return COBALT_MESSAGES_OPEN;
+   }
+
    if (!busy && cobalt_chat_inbox_can_page(inbox) &&
        view->nav.selected >= inbox->count - 1) {
       cobalt_session_begin_chat_inbox(true);
