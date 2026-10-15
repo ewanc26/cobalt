@@ -348,6 +348,7 @@ cobalt_session_run_logout(cobalt_job_result *r, cobalt_auth_state *state)
    cobalt_thread_reset(&g_session.conversation);
    cobalt_notifications_reset(&g_session.notifications);
    cobalt_chat_inbox_reset(&g_session.chat);
+   cobalt_chat_thread_reset(&g_session.chat_thread);
    cobalt_profile_reset(&g_session.profile);
    cobalt_feed_reset(&g_session.author_feed);
    cobalt_actor_list_reset(&g_session.muted);
