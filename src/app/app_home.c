@@ -525,14 +525,20 @@ cobalt_app_draw_home_tv(cobalt_app *app, cobalt_render *r)
       SDL_Color label = menu_enabled(i) ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM;
       /* Half the tile padding on each side for the label: at six tiles a row a
        * long word such as "Notifications" otherwise breaks mid-word. */
-      const int label_inset = m->pad_tile / 2;
-      const int label_max = tile.w - 2 * label_inset;
+      int label_inset = m->pad_tile / 2;
+      int label_max = tile.w - 2 * label_inset;
       int label_w = 0;
+      cobalt_font_id label_font = COBALT_FONT_BODY;
       cobalt_text_size(r, COBALT_FONT_BODY, menu_label(i), &label_w, NULL);
-      cobalt_draw_text_wrapped(r, label_w > label_max ? COBALT_FONT_CAPTION
-                                                      : COBALT_FONT_BODY,
-                               menu_label(i), tile.x + label_inset, tile.y + m->pad_tile,
-                               label_max, 2, label);
+      if (label_w > label_max) {
+         /* The smaller font, with less inset, before any word is allowed to break:
+          * a word that still does not fit then wraps mid-word, which reads wrong. */
+         label_font = COBALT_FONT_CAPTION;
+         label_inset = 4;
+         label_max = tile.w - 2 * label_inset;
+      }
+      cobalt_draw_text_wrapped(r, label_font, menu_label(i), tile.x + label_inset,
+                               tile.y + m->pad_tile, label_max, 2, label);
 
       if (!menu_enabled(i)) {
          cobalt_draw_text(r, COBALT_FONT_CAPTION,
@@ -631,10 +637,13 @@ cobalt_app_draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id sur
    cobalt_app_draw_header(r, "Account");
 
    const int top = cobalt_content_top(r);
-   const int row_h = m->font_body * 2;
+   /* The GamePad's four rows and the notice must clear the hint strip, which is
+    * pinned to the bottom edge; on the TV there is room to spare. */
+   const int row_h = m->font_body * 2 - (surface == COBALT_SURFACE_DRC ? 8 : 0);
    const int width = m->width - 2 * m->pad_edge;
 
-   SDL_Rect panel = { m->pad_edge, top, width, row_h * 3 };
+   /* The profile panel holds three lines, so it keeps the full row height. */
+   SDL_Rect panel = { m->pad_edge, top, width, m->font_body * 2 * 3 };
    cobalt_draw_tile(r, &panel, app->account_selected == ACCOUNT_ROW_PROFILE ? 1.0f : 0.0f);
    if (surface == COBALT_SURFACE_DRC) {
       s_account_hit[ACCOUNT_ROW_PROFILE] = panel;
@@ -685,7 +694,10 @@ cobalt_app_draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id sur
       s_account_hit_valid = true;
    }
 
-   cobalt_app_draw_notice(app, r, row_y + m->gap / 2, width);
+   /* row_y already sits a half gap below the last row, so back off to the row's
+    * bottom edge: the notice then ends above the hint strip, which is pinned to
+    * the bottom of the screen. */
+   cobalt_app_draw_notice(app, r, row_y - m->gap / 2, width);
 
    cobalt_draw_hints(r, "A / touch: open");
 }
