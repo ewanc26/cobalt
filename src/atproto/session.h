@@ -94,6 +94,7 @@ typedef enum {
    COBALT_JOB_CHAT_INBOX,
    COBALT_JOB_CHAT_MESSAGES,
    COBALT_JOB_CHAT_SEND,
+   COBALT_JOB_CHAT_START,
 } cobalt_job_kind;
 
 typedef struct {
@@ -321,6 +322,17 @@ const cobalt_chat_thread *cobalt_session_chat_thread(void);
  * reply the service will take (see cobalt_chat_reply_valid).
  */
 bool cobalt_session_begin_chat_send(const char *convo_id, const char *text);
+
+/*
+ * Find or create the direct conversation with `handle_or_did` (a handle, with
+ * or without a leading '@', or a DID). Refused, without a job, when the text is
+ * empty or is neither a handle nor a DID. On success the convo id is held for
+ * cobalt_session_chat_started_convo(), so the caller can open it.
+ */
+bool cobalt_session_begin_chat_start(const char *handle_or_did);
+
+/* The convo id of the last conversation started, or "" while none is. */
+const char *cobalt_session_chat_started_convo(void);
 
 /*
  * Fetch an actor's profile and their posts together. `actor` is a handle or a
