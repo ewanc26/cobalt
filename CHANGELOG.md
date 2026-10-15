@@ -16,8 +16,6 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 - On the TV the timeline uses the width: the list takes two-fifths on the left, and the selected post is drawn in full on the right, so a long post no longer has to be cut to fit a card. The GamePad keeps the single column. ([#111](https://github.com/ewanc26/cobalt/issues/111))
 
-## [0.10.1] - 2026-10-15
-
 ### Fixed
 
 - The Updater can put the new build in place on a real console. Aroma holds the running `.wuhb`'s content mounted for the life of the process and refuses to rename the file while it is, so a downloaded update was verified and staged but never installed. Cobalt now releases the mount through Aroma's RPXLoadingModule immediately before the replacement, on the quit path. ([#139](https://github.com/ewanc26/cobalt/issues/139))
