@@ -1709,6 +1709,33 @@ test_chat_inbox_counterpart(void)
    CHECK(!cobalt_chat_inbox_can_page(&inbox));
 }
 
+static void
+test_chat_requests_count_label(void)
+{
+   begin("request inbox count label");
+
+   char out[32];
+
+   CHECK(cobalt_chat_requests_count_label(0, out, sizeof(out)));
+   CHECK_STR(out, "No requests");
+   CHECK(cobalt_chat_requests_count_label(-3, out, sizeof(out)));
+   CHECK_STR(out, "No requests");
+   CHECK(cobalt_chat_requests_count_label(1, out, sizeof(out)));
+   CHECK_STR(out, "1 request");
+   CHECK(cobalt_chat_requests_count_label(2, out, sizeof(out)));
+   CHECK_STR(out, "2 requests");
+   CHECK(cobalt_chat_requests_count_label(50, out, sizeof(out)));
+   CHECK_STR(out, "50 requests");
+
+   /* A label that does not fit is refused, not cut short. "No requests" needs
+    * eleven bytes with its terminator. */
+   CHECK(!cobalt_chat_requests_count_label(0, out, 11));
+   CHECK(cobalt_chat_requests_count_label(0, out, 12));
+   CHECK_STR(out, "No requests");
+   CHECK(!cobalt_chat_requests_count_label(0, out, 0));
+   CHECK(!cobalt_chat_requests_count_label(0, NULL, sizeof(out)));
+}
+
 /* A string one byte longer than a reply may be. */
 static const char *
 std_pad_1024(void)
@@ -3041,6 +3068,7 @@ main(int argc, char **argv)
    test_post_refuses_partial_refs();
    test_notification_wording();
    test_chat_inbox_counterpart();
+   test_chat_requests_count_label();
    test_chat_thread_state();
    test_chat_start_target();
    test_paging_stops_when_the_window_fills();

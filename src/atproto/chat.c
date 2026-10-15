@@ -30,6 +30,25 @@ cobalt_chat_inbox_can_page(const cobalt_chat_inbox *inbox)
    return inbox && inbox->has_more && inbox->count < COBALT_CHAT_CONVOS_MAX;
 }
 
+bool
+cobalt_chat_requests_count_label(int count, char *out, size_t cap)
+{
+   if (!out || cap == 0) {
+      return false;
+   }
+
+   int written;
+   if (count <= 0) {
+      written = snprintf(out, cap, "No requests");
+   } else if (count == 1) {
+      written = snprintf(out, cap, "1 request");
+   } else {
+      written = snprintf(out, cap, "%d requests", count);
+   }
+
+   return written >= 0 && (size_t) written < cap;
+}
+
 int
 cobalt_chat_pick_counterpart(const char *const *member_dids, size_t count,
                              const char *viewer_did)
