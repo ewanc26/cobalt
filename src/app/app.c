@@ -33,6 +33,7 @@ cobalt_app_create(void)
    cobalt_timeline_init(&app->timeline);
    cobalt_thread_view_init(&app->thread);
    cobalt_notify_view_init(&app->notify);
+   cobalt_messages_view_init(&app->messages);
    cobalt_profile_view_init(&app->profile);
    cobalt_graph_view_init(&app->graph);
    cobalt_search_view_init(&app->search);
@@ -200,6 +201,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          cobalt_timeline_init(&app->timeline);
    cobalt_thread_view_init(&app->thread);
    cobalt_notify_view_init(&app->notify);
+   cobalt_messages_view_init(&app->messages);
    cobalt_profile_view_init(&app->profile);
    cobalt_graph_view_init(&app->graph);
    cobalt_search_view_init(&app->search);
@@ -258,6 +260,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          break;
 
       case COBALT_JOB_NOTIFICATIONS:
+      case COBALT_JOB_CHAT_INBOX:
       case COBALT_JOB_PROFILE:
       case COBALT_JOB_FOLLOW:
       case COBALT_JOB_THREAD:
@@ -554,6 +557,12 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
          }
          break;
 
+      case COBALT_SCREEN_MESSAGES:
+         if (cobalt_messages_view_update(&app->messages, in) == COBALT_MESSAGES_BACK) {
+            app->screen = COBALT_SCREEN_HOME;
+         }
+         break;
+
       case COBALT_SCREEN_COMPOSE:
          switch (cobalt_compose_update(&app->compose, in)) {
             case COBALT_COMPOSE_CANCELLED:
@@ -841,6 +850,10 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_NOTIFICATIONS:
          cobalt_notify_view_draw(&app->notify, r, surface);
+         break;
+
+      case COBALT_SCREEN_MESSAGES:
+         cobalt_messages_view_draw(&app->messages, r, surface);
          break;
 
       case COBALT_SCREEN_PROFILE:

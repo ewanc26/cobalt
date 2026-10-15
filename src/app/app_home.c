@@ -9,6 +9,7 @@ typedef enum {
    ACTION_FEEDS,
    ACTION_LISTS,
    ACTION_NOTIFICATIONS,
+   ACTION_MESSAGES,
    ACTION_ACCOUNT,
    ACTION_UPDATES,
    ACTION_DIAGNOSTICS,
@@ -29,6 +30,7 @@ static const menu_action MENU[] = {
    ACTION_FEEDS,
    ACTION_LISTS,
    ACTION_NOTIFICATIONS,
+   ACTION_MESSAGES,
    ACTION_ACCOUNT,
    ACTION_UPDATES,
    ACTION_DIAGNOSTICS,
@@ -116,6 +118,7 @@ menu_label(int index)
       case ACTION_FEEDS:          return "Feeds";
       case ACTION_LISTS:          return "Lists";
       case ACTION_NOTIFICATIONS:  return "Notifications";
+      case ACTION_MESSAGES:       return "Messages";
       case ACTION_ACCOUNT:        return signed_in() ? "Account" : "Sign in";
       case ACTION_UPDATES:        return "Updates";
       case ACTION_DIAGNOSTICS:    return "Diagnostics";
@@ -143,6 +146,9 @@ menu_hint(int index)
       case ACTION_NOTIFICATIONS:
          return signed_in() ? "Replies, likes and follows"
                             : "Sign in to see notifications";
+      case ACTION_MESSAGES:
+         return signed_in() ? "Your direct message conversations"
+                            : "Sign in to see messages";
       case ACTION_ACCOUNT:
          if (signed_in()) {
             return cobalt_session_handle();
@@ -172,6 +178,7 @@ menu_enabled(int index)
       case ACTION_FEEDS:
       case ACTION_LISTS:
       case ACTION_NOTIFICATIONS:
+      case ACTION_MESSAGES:
          return signed_in();
       case ACTION_ACCOUNT:
          return cobalt_session_available() || signed_in();
@@ -239,6 +246,14 @@ activate(cobalt_app *app, int index)
             cobalt_session_begin_notifications(false);
          }
          COBALT_LOGI("menu: opened notifications");
+         break;
+
+      case ACTION_MESSAGES:
+         app->screen = COBALT_SCREEN_MESSAGES;
+         if (cobalt_session_chat_inbox()->count == 0) {
+            cobalt_session_begin_chat_inbox(false);
+         }
+         COBALT_LOGI("menu: opened messages");
          break;
 
       case ACTION_ACCOUNT:

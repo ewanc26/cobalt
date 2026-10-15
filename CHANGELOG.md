@@ -9,7 +9,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Added
 
-- The direct message inbox's data layer: `src/atproto/chat.c` flattens Wolfram's `listConvos` page into rows with the counterpart named, the last message as a preview and the unread count, and picks the counterpart by DID so the viewer is never shown as the other person. Not on screen yet; the inbox screen and reading messages are the next steps in [#107](https://github.com/ewanc26/cobalt/issues/107).
+- Messages on the home menu opens a read-only direct message inbox: each conversation shows who it is with (groups say "Group"), the last message and how many are unread, and the list pages. Opening a conversation and replying come next, so confirm does nothing yet ([#107](https://github.com/ewanc26/cobalt/issues/107)).
 
 ## [0.10.1] - 2026-10-15
 
