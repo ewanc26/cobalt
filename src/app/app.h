@@ -42,6 +42,7 @@ typedef enum {
    COBALT_SCREEN_ENTROPY,
    COBALT_SCREEN_MESSAGES,
    COBALT_SCREEN_CHAT_THREAD,
+   COBALT_SCREEN_QUEUE,
 } cobalt_screen;
 
 /*

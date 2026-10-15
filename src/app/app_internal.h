@@ -11,6 +11,8 @@
  * app_diag.c the diagnostics screen.
  */
 
+#include "app/post_queue.h"
+#include "app/queue_view.h"
 #include "app/app.h"
 #include "app/compose.h"
 #include "app/entropyview.h"
@@ -44,7 +46,7 @@
 #include <string.h>
 
 /* Entries on the home menu; app_home.c checks its table against this. */
-#define COBALT_HOME_MENU_COUNT 12
+#define COBALT_HOME_MENU_COUNT 13
 
 struct cobalt_app {
    cobalt_screen screen;
@@ -65,6 +67,13 @@ struct cobalt_app {
    cobalt_graph_view graph;
    cobalt_search_view search;
    cobalt_lists_view lists;
+   /* Offline posts saved with "Save for later". The queue is held here and
+    * mirrored to the SD card; a post being sent is held in queue_inflight until
+    * the send's result says whether it went. */
+   cobalt_post_queue queue;
+   cobalt_queue_view queue_view;
+   bool queue_send_pending;
+   cobalt_queued_post queue_inflight;
    cobalt_popup popup;
    cobalt_screen popup_screen;
    bool popup_in_thread;
