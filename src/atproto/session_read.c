@@ -486,6 +486,37 @@ cobalt_session_run_chat_messages(const cobalt_job_input *in, cobalt_job_result *
    r->ok = true;
 }
 
+void
+cobalt_session_run_chat_send(const cobalt_job_input *in, cobalt_job_result *r,
+                             cobalt_auth_state *state)
+{
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in to send messages.");
+      return;
+   }
+   if (!in->uri[0] || !cobalt_chat_reply_valid(in->text)) {
+      cobalt_session_set_message(r, "There is nothing to send.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   wf_chat_message sent;
+   memset(&sent, 0, sizeof(sent));
+
+   COBALT_LOGI("session: sendMessage");
+   wf_status status = wf_agent_chat_send_message(g_session.wf, in->uri, in->text, NULL, &sent);
+   wf_chat_message_reset(&sent);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: sendMessage failed (%d)", (int) status);
+      cobalt_session_describe_failure(r, status, COBALT_JOB_CHAT_SEND);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
 #endif /* COBALT_HAS_WOLFRAM */
 
 bool
@@ -579,6 +610,20 @@ const cobalt_chat_inbox *
 cobalt_session_chat_inbox(void)
 {
    return &g_session.chat;
+}
+
+bool
+cobalt_session_begin_chat_send(const char *convo_id, const char *text)
+{
+   if (!convo_id || !convo_id[0] || !cobalt_chat_reply_valid(text)) {
+      return false;
+   }
+
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", convo_id);
+   snprintf(in.text, sizeof(in.text), "%s", text);
+   return cobalt_session_submit(COBALT_JOB_CHAT_SEND, &in);
 }
 
 bool

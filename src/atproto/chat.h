@@ -67,6 +67,9 @@ int cobalt_chat_other_member_count(const char *const *member_dids, size_t count,
                                    const char *viewer_did);
 
 #define COBALT_CHAT_MESSAGES_MAX 50
+/* A reply's text in bytes, with room for the terminator. The chat service allows
+ * 1000 graphemes, which is never more bytes than this for ordinary text. */
+#define COBALT_CHAT_REPLY_MAX 1024
 
 typedef struct {
    char text[COBALT_POST_TEXT_MAX];
@@ -86,6 +89,9 @@ typedef struct {
 } cobalt_chat_thread;
 
 void cobalt_chat_thread_reset(cobalt_chat_thread *thread);
+
+/* A reply the chat service will take: some text that is not only spaces. */
+bool cobalt_chat_reply_valid(const char *text);
 
 #ifdef COBALT_HAS_WOLFRAM
 struct wf_chat_convo_list;

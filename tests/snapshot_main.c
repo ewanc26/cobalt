@@ -438,6 +438,13 @@ main(int argc, char **argv)
    settle(40);
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_CHAT_THREAD);
    shoot("chat-thread");
+   /* A opens the keyboard for a reply. On the keyboard B is backspace, so it is
+    * left by touching its Cancel key, which sits on the bottom row of the GamePad. */
+   frame(COBALT_BTN_CONFIRM);
+   settle(5);
+   shoot("chat-reply");
+   tap(694, 452);
+   settle(5);
 
    frame(COBALT_BTN_BACK);
    settle(10);
