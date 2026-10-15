@@ -437,6 +437,9 @@ run_job(cobalt_job_kind kind, const cobalt_job_input *in, cobalt_auth_state *sta
       case COBALT_JOB_CHAT_INBOX:
          cobalt_session_run_chat_inbox(in, &r, state);
          break;
+      case COBALT_JOB_CHAT_REQUESTS:
+         cobalt_session_run_chat_requests(in, &r, state);
+         break;
       case COBALT_JOB_CHAT_MESSAGES:
          cobalt_session_run_chat_messages(in, &r, state);
          break;
