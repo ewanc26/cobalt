@@ -374,6 +374,70 @@ cobalt_session_run_search_posts(const cobalt_job_input *in, cobalt_job_result *r
    r->ok = true;
 }
 
+void
+cobalt_session_run_chat_inbox(const cobalt_job_input *in, cobalt_job_result *r,
+                              cobalt_auth_state *state)
+{
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in to see messages.");
+      return;
+   }
+
+   char cursor_buf[COBALT_CURSOR_MAX];
+   const char *cursor = NULL;
+   if (in->paging) {
+      SDL_LockMutex(g_session.lock);
+      if (g_session.chat.cursor[0]) {
+         snprintf(cursor_buf, sizeof(cursor_buf), "%s", g_session.chat.cursor);
+         cursor = cursor_buf;
+      }
+      SDL_UnlockMutex(g_session.lock);
+      if (!cursor) {
+         *state = COBALT_AUTH_SIGNED_IN;
+         r->ok = true;
+         return;
+      }
+   }
+
+   wf_chat_convo_list list;
+   memset(&list, 0, sizeof(list));
+
+   COBALT_LOGI("session: listConvos cursor=%s", cursor ? cursor : "(top)");
+   wf_status status = wf_agent_chat_list_convos(g_session.wf, COBALT_SESSION_PAGE,
+                                                cursor, &list);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: listConvos failed (%d)", (int) status);
+      cobalt_session_describe_failure(r, status, COBALT_JOB_CHAT_INBOX);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(g_session.lock);
+   if (!in->paging) {
+      cobalt_chat_inbox_reset(&g_session.chat);
+   }
+   const int added =
+      cobalt_chat_inbox_append_from_wolfram(&g_session.chat, &list, g_session.did);
+   if (in->paging && added == 0) {
+      g_session.chat.has_more = false;
+      g_session.chat.cursor[0] = '\0';
+   }
+   const int total = g_session.chat.count;
+   SDL_UnlockMutex(g_session.lock);
+
+   wf_chat_convo_list_free(&list);
+   COBALT_LOGI("session: chat inbox +%d (%d held)", added, total);
+
+   if (total == 0) {
+      cobalt_session_set_message(r, "No messages yet.");
+   }
+
+   cobalt_session_publish();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
 #endif /* COBALT_HAS_WOLFRAM */
 
 bool
@@ -452,6 +516,21 @@ cobalt_session_begin_notifications(bool paging)
    memset(&in, 0, sizeof(in));
    in.paging = paging;
    return cobalt_session_submit(COBALT_JOB_NOTIFICATIONS, &in);
+}
+
+bool
+cobalt_session_begin_chat_inbox(bool paging)
+{
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   in.paging = paging;
+   return cobalt_session_submit(COBALT_JOB_CHAT_INBOX, &in);
+}
+
+const cobalt_chat_inbox *
+cobalt_session_chat_inbox(void)
+{
+   return &g_session.chat;
 }
 
 bool

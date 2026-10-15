@@ -18,6 +18,8 @@ cobalt_chat_inbox_reset(cobalt_chat_inbox *inbox)
    if (inbox) {
       inbox->count = 0;
       inbox->unread = 0;
+      inbox->cursor[0] = '\0';
+      inbox->has_more = false;
    }
 }
 
