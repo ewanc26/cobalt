@@ -93,6 +93,44 @@ void cobalt_chat_thread_reset(cobalt_chat_thread *thread);
 /* A reply the chat service will take: some text that is not only spaces. */
 bool cobalt_chat_reply_valid(const char *text);
 
+/*
+ * Starting a conversation with an account the inbox does not hold yet. The
+ * target is a handle or a DID as typed. A handle has to be resolved to a DID
+ * first, because getConvoForMembers takes DIDs only. Sized like the DID and
+ * handle buffers, and well inside the job's URI field.
+ */
+#define COBALT_CHAT_TARGET_MAX 128
+
+typedef enum {
+   COBALT_CHAT_TARGET_INVALID = 0,
+   COBALT_CHAT_TARGET_DID,
+   COBALT_CHAT_TARGET_HANDLE,
+} cobalt_chat_target_kind;
+
+/*
+ * Copy `input` into `out` with surrounding spaces, tabs and line breaks, and
+ * one leading '@', removed. False when nothing is left, or the result would
+ * not fit in `cap` bytes with its terminator.
+ */
+bool cobalt_chat_target_normalise(const char *input, char *out, size_t cap);
+
+/*
+ * Whether a normalised target is a DID (did:<method>:<id>) or a handle in the
+ * atproto syntax: dot-separated labels, at least two, with a TLD that starts
+ * with a letter. Anything else, including a handle with a space or an
+ * underscore, is COBALT_CHAT_TARGET_INVALID.
+ */
+cobalt_chat_target_kind cobalt_chat_target_kind_of(const char *target);
+
+/* True when both DIDs are set and name the same account. */
+bool cobalt_chat_is_self(const char *viewer_did, const char *target_did);
+
+/*
+ * Copy a convo id out of a server response. The id has to be non-empty, use
+ * only printable ASCII without spaces, and fit both `cap` and COBALT_CHAT_ID_MAX.
+ */
+bool cobalt_chat_convo_id_copy(char *out, size_t cap, const char *id);
+
 #ifdef COBALT_HAS_WOLFRAM
 struct wf_chat_convo_list;
 struct wf_chat_message_list;
