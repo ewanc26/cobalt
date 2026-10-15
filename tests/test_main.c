@@ -8,6 +8,7 @@
  */
 
 #include "app/compose.h"
+#include "app/post_queue.h"
 #include "app/graph.h"
 #include "app/search.h"
 #include "app/signin.h"
@@ -2683,6 +2684,62 @@ test_listnav(void)
    CHECK(nav.selected == 0 && nav.scroll == 0 && nav.last_visible == -1);
 }
 
+static void
+test_post_queue(void)
+{
+   begin("offline queue keeps order, refuses what it would cut, and sends only on request");
+   static cobalt_post_queue q;
+   static cobalt_queued_post got;
+   cobalt_post_queue_init(&q);
+
+   CHECK(cobalt_post_queue_get(&q, 0) == NULL);
+   CHECK(!cobalt_post_queue_add(&q, "", 1));
+   CHECK(!cobalt_post_queue_add(&q, NULL, 1));
+   CHECK(q.count == 0);
+
+   CHECK(cobalt_post_queue_add(&q, "first", 100));
+   CHECK(cobalt_post_queue_add(&q, "second", 200));
+   CHECK(cobalt_post_queue_add(&q, "third", 300));
+   CHECK(q.count == 3);
+   CHECK(strcmp(cobalt_post_queue_get(&q, 0)->text, "first") == 0);
+   CHECK(cobalt_post_queue_get(&q, 2)->queued_at == 300);
+   CHECK(cobalt_post_queue_get(&q, 3) == NULL);
+
+   /* Discarding the middle one keeps the rest in order. */
+   CHECK(cobalt_post_queue_discard(&q, 1));
+   CHECK(q.count == 2);
+   CHECK(strcmp(cobalt_post_queue_get(&q, 0)->text, "first") == 0);
+   CHECK(strcmp(cobalt_post_queue_get(&q, 1)->text, "third") == 0);
+   CHECK(!cobalt_post_queue_discard(&q, 5));
+
+   /* Taking returns the post and removes it; only the person's own choice does
+    * this, one post at a time. */
+   CHECK(cobalt_post_queue_take(&q, 0, &got));
+   CHECK(strcmp(got.text, "first") == 0);
+   CHECK(q.count == 1);
+   CHECK(strcmp(cobalt_post_queue_get(&q, 0)->text, "third") == 0);
+   CHECK(!cobalt_post_queue_take(&q, 4, &got));
+
+   /* Text that would have to be cut is refused, not shortened. */
+   {
+      char big[COBALT_POST_QUEUE_TEXT_MAX + 1];
+      memset(big, 'a', sizeof big - 1);
+      big[sizeof big - 1] = '\0';
+      CHECK(!cobalt_post_queue_add(&q, big, 400));
+      CHECK(q.count == 1);
+   }
+
+   /* Full at COBALT_POST_QUEUE_MAX: the next add is refused and nothing moves. */
+   cobalt_post_queue_init(&q);
+   for (unsigned i = 0; i < COBALT_POST_QUEUE_MAX; i++) {
+      CHECK(cobalt_post_queue_add(&q, "p", (long long)i));
+   }
+   CHECK(!cobalt_post_queue_add(&q, "overflow", 999));
+   CHECK(q.count == COBALT_POST_QUEUE_MAX);
+   CHECK(cobalt_post_queue_get(&q, COBALT_POST_QUEUE_MAX - 1)->queued_at ==
+         (long long)(COBALT_POST_QUEUE_MAX - 1));
+}
+
 /* Backing out of a list restores the cursor it was left on (#110). */
 static void
 test_listnav_restore(void)
@@ -2786,6 +2843,7 @@ main(int argc, char **argv)
    test_popup_link_qr();
    test_listnav();
    test_listnav_restore();
+   test_post_queue();
    test_post_refuses_partial_refs();
    test_notification_wording();
    test_paging_stops_when_the_window_fills();

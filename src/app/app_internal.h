@@ -11,6 +11,7 @@
  * app_diag.c the diagnostics screen.
  */
 
+#include "app/dms.h"
 #include "app/app.h"
 #include "app/compose.h"
 #include "app/entropyview.h"
@@ -42,7 +43,7 @@
 #include <string.h>
 
 /* Entries on the home menu; app_home.c checks its table against this. */
-#define COBALT_HOME_MENU_COUNT 11
+#define COBALT_HOME_MENU_COUNT 12
 
 struct cobalt_app {
    cobalt_screen screen;
@@ -61,6 +62,7 @@ struct cobalt_app {
    cobalt_graph_view graph;
    cobalt_search_view search;
    cobalt_lists_view lists;
+   cobalt_dms_view dms;
    cobalt_popup popup;
    cobalt_screen popup_screen;
    bool popup_in_thread;

@@ -102,6 +102,8 @@ UNIT_SOURCES := \
 	$(SRC)/atproto/session_profile.c \
 	$(SRC)/atproto/session_lists.c \
 	$(SRC)/atproto/session_post.c \
+	$(SRC)/atproto/session_dms.c \
+	$(SRC)/atproto/dms.c \
 	$(SRC)/app/signin.c \
 	$(SRC)/net/http.c \
 	$(SRC)/ui/imagecache.c \
@@ -119,6 +121,7 @@ UNIT_SOURCES := \
 	$(SRC)/util/entropy_gather.c \
 	$(SRC)/util/entropy.c \
 	$(SRC)/app/timeline.c \
+	$(SRC)/app/post_queue.c \
 	$(SRC)/app/thread.c \
 	$(SRC)/app/compose.c \
 	$(SRC)/app/notify.c \
@@ -128,6 +131,7 @@ UNIT_SOURCES := \
 	$(SRC)/atproto/actors.c \
 	$(SRC)/app/graph.c \
 	$(SRC)/app/search.c \
+	$(SRC)/app/dms.c \
 	$(SRC)/ui/postcard.c \
 	$(SRC)/ui/render.c \
 	$(SRC)/ui/theme.c \

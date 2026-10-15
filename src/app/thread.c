@@ -160,6 +160,28 @@ cobalt_thread_view_update(cobalt_thread_view *view, const cobalt_input *in)
    return COBALT_THREAD_VIEW_STAY;
 }
 
+/* The scrollbar for the selected post's text window, drawn along the right
+ * edge of the card it belongs to. Shared by the full-width card and the TV's
+ * detail column. */
+static void
+draw_text_scrollbar(cobalt_render *r, const cobalt_metrics *m, const SDL_Rect *rect,
+                    int first, int win, int tot)
+{
+   const int track_h = rect->h - 2 * m->pad_tile;
+   int thumb_h = track_h * win / tot;
+   if (thumb_h < 8) {
+      thumb_h = 8;
+   }
+   const int span = tot - win;
+   const int thumb_y = rect->y + m->pad_tile + (track_h - thumb_h) * first / span;
+   SDL_Color track = COBALT_COLOUR_TEXT_DIM;
+   track.a = 70;
+   const SDL_Rect tr = { rect->x + rect->w - 6, rect->y + m->pad_tile, 3, track_h };
+   const SDL_Rect th = { rect->x + rect->w - 6, thumb_y, 3, thumb_h };
+   cobalt_fill_rect(r, &tr, track);
+   cobalt_fill_rect(r, &th, COBALT_COLOUR_ACCENT);
+}
+
 void
 cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
                         cobalt_surface_id surface)
@@ -171,6 +193,13 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const cobalt_thread *thread = cobalt_session_thread();
    const bool touchable = (surface == COBALT_SURFACE_DRC);
+   /* On the TV the thread is a column and the selected post is shown in full
+    * beside it, as the timeline does. The GamePad keeps the full-width view. */
+   const bool split = (surface == COBALT_SURFACE_TV);
+   const int list_w = split ? (m->width - 2 * m->pad_edge - m->gap) * 2 / 5
+                            : m->width - 2 * m->pad_edge;
+   const int detail_x = m->pad_edge + list_w + m->gap;
+   const int detail_w = m->width - m->pad_edge - detail_x;
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Thread", m->pad_edge, m->pad_edge,
                     COBALT_COLOUR_TILE_FOCUS);
@@ -219,7 +248,7 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
    int tot = 0;
    if (view->nav.selected >= 0 && view->nav.selected < thread->count) {
       const cobalt_post *sp = &thread->posts[view->nav.selected];
-      const int full_w = m->width - 2 * m->pad_edge;
+      const int full_w = split ? detail_w : m->width - 2 * m->pad_edge;
       const int total = cobalt_postcard_text_total(r, sp, full_w,
                                                    thread->depth[view->nav.selected]);
       const int line_h = cobalt_font_line_height(r, COBALT_FONT_BODY) + m->line_gap;
@@ -251,8 +280,11 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
    while (view->nav.scroll < view->nav.selected) {
       int span = 0;
       for (int k = view->nav.scroll; k <= view->nav.selected; k++) {
+         /* On the TV the selected post is not in the list column, so it is
+          * measured at list height there. */
+         const bool full = (k == view->nav.selected) && !split;
          span += cobalt_postcard_height(r, &thread->posts[k],
-                                        k == view->nav.selected ? sel_lines : TEXT_LINES,
+                                        full ? sel_lines : TEXT_LINES,
                                         k == view->nav.selected) + m->gap;
       }
       if (span <= bottom - top) {
@@ -266,33 +298,20 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
 
    for (int i = view->nav.scroll; i < thread->count; i++) {
       const cobalt_post *post = &thread->posts[i];
-      const int lines = i == view->nav.selected ? sel_lines : TEXT_LINES;
+      const bool in_full = (i == view->nav.selected) && !split;
+      const int lines = in_full ? sel_lines : TEXT_LINES;
       const int h = cobalt_postcard_height(r, post, lines, i == view->nav.selected);
 
       if (y + h > bottom && i > view->nav.scroll) {
          break;
       }
 
-      SDL_Rect rect = { m->pad_edge, y, m->width - 2 * m->pad_edge, h };
+      SDL_Rect rect = { m->pad_edge, y, list_w, h };
       cobalt_postcard_draw_scrolled(r, post, &rect, i == view->nav.selected, lines,
-                                    thread->depth[i],
-                                    i == view->nav.selected ? first : 0);
+                                    thread->depth[i], in_full ? first : 0);
 
-      if (i == view->nav.selected && tot > win && win > 0) {
-         const int track_h = rect.h - 2 * m->pad_tile;
-         int thumb_h = track_h * win / tot;
-         if (thumb_h < 8) {
-            thumb_h = 8;
-         }
-         const int span = tot - win;
-         const int thumb_y = rect.y + m->pad_tile +
-                             (track_h - thumb_h) * first / span;
-         SDL_Color track = COBALT_COLOUR_TEXT_DIM;
-         track.a = 70;
-         const SDL_Rect tr = { rect.x + rect.w - 6, rect.y + m->pad_tile, 3, track_h };
-         const SDL_Rect th = { rect.x + rect.w - 6, thumb_y, 3, thumb_h };
-         cobalt_fill_rect(r, &tr, track);
-         cobalt_fill_rect(r, &th, COBALT_COLOUR_ACCENT);
+      if (in_full && tot > win && win > 0) {
+         draw_text_scrollbar(r, m, &rect, first, win, tot);
       }
 
       /* The post the thread was opened on gets an accent edge, so it stays
@@ -308,6 +327,22 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
 
       last_fitted = i;
       y += h + m->gap;
+   }
+
+   /* The selected post in the right-hand column, with the window of its text
+    * that the scroll state picks. Lines past the screen are cut, not wrapped
+    * back into the list. */
+   if (split && view->nav.selected >= 0 && view->nav.selected < thread->count) {
+      const cobalt_post *sp = &thread->posts[view->nav.selected];
+      const int x = detail_x;
+      const int h = cobalt_postcard_height(r, sp, sel_lines, true);
+      const SDL_Rect rect = { x, top, detail_w, h };
+
+      cobalt_postcard_draw_scrolled(r, sp, &rect, true, sel_lines,
+                                    thread->depth[view->nav.selected], first);
+      if (tot > win && win > 0) {
+         draw_text_scrollbar(r, m, &rect, first, win, tot);
+      }
    }
 
    cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);
