@@ -24,7 +24,7 @@ The footer names the buttons that work on the current screen. A prompt that name
 
 ![Home](screenshots/home-signedin.png)
 
-Timeline, New post, Search, Feeds, Lists, Notifications, Account (or Sign in), Updates, Diagnostics, TV display and Quit. Timeline, New post, Search, Feeds, Lists and Notifications need you signed in; the rest do not.
+Timeline, New post, Search, Feeds, Lists, Notifications, Messages, Account (or Sign in), Updates, Diagnostics, TV display and Quit. Timeline, New post, Search, Feeds, Lists, Notifications and Messages need you signed in; the rest do not.
 
 TV display switches between TV plus GamePad and Off-TV Play, where the TV goes idle and everything happens on the GamePad.
 
