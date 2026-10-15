@@ -15,11 +15,13 @@
 #define CONFIRM_DISCARD 2
 #define CONFIRM_IMAGE   3
 #define CONFIRM_THREAD  4
-#define CONFIRM_COUNT   5
+#define CONFIRM_SAVE    5
+#define CONFIRM_COUNT   6
 
 /* Stored in confirm_choice as these ids; the row shows them in this order. */
 static const int CONFIRM_ORDER[CONFIRM_COUNT] = {
-   CONFIRM_POST, CONFIRM_THREAD, CONFIRM_IMAGE, CONFIRM_EDIT, CONFIRM_DISCARD
+   CONFIRM_POST, CONFIRM_SAVE, CONFIRM_THREAD, CONFIRM_IMAGE, CONFIRM_EDIT,
+   CONFIRM_DISCARD
 };
 
 /* The choices on offer for this post. An image and a thread exclude each other:
@@ -36,6 +38,13 @@ confirm_ids(const cobalt_compose *compose, int out[CONFIRM_COUNT])
       if (id == CONFIRM_IMAGE && compose->thread_count > 0) {
          continue;
       }
+      /* The queue keeps plain text only. A reply, quote, thread or picture
+       * depends on state the queue does not hold, so it cannot be saved. */
+      if (id == CONFIRM_SAVE &&
+          (compose->thread_count > 0 || compose->attach_path[0] ||
+           cobalt_compose_is_reply(compose) || cobalt_compose_is_quote(compose))) {
+         continue;
+      }
       out[n++] = id;
    }
    return n;
@@ -49,6 +58,7 @@ confirm_label(const cobalt_compose *compose, int id)
       case CONFIRM_IMAGE:   return compose->attach_path[0] ? "Remove image"
                                                             : "Add image";
       case CONFIRM_THREAD:  return "Add to thread";
+      case CONFIRM_SAVE:    return "Save for later";
       case CONFIRM_EDIT:    return "Keep editing";
       default:              return "Discard";
    }
@@ -376,6 +386,9 @@ cobalt_compose_update(cobalt_compose *compose, const cobalt_input *in)
             return COBALT_COMPOSE_STAY;
          }
          return COBALT_COMPOSE_SUBMIT;
+
+      case CONFIRM_SAVE:
+         return COBALT_COMPOSE_SAVE_LATER;
 
       case CONFIRM_THREAD:
          cobalt_compose_extend(compose);

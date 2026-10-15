@@ -24,7 +24,7 @@ The footer names the buttons that work on the current screen. A prompt that name
 
 ![Home](screenshots/home-signedin.png)
 
-Timeline, New post, Search, Feeds, Lists, Notifications, Messages, Account (or Sign in), Updates, Diagnostics, TV display and Quit. Timeline, New post, Search, Feeds, Lists, Notifications and Messages need you signed in; the rest do not.
+Timeline, New post, Search, Feeds, Lists, Notifications, Messages, Queued posts, Account (or Sign in), Updates, Diagnostics, TV display and Quit. Timeline, New post, Search, Feeds, Lists, Notifications and Messages need you signed in; Queued posts and the rest do not.
 
 TV display switches between TV plus GamePad and Off-TV Play, where the TV goes idle and everything happens on the GamePad.
 
@@ -65,6 +65,10 @@ The More menu lists, for the highlighted post: the author's profile, View image,
 Shows the conversation around a post. Like and repost work as on the timeline. A on the post you opened is Reply; A on any other post opens the conversation from that post. X quotes, + replies, Y opens the More menu, which here also has Quote post and, on your own posts, Delete post (it asks first).
 
 On the TV the conversation is a column on the left, and the post you have selected is shown in full on the right, with a scrollbar when its text is longer than the screen. The GamePad keeps the full-width view.
+
+## Queued posts
+
+On a new post, choose **Save for later** in the confirm list to keep the text on the console instead of posting it. Queued posts are kept on the SD card, so they survive closing the app. Open **Queued posts** from the home menu to send or discard them. A send is only ever started by you: A sends the selected post, X discards it, and Up and Down choose. If a send fails, the post stays in the queue with the reason shown. If the app closes while a post is sending, that post may show up in the queue again, so check before sending it twice.
 
 ## Writing a post
 

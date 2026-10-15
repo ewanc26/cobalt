@@ -9,7 +9,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Added
 
-- Storage for posts written while offline: a queue of up to 16 posts that only leaves it when the person sends one. It has no screen yet; how it is shown and when posts are queued is still to be decided.
+- Save a new post for later, with Save for later in the confirm list. Queued posts are kept on the SD card (up to 16), and a Queued posts screen on the home menu sends or discards each one. Nothing is sent without you choosing it; a failed send stays queued with the reason shown.
 - Direct messages `COBALT_SCREEN_DMS` and a Messages entry on the home menu, listing conversations, fetching messages, and sending new messages via `chat.bsky.convo.*` through Wolfram. ([#107](https://github.com/ewanc26/cobalt/issues/107))
 - Added a `duration` field to `cobalt_post_link` and display code for video poster frames, ready for Wolfram to expose video length. ([#102](https://github.com/ewanc26/cobalt/issues/102))
 
