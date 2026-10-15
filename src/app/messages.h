@@ -3,20 +3,22 @@
 /*
  * The direct message inbox screen.
  *
- * Read-only for now: a row shows who the conversation is with, the last
- * message and how many are unread. Opening a conversation needs the message
- * view, which is the next step (cobalt#107), so confirm does nothing yet and
- * the hints say so rather than promising it.
- *
- * Rows are the same compact shape as notifications rather than post cards:
- * a conversation is a person and a line of text, not a post to read in full.
+ * A row shows who the conversation is with, the last message and how many are
+ * unread. Confirm opens a conversation. X starts a new one: the keyboard takes
+ * a handle or DID, and once the service has found or created the conversation
+ * the screen opens it. Rows are the same compact shape as notifications rather
+ * than post cards: a conversation is a person and a line of text, not a post
+ * to read in full.
  */
 
+#include "atproto/chat.h"
 #include "input/input.h"
+#include "ui/keyboard.h"
 #include "ui/listnav.h"
 #include "ui/render.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,10 +28,32 @@ typedef enum {
    COBALT_MESSAGES_STAY = 0,
    COBALT_MESSAGES_BACK,
    COBALT_MESSAGES_OPEN,
+   /* A handle or DID was accepted from the keyboard. The caller begins the
+    * start job with the target, then reports whether it began. */
+   COBALT_MESSAGES_START,
 } cobalt_messages_action;
+
+/*
+ * The new-conversation state, apart from the screen so its transitions can be
+ * tested on the host. The keyboard edits `target` in place, so a refused or
+ * failed start keeps what was typed for the person to correct.
+ */
+typedef struct {
+   char target[COBALT_CHAT_TARGET_MAX];
+   cobalt_keyboard kb;
+   bool editing;   /* the keyboard is open on target */
+   bool pending;   /* the start job is in flight */
+} cobalt_messages_start;
+
+typedef enum {
+   COBALT_MESSAGES_START_NONE = 0,   /* no start was in flight: nothing to do */
+   COBALT_MESSAGES_START_OPEN,       /* a conversation id came back: open it */
+   COBALT_MESSAGES_START_FAILED,     /* the job failed, or answered without an id */
+} cobalt_messages_start_outcome;
 
 typedef struct {
    cobalt_listnav nav;
+   cobalt_messages_start start;
 } cobalt_messages_view;
 
 void cobalt_messages_view_init(cobalt_messages_view *view);
@@ -40,6 +64,25 @@ cobalt_messages_action cobalt_messages_view_update(cobalt_messages_view *view,
 
 void cobalt_messages_view_draw(cobalt_messages_view *view, cobalt_render *r,
                                cobalt_surface_id surface);
+
+/* Open the keyboard on the new-conversation target, keeping what was typed. */
+void cobalt_messages_start_open(cobalt_messages_start *s);
+
+/* The start job was begun (`began`) or refused without a job. A refusal opens
+ * the keyboard again on the same text, so it can be corrected. */
+void cobalt_messages_start_began(cobalt_messages_start *s, bool began);
+
+/*
+ * The start job finished. Only a finish that follows a began start counts;
+ * otherwise NONE. A conversation id clears the target and opens it; anything
+ * else is a failure, and keeps the target for another try.
+ */
+cobalt_messages_start_outcome cobalt_messages_start_finished(cobalt_messages_start *s,
+                                                             bool ok,
+                                                             const char *convo_id);
+
+/* The target as a display name: no leading '@' and no surrounding spaces. */
+bool cobalt_messages_start_name(const cobalt_messages_start *s, char *out, size_t cap);
 
 #ifdef __cplusplus
 }

@@ -24,10 +24,85 @@ cobalt_messages_view_rewind(cobalt_messages_view *view)
    }
 }
 
+/* --- starting a conversation --- */
+
+void
+cobalt_messages_start_open(cobalt_messages_start *s)
+{
+   if (!s) {
+      return;
+   }
+   s->editing = true;
+   s->pending = false;
+   cobalt_keyboard_open(&s->kb, s->target, sizeof(s->target), false);
+}
+
+void
+cobalt_messages_start_began(cobalt_messages_start *s, bool began)
+{
+   if (!s) {
+      return;
+   }
+   s->pending = began;
+   if (!began) {
+      /* Refused before a job: the text is still there to correct. */
+      cobalt_messages_start_open(s);
+   }
+}
+
+cobalt_messages_start_outcome
+cobalt_messages_start_finished(cobalt_messages_start *s, bool ok, const char *convo_id)
+{
+   if (!s || !s->pending) {
+      return COBALT_MESSAGES_START_NONE;
+   }
+   s->pending = false;
+   if (ok && convo_id && convo_id[0]) {
+      /* Opened, so the next start begins from an empty field. */
+      s->target[0] = '\0';
+      return COBALT_MESSAGES_START_OPEN;
+   }
+   /* The target stays, so the person can fix it and press X again. */
+   return COBALT_MESSAGES_START_FAILED;
+}
+
+bool
+cobalt_messages_start_name(const cobalt_messages_start *s, char *out, size_t cap)
+{
+   if (!s || !out || cap == 0) {
+      return false;
+   }
+   return cobalt_chat_target_normalise(s->target, out, cap);
+}
+
+/* --- input --- */
+
 cobalt_messages_action
 cobalt_messages_view_update(cobalt_messages_view *view, const cobalt_input *in)
 {
    if (!view || !in) {
+      return COBALT_MESSAGES_STAY;
+   }
+
+   /* While the keyboard is open it owns the input: B is its backspace, and its
+    * own Cancel key is how the person leaves it, as on the other typing screens. */
+   if (view->start.editing) {
+      switch (cobalt_keyboard_update(&view->start.kb, in)) {
+         case COBALT_KB_ACCEPTED:
+            /* An empty field is not a conversation: stay on the keyboard. */
+            if (view->start.target[0] == '\0') {
+               return COBALT_MESSAGES_STAY;
+            }
+            view->start.editing = false;
+            COBALT_LOGI("messages: starting a conversation");
+            return COBALT_MESSAGES_START;
+         case COBALT_KB_CANCELLED:
+            view->start.editing = false;
+            break;
+         case COBALT_KB_IDLE:
+         default:
+            break;
+      }
       return COBALT_MESSAGES_STAY;
    }
 
@@ -37,6 +112,13 @@ cobalt_messages_view_update(cobalt_messages_view *view, const cobalt_input *in)
 
    const cobalt_chat_inbox *inbox = cobalt_session_chat_inbox();
    const bool busy = cobalt_session_busy();
+
+   /* X is here rather than below the empty check, so a new conversation can
+    * be started from an inbox with nothing in it yet. */
+   if (cobalt_input_pressed(in, COBALT_BTN_ALT_X) && !busy && !view->start.pending) {
+      cobalt_messages_start_open(&view->start);
+      return COBALT_MESSAGES_STAY;
+   }
 
    if (cobalt_input_pressed(in, COBALT_BTN_MENU) && !busy) {
       COBALT_LOGI("messages: refresh requested");
@@ -124,6 +206,35 @@ draw_row(cobalt_render *r, const cobalt_chat_convo *item, const SDL_Rect *rect,
    }
 }
 
+/* The new-conversation keyboard takes the list's place, as the search keyboard
+ * takes the results'. */
+static void
+draw_start(cobalt_messages_view *view, cobalt_render *r, cobalt_surface_id surface)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const int top = cobalt_content_top(r);
+
+   SDL_Rect box = { m->pad_edge, top, m->width - 2 * m->pad_edge,
+                    m->pad_tile * 2 + cobalt_font_line_height(r, COBALT_FONT_BODY) };
+   cobalt_draw_tile(r, &box, 1.0f);
+
+   char display[COBALT_CHAT_TARGET_MAX + 4];
+   cobalt_keyboard_display_text(&view->start.kb, display, sizeof(display));
+   const char *shown = display[0] ? display : "Handle or DID...";
+   cobalt_draw_text(r, COBALT_FONT_BODY, shown, box.x + m->pad_tile,
+                    box.y + m->pad_tile,
+                    display[0] ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM);
+
+   SDL_Rect keys = { m->pad_edge, box.y + box.h + m->gap,
+                     m->width - 2 * m->pad_edge,
+                     cobalt_keyboard_height(surface) };
+   cobalt_keyboard_draw(&view->start.kb, r, surface, &keys);
+
+   /* A bare phrase, not "Key: label": B is the keyboard's backspace here, so
+    * the footer must not name it as a button. */
+   cobalt_draw_hints(r, "Type a handle or DID, then OK");
+}
+
 void
 cobalt_messages_view_draw(cobalt_messages_view *view, cobalt_render *r,
                           cobalt_surface_id surface)
@@ -154,6 +265,11 @@ cobalt_messages_view_draw(cobalt_messages_view *view, cobalt_render *r,
                        dim);
    }
 
+   if (view->start.editing) {
+      draw_start(view, r, surface);
+      return;
+   }
+
    const int top = cobalt_content_top(r);
    const int bottom = m->height - m->pad_edge - 28;
 
@@ -166,7 +282,8 @@ cobalt_messages_view_draw(cobalt_messages_view *view, cobalt_render *r,
                        cobalt_session_busy() ? "Loading..." : "No messages yet.",
                        card.x + m->pad_tile, card.y + m->pad_tile, COBALT_COLOUR_TEXT);
       cobalt_listnav_draw_empty(&view->nav, touchable);
-      cobalt_draw_hints(r, "B: back   +: refresh");
+      cobalt_draw_hints(r, cobalt_session_busy() ? "Working..."
+                                                 : "X: new message   B: back   +: refresh");
       return;
    }
 
@@ -191,5 +308,6 @@ cobalt_messages_view_draw(cobalt_messages_view *view, cobalt_render *r,
 
    cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);
 
-   cobalt_draw_hints(r, cobalt_session_busy() ? "Working..." : "B: back   +: refresh");
+   cobalt_draw_hints(r, cobalt_session_busy() ? "Working..."
+                                              : "X: new message   B: back   +: refresh");
 }
