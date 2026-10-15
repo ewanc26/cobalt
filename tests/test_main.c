@@ -1550,6 +1550,115 @@ test_post_refuses_partial_refs(void)
 /* --- direct messages --- */
 
 static void
+test_chat_start_target(void)
+{
+   begin("starting a conversation: target parsing and validation");
+
+   char out[COBALT_CHAT_TARGET_MAX];
+
+   /* Input that is nothing, or only spaces and an '@'. */
+   CHECK(!cobalt_chat_target_normalise(NULL, out, sizeof(out)));
+   CHECK(!cobalt_chat_target_normalise("", out, sizeof(out)));
+   CHECK(!cobalt_chat_target_normalise("   \t ", out, sizeof(out)));
+   CHECK(!cobalt_chat_target_normalise("@", out, sizeof(out)));
+   CHECK(!cobalt_chat_target_normalise(" @ \n", out, sizeof(out)));
+   CHECK(!cobalt_chat_target_normalise("x", NULL, sizeof(out)));
+   CHECK(!cobalt_chat_target_normalise("x", out, 0));
+
+   /* Trimming, and one leading '@' from a pasted handle. */
+   CHECK(cobalt_chat_target_normalise("  @alice.bsky.social \n", out, sizeof(out)));
+   CHECK_STR(out, "alice.bsky.social");
+   CHECK(cobalt_chat_target_normalise("did:plc:abc123", out, sizeof(out)));
+   CHECK_STR(out, "did:plc:abc123");
+
+   /* Too long for the buffer, with its terminator counted: refused, not cut. */
+   char long_handle[200];
+   memset(long_handle, 'a', 120);
+   memcpy(long_handle + 120, ".bsky.social", sizeof(".bsky.social"));
+   CHECK(!cobalt_chat_target_normalise(long_handle, out, sizeof(out)));
+   CHECK(!cobalt_chat_target_normalise(long_handle, out, COBALT_CHAT_TARGET_MAX));
+   CHECK(cobalt_chat_target_normalise("a.bsky.social", out, COBALT_CHAT_TARGET_MAX));
+
+   /* A DID: did:<lowercase method>:<id>. */
+   CHECK(cobalt_chat_target_kind_of("did:plc:ewjcjxlzmo3rjtgvqxubkjgy") == COBALT_CHAT_TARGET_DID);
+   CHECK(cobalt_chat_target_kind_of("did:web:example.com") == COBALT_CHAT_TARGET_DID);
+   CHECK(cobalt_chat_target_kind_of("did:plc:") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of("did::abc") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of("did:PLC:abc") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of("did:plc:abc def") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of("did:plc:abc:") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of("did:plc:abc/x") == COBALT_CHAT_TARGET_INVALID);
+
+   /* A handle: at least two labels, a letter-led TLD, hyphens inside only. */
+   CHECK(cobalt_chat_target_kind_of("alice.bsky.social") == COBALT_CHAT_TARGET_HANDLE);
+   CHECK(cobalt_chat_target_kind_of("Alice-1.example.co.uk") == COBALT_CHAT_TARGET_HANDLE);
+   CHECK(cobalt_chat_target_kind_of("alice") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of(".example.com") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of("example.com.") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of("a..example.com") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of("-bad.example.com") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of("bad-.example.com") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of("under_score.example.com") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of("ex ample.com") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of("example.123") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of("https://example.com") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of("") == COBALT_CHAT_TARGET_INVALID);
+   CHECK(cobalt_chat_target_kind_of(NULL) == COBALT_CHAT_TARGET_INVALID);
+
+   /* A label of 63 bytes is fine; 64 is not. */
+   char label63[80];
+   char label64[80];
+   memset(label63, 'a', 63);
+   memcpy(label63 + 63, ".example.com", sizeof(".example.com"));
+   memset(label64, 'a', 64);
+   memcpy(label64 + 64, ".example.com", sizeof(".example.com"));
+   CHECK(cobalt_chat_target_kind_of(label63) == COBALT_CHAT_TARGET_HANDLE);
+   CHECK(cobalt_chat_target_kind_of(label64) == COBALT_CHAT_TARGET_INVALID);
+
+   /* Over the target buffer is refused outright, whatever its shape. */
+   char long_did[COBALT_CHAT_TARGET_MAX + 16];
+   memcpy(long_did, "did:plc:", 8);
+   memset(long_did + 8, 'a', COBALT_CHAT_TARGET_MAX + 7);
+   long_did[COBALT_CHAT_TARGET_MAX + 15] = '\0';
+   CHECK(cobalt_chat_target_kind_of(long_did) == COBALT_CHAT_TARGET_INVALID);
+
+   /* Self is only self when both are set and equal. */
+   CHECK(cobalt_chat_is_self("did:plc:me", "did:plc:me"));
+   CHECK(!cobalt_chat_is_self("did:plc:me", "did:plc:you"));
+   CHECK(!cobalt_chat_is_self("", ""));
+   CHECK(!cobalt_chat_is_self(NULL, "did:plc:you"));
+
+   /* A convo id from the server: printable, no spaces, fits the field. */
+   char id[COBALT_CHAT_ID_MAX];
+   CHECK(cobalt_chat_convo_id_copy(id, sizeof(id), "3lcvi2xygxn2t"));
+   CHECK_STR(id, "3lcvi2xygxn2t");
+   CHECK(!cobalt_chat_convo_id_copy(id, sizeof(id), NULL));
+   CHECK(!cobalt_chat_convo_id_copy(id, sizeof(id), ""));
+   CHECK(!cobalt_chat_convo_id_copy(id, sizeof(id), "has space"));
+   CHECK(!cobalt_chat_convo_id_copy(id, sizeof(id), "tab\there"));
+   CHECK(!cobalt_chat_convo_id_copy(id, sizeof(id), "new\nline"));
+   CHECK(!cobalt_chat_convo_id_copy(id, sizeof(id), "caf\xc3\xa9"));
+   CHECK(!cobalt_chat_convo_id_copy(id, 4, "3lcvi2"));
+   CHECK(!cobalt_chat_convo_id_copy(NULL, sizeof(id), "3lcvi2"));
+   char long_id[COBALT_CHAT_ID_MAX + 8];
+   memset(long_id, 'x', COBALT_CHAT_ID_MAX);
+   long_id[COBALT_CHAT_ID_MAX] = '\0';
+   CHECK(!cobalt_chat_convo_id_copy(id, sizeof(id), long_id));
+
+   /* The begin call refuses bad input without queueing a job. */
+   cobalt_session_init();
+   CHECK(!cobalt_session_begin_chat_start(NULL));
+   CHECK(!cobalt_session_begin_chat_start(""));
+   CHECK(!cobalt_session_begin_chat_start("   "));
+   CHECK(!cobalt_session_begin_chat_start("@"));
+   CHECK(!cobalt_session_begin_chat_start("not a handle"));
+   CHECK(!cobalt_session_begin_chat_start(long_handle));
+   /* One job at a time, so only the first valid start can be queued here. */
+   CHECK(cobalt_session_begin_chat_start("@alice.bsky.social"));
+   CHECK_STR(cobalt_session_chat_started_convo(), "");
+}
+
+static void
 test_chat_inbox_counterpart(void)
 {
    begin("direct message counterpart and inbox reset");
@@ -2933,6 +3042,7 @@ main(int argc, char **argv)
    test_notification_wording();
    test_chat_inbox_counterpart();
    test_chat_thread_state();
+   test_chat_start_target();
    test_paging_stops_when_the_window_fills();
    test_selection_survives_a_shrinking_list();
    test_session_request_handshake();
