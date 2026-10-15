@@ -169,6 +169,15 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
    const int top = cobalt_content_top(r);
    const int bottom = m->height - m->pad_edge - 24;
 
+   /* The TV is wide enough for two columns, and the GamePad is not: the list
+    * takes two-fifths on the left, and the selected post is drawn in full on
+    * the right, so the text the list cuts short is still readable. */
+   const bool side_detail = (surface == COBALT_SURFACE_TV);
+   const int content_w = m->width - 2 * m->pad_edge;
+   const int list_w = side_detail ? content_w * 2 / 5 : content_w;
+   const int detail_x = m->pad_edge + list_w + m->gap * 2;
+   const int detail_w = m->width - m->pad_edge - detail_x;
+
    if (feed->count == 0) {
       draw_empty(r, m, top);
       cobalt_listnav_draw_begin(&view->nav, touchable);
@@ -183,7 +192,7 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
 
    for (int i = view->nav.scroll; i < feed->count; i++) {
       const cobalt_post *post = &feed->posts[i];
-      int lines = cobalt_postcard_text_total(r, post, m->width - 2 * m->pad_edge, 0);
+      int lines = cobalt_postcard_text_total(r, post, list_w, 0);
       if (lines > TEXT_LINES) {
          lines = TEXT_LINES;
       } else if (lines < 1) {
@@ -198,7 +207,7 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
          break;
       }
 
-      SDL_Rect rect = { m->pad_edge, y, m->width - 2 * m->pad_edge, h };
+      SDL_Rect rect = { m->pad_edge, y, list_w, h };
       cobalt_postcard_draw(r, post, &rect, i == view->nav.selected, lines, 0);
 
       cobalt_listnav_draw_add(&view->nav, touchable, &rect, i);
@@ -208,6 +217,24 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
    }
 
    cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);
+
+   /* The selected post in full, on the right. Every line of it is drawn; only
+    * when the whole post will not fit under the header are lines dropped, and
+    * then from the end, so the start of it is always there. */
+   if (side_detail && view->nav.selected < feed->count) {
+      const cobalt_post *post = &feed->posts[view->nav.selected];
+      const int avail = bottom - top;
+      int lines = cobalt_postcard_text_total(r, post, detail_w, 0);
+      if (lines < 1) {
+         lines = 1;
+      }
+      while (lines > 1 && cobalt_postcard_height(r, post, lines, false) > avail) {
+         lines--;
+      }
+      const SDL_Rect detail = { detail_x, top, detail_w,
+                                cobalt_postcard_height(r, post, lines, false) };
+      cobalt_postcard_draw(r, post, &detail, false, lines, 0);
+   }
 
    /* A card taller than the viewport is still drawn whole; the strip keeps the
     * hint legible instead of printing it across the card. */
