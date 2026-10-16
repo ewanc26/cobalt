@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-16
+
 ### Fixed
 
 - Reply controls on a post are set with Wolfram v0.40.0's `wf_agent_set_reply_gate`, which writes the gate under the post's own record key, so the AppView links it to that post and the controls apply. ([#203](https://github.com/ewanc26/wolfram/issues/203))
