@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Fixed
+
+- Reply and quote posts are written under the parent's own record key, so the AppView links the reply controls to the post. Uses Wolfram v0.40.0's `wf_agent_create_threadgate` and `wf_agent_create_postgate`. ([#203](https://github.com/ewanc26/wolfram/issues/203))
+
 ## [0.11.0] - 2026-10-15
 
 ### Added
