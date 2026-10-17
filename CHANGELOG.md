@@ -9,6 +9,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Fixed
 
+- Going back to a thread fetches its conversation again. The return stack remembers which thread each screen showed, so after a nested unwind the outer thread no longer shows the inner conversation. (#110)
 - Backing out of a thread opened from a profile that was itself opened from a thread no longer bounces between the profile and the outer thread. Each screen returns to the one it came from, down to the timeline, through a return stack in place of the single return slots. The snapshot suite now walks that chain. (#110)
 
 ## [0.11.1] - 2026-10-16

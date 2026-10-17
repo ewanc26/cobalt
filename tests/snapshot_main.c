@@ -375,7 +375,12 @@ main(int argc, char **argv)
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_THREAD);
       frame(COBALT_BTN_BACK); settle(10);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE);
-      frame(COBALT_BTN_BACK); settle(10);
+      /* Going back to the outer thread fetches it again: the session held the
+       * inner conversation, so without the refetch the outer screen showed it. */
+      const int requests = cobalt_session_thread_requests();
+      frame(COBALT_BTN_BACK);
+      CHECK(cobalt_session_thread_requests() == requests + 1);
+      settle(10);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_THREAD);
       frame(COBALT_BTN_BACK); settle(10);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);

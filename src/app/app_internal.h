@@ -51,6 +51,14 @@
  * return is dropped. */
 #define COBALT_RETURN_DEPTH 16
 
+/* A screen to return to, with the conversation it showed when it was left.
+ * The session keeps only the last thread it fetched, so returning to a thread
+ * fetches it again from this uri rather than showing whatever came after. */
+typedef struct {
+   cobalt_screen screen;
+   char thread_uri[COBALT_POST_URI_MAX];
+} cobalt_return;
+
 struct cobalt_app {
    cobalt_screen screen;
    cobalt_display_mode display;
@@ -99,7 +107,7 @@ struct cobalt_app {
    /* Where B from the thread or profile screen returns to. Each screen that
     * opens a thread or profile pushes the one it came from, so a chain such as
     * timeline -> thread -> profile -> thread unwinds one step at a time. */
-   cobalt_screen return_stack[COBALT_RETURN_DEPTH];
+   cobalt_return return_stack[COBALT_RETURN_DEPTH];
    int return_depth;
    /* Where B from a likes/reposts list returns to — the timeline or the
     * thread. The post it belongs to is already in app->graph.actor. */
@@ -142,8 +150,9 @@ void cobalt_app_draw_tv_idle(cobalt_render *r);
 /* app_menus.c */
 void cobalt_app_open_post_menu(cobalt_app *app, const cobalt_post *post, bool in_thread);
 void cobalt_app_open_profile_menu(cobalt_app *app);
-void cobalt_app_push_return(cobalt_app *app, cobalt_screen from);
+void cobalt_app_push_return(cobalt_app *app, cobalt_screen from, const char *thread_uri);
 cobalt_screen cobalt_app_pop_return(cobalt_app *app);
+void cobalt_app_current_thread_uri(char *out, size_t cap);
 void cobalt_app_open_notification_menu(cobalt_app *app, const cobalt_notification *item);
 void cobalt_app_popup_choose(cobalt_app *app, int index);
 

@@ -214,6 +214,7 @@ const cobalt_feed *cobalt_session_feed(void);
  * Fetch the conversation around `uri`. Replaces whatever thread was loaded.
  */
 bool cobalt_session_begin_thread(const char *uri);
+int cobalt_session_thread_requests(void);
 
 /* The thread as last fetched; never NULL. */
 const cobalt_thread *cobalt_session_thread(void);

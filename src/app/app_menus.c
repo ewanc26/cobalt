@@ -118,12 +118,14 @@ void
 cobalt_app_popup_choose(cobalt_app *app, int index)
 {
    const cobalt_popup_item *it = &app->popup.items[index];
+   char outer[COBALT_POST_URI_MAX];
    switch (it->kind) {
       case COBALT_POPUP_PROFILE:
       case COBALT_POPUP_MENTION:
          if (cobalt_session_begin_profile(it->arg)) {
             cobalt_profile_view_rewind(&app->profile);
-            cobalt_app_push_return(app, app->popup_screen);
+            cobalt_app_current_thread_uri(outer, sizeof outer);
+            cobalt_app_push_return(app, app->popup_screen, outer);
             app->screen = COBALT_SCREEN_PROFILE;
             cobalt_popup_close(&app->popup);
          }
@@ -216,9 +218,11 @@ cobalt_app_popup_choose(cobalt_app *app, int index)
          }
          break;
       case COBALT_POPUP_THREAD:
+         /* Read the conversation on screen before the request replaces it. */
+         cobalt_app_current_thread_uri(outer, sizeof outer);
          if (cobalt_session_begin_thread(it->arg)) {
             cobalt_thread_view_reset(&app->thread);
-            cobalt_app_push_return(app, app->popup_screen);
+            cobalt_app_push_return(app, app->popup_screen, outer);
             app->screen = COBALT_SCREEN_THREAD;
             cobalt_popup_close(&app->popup);
          }
