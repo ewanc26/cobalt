@@ -355,6 +355,32 @@ main(int argc, char **argv)
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
    }
 
+   /* Nested routes: timeline -> thread -> profile -> thread must unwind one
+    * step at a time, back through each screen it came from, to the timeline.
+    * A single return slot used to be overwritten by the inner thread, so B
+    * bounced between the profile and the outer thread and never got back. */
+   {
+      frame(COBALT_BTN_CONFIRM); settle(30);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_THREAD);
+      frame(COBALT_BTN_ALT_Y); settle(5);
+      const int prof = popup_index(COBALT_POPUP_PROFILE);
+      CHECK(prof >= 0);
+      if (prof >= 0) {
+         popup_select(prof);
+         frame(COBALT_BTN_CONFIRM); settle(40);
+      }
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE);
+      frame(COBALT_BTN_DOWN); settle(5);
+      frame(COBALT_BTN_CONFIRM); settle(40);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_THREAD);
+      frame(COBALT_BTN_BACK); settle(10);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE);
+      frame(COBALT_BTN_BACK); settle(10);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_THREAD);
+      frame(COBALT_BTN_BACK); settle(10);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
+   }
+
    /* Facets: timeline card 1 carries a mention, a link and a tag. */
    open_post_menu(1);
    {

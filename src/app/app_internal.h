@@ -47,6 +47,9 @@
 
 /* Entries on the home menu; app_home.c checks its table against this. */
 #define COBALT_HOME_MENU_COUNT 13
+/* How deep a chain of thread and profile screens can nest before the oldest
+ * return is dropped. */
+#define COBALT_RETURN_DEPTH 16
 
 struct cobalt_app {
    cobalt_screen screen;
@@ -87,18 +90,17 @@ struct cobalt_app {
    bool viewing_custom_feed;
    /* ...or the results of a post search, which also must not pass for home. */
    bool viewing_search;
-   /* Where B from the profile screen returns to. */
-   cobalt_screen profile_return;
-   /* profile_return as it was when a followers/following list was opened. */
-   cobalt_screen follows_profile_return;
    /* The profile's selection and scroll when that list was opened, so backing
     * out of it puts the profile back where it was rather than at the top. */
    int follows_profile_selected;
    int follows_profile_scroll;
    /* Where to return after composing — the timeline or the thread. */
    cobalt_screen compose_return;
-   /* Where B from the thread screen returns to — the timeline or notifications. */
-   cobalt_screen thread_return;
+   /* Where B from the thread or profile screen returns to. Each screen that
+    * opens a thread or profile pushes the one it came from, so a chain such as
+    * timeline -> thread -> profile -> thread unwinds one step at a time. */
+   cobalt_screen return_stack[COBALT_RETURN_DEPTH];
+   int return_depth;
    /* Where B from a likes/reposts list returns to — the timeline or the
     * thread. The post it belongs to is already in app->graph.actor. */
    cobalt_screen likes_return;
@@ -140,6 +142,8 @@ void cobalt_app_draw_tv_idle(cobalt_render *r);
 /* app_menus.c */
 void cobalt_app_open_post_menu(cobalt_app *app, const cobalt_post *post, bool in_thread);
 void cobalt_app_open_profile_menu(cobalt_app *app);
+void cobalt_app_push_return(cobalt_app *app, cobalt_screen from);
+cobalt_screen cobalt_app_pop_return(cobalt_app *app);
 void cobalt_app_open_notification_menu(cobalt_app *app, const cobalt_notification *item);
 void cobalt_app_popup_choose(cobalt_app *app, int index);
 

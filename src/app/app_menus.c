@@ -123,7 +123,7 @@ cobalt_app_popup_choose(cobalt_app *app, int index)
       case COBALT_POPUP_MENTION:
          if (cobalt_session_begin_profile(it->arg)) {
             cobalt_profile_view_rewind(&app->profile);
-            app->profile_return = app->popup_screen;
+            cobalt_app_push_return(app, app->popup_screen);
             app->screen = COBALT_SCREEN_PROFILE;
             cobalt_popup_close(&app->popup);
          }
@@ -218,14 +218,13 @@ cobalt_app_popup_choose(cobalt_app *app, int index)
       case COBALT_POPUP_THREAD:
          if (cobalt_session_begin_thread(it->arg)) {
             cobalt_thread_view_reset(&app->thread);
-            app->thread_return = app->popup_screen;
+            cobalt_app_push_return(app, app->popup_screen);
             app->screen = COBALT_SCREEN_THREAD;
             cobalt_popup_close(&app->popup);
          }
          break;
       case COBALT_POPUP_FOLLOWERS:
       case COBALT_POPUP_FOLLOWING:
-         app->follows_profile_return = app->profile_return;
          app->follows_profile_selected = app->profile.nav.selected;
          app->follows_profile_scroll = app->profile.nav.scroll;
          cobalt_graph_view_open_follows(&app->graph,
