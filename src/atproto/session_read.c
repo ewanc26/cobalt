@@ -794,6 +794,10 @@ cobalt_session_chat_started_convo(void)
    return g_session.chat_started;
 }
 
+/* How many thread requests were accepted, so a test can see a conversation was
+ * fetched again without depending on when the network answers. */
+static int g_thread_requests;
+
 bool
 cobalt_session_begin_thread(const char *uri)
 {
@@ -804,5 +808,15 @@ cobalt_session_begin_thread(const char *uri)
    cobalt_job_input in;
    memset(&in, 0, sizeof(in));
    snprintf(in.uri, sizeof(in.uri), "%s", uri);
-   return cobalt_session_submit(COBALT_JOB_THREAD, &in);
+   if (!cobalt_session_submit(COBALT_JOB_THREAD, &in)) {
+      return false;
+   }
+   g_thread_requests++;
+   return true;
+}
+
+int
+cobalt_session_thread_requests(void)
+{
+   return g_thread_requests;
 }
