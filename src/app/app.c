@@ -90,9 +90,33 @@ cobalt_app_create(void)
 /* A thread or profile opened from `from` pushes it, so B from the new screen
  * goes back to it. When the stack is full the oldest return is dropped rather
  * than the newest, which is the one B is about to need. */
+/* The uri of the post the thread on screen was opened on, which is what
+ * cobalt_session_begin_thread takes to fetch that conversation again. Empty
+ * when no thread is loaded. Read it before a new thread is requested, since
+ * the request replaces the one on screen. */
 void
-cobalt_app_push_return(cobalt_app *app, cobalt_screen from)
+cobalt_app_current_thread_uri(char *out, size_t cap)
 {
+   const cobalt_thread *thread = cobalt_session_thread();
+
+   if (!out || cap == 0) {
+      return;
+   }
+   out[0] = '\0';
+   if (thread->focus >= 0 && thread->focus < thread->count) {
+      snprintf(out, cap, "%s", thread->posts[thread->focus].uri);
+   }
+}
+
+/* A thread or profile opened from `from` pushes it, so B from the new screen
+ * goes back to it. `thread_uri` is the conversation `from` showed, when it was
+ * a thread. When the stack is full the oldest return is dropped rather than the
+ * newest, which is the one B is about to need. */
+void
+cobalt_app_push_return(cobalt_app *app, cobalt_screen from, const char *thread_uri)
+{
+   cobalt_return *entry;
+
    if (!app) {
       return;
    }
@@ -101,16 +125,26 @@ cobalt_app_push_return(cobalt_app *app, cobalt_screen from)
               (COBALT_RETURN_DEPTH - 1) * sizeof(app->return_stack[0]));
       app->return_depth--;
    }
-   app->return_stack[app->return_depth++] = from;
+   entry = &app->return_stack[app->return_depth++];
+   entry->screen = from;
+   snprintf(entry->thread_uri, sizeof entry->thread_uri, "%s", thread_uri ? thread_uri : "");
 }
 
+/* Returns the screen to go back to. Going back to a thread also fetches that
+ * conversation again, since the session may hold another one by now. */
 cobalt_screen
 cobalt_app_pop_return(cobalt_app *app)
 {
+   const cobalt_return *entry;
+
    if (!app || app->return_depth == 0) {
       return COBALT_SCREEN_HOME;
    }
-   return app->return_stack[--app->return_depth];
+   entry = &app->return_stack[--app->return_depth];
+   if (entry->screen == COBALT_SCREEN_THREAD && entry->thread_uri[0]) {
+      cobalt_session_begin_thread(entry->thread_uri);
+   }
+   return entry->screen;
 }
 
 cobalt_screen
@@ -625,7 +659,7 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             case COBALT_PROFILE_VIEW_OPEN_THREAD:
                cobalt_thread_view_reset(&app->thread);
-               cobalt_app_push_return(app, COBALT_SCREEN_PROFILE);
+               cobalt_app_push_return(app, COBALT_SCREEN_PROFILE, NULL);
                app->screen = COBALT_SCREEN_THREAD;
                break;
             case COBALT_PROFILE_VIEW_MENU:
@@ -645,12 +679,12 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             case COBALT_TIMELINE_OPEN_THREAD:
                cobalt_thread_view_reset(&app->thread);
-               cobalt_app_push_return(app, COBALT_SCREEN_TIMELINE);
+               cobalt_app_push_return(app, COBALT_SCREEN_TIMELINE, NULL);
                app->screen = COBALT_SCREEN_THREAD;
                break;
             case COBALT_TIMELINE_OPEN_PROFILE:
                cobalt_profile_view_rewind(&app->profile);
-               cobalt_app_push_return(app, COBALT_SCREEN_TIMELINE);
+               cobalt_app_push_return(app, COBALT_SCREEN_TIMELINE, NULL);
                app->screen = COBALT_SCREEN_PROFILE;
                break;
             case COBALT_TIMELINE_COMPOSE:
@@ -718,12 +752,12 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             case COBALT_NOTIFY_OPEN_THREAD:
                cobalt_thread_view_reset(&app->thread);
-               cobalt_app_push_return(app, COBALT_SCREEN_NOTIFICATIONS);
+               cobalt_app_push_return(app, COBALT_SCREEN_NOTIFICATIONS, NULL);
                app->screen = COBALT_SCREEN_THREAD;
                break;
             case COBALT_NOTIFY_OPEN_PROFILE:
                cobalt_profile_view_rewind(&app->profile);
-               cobalt_app_push_return(app, COBALT_SCREEN_NOTIFICATIONS);
+               cobalt_app_push_return(app, COBALT_SCREEN_NOTIFICATIONS, NULL);
                app->screen = COBALT_SCREEN_PROFILE;
                break;
             case COBALT_NOTIFY_MENU: {
@@ -878,7 +912,7 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             case COBALT_GRAPH_VIEW_OPEN_PROFILE:
                cobalt_profile_view_rewind(&app->profile);
-               cobalt_app_push_return(app, COBALT_SCREEN_FOLLOWS_LIST);
+               cobalt_app_push_return(app, COBALT_SCREEN_FOLLOWS_LIST, NULL);
                app->screen = COBALT_SCREEN_PROFILE;
                break;
             case COBALT_GRAPH_VIEW_STAY:
@@ -894,7 +928,7 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             case COBALT_GRAPH_VIEW_OPEN_PROFILE:
                cobalt_profile_view_rewind(&app->profile);
-               cobalt_app_push_return(app, COBALT_SCREEN_LIKES_LIST);
+               cobalt_app_push_return(app, COBALT_SCREEN_LIKES_LIST, NULL);
                app->screen = COBALT_SCREEN_PROFILE;
                break;
             case COBALT_GRAPH_VIEW_STAY:
@@ -910,7 +944,7 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             case COBALT_SEARCH_VIEW_OPEN_PROFILE:
                cobalt_profile_view_rewind(&app->profile);
-               cobalt_app_push_return(app, COBALT_SCREEN_SEARCH);
+               cobalt_app_push_return(app, COBALT_SCREEN_SEARCH, NULL);
                app->screen = COBALT_SCREEN_PROFILE;
                break;
             case COBALT_SEARCH_VIEW_OPEN_POSTS:
@@ -931,7 +965,7 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             case COBALT_LISTS_VIEW_OPEN_PROFILE:
                cobalt_profile_view_rewind(&app->profile);
-               cobalt_app_push_return(app, COBALT_SCREEN_LISTS);
+               cobalt_app_push_return(app, COBALT_SCREEN_LISTS, NULL);
                app->screen = COBALT_SCREEN_PROFILE;
                break;
             case COBALT_LISTS_VIEW_STAY:
