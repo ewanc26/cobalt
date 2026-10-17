@@ -382,7 +382,7 @@ cobalt_app_update_account(cobalt_app *app, const cobalt_input *in)
          if (self[0]) {
             cobalt_session_begin_profile(self);
             cobalt_profile_view_rewind(&app->profile);
-            app->profile_return = COBALT_SCREEN_ACCOUNT;
+            cobalt_app_push_return(app, COBALT_SCREEN_ACCOUNT);
             app->screen = COBALT_SCREEN_PROFILE;
             COBALT_LOGI("account: opened own profile");
          }
