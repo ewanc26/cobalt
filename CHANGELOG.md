@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Fixed
+
+- Backing out of a thread opened from a profile that was itself opened from a thread no longer bounces between the profile and the outer thread. Each screen returns to the one it came from, down to the timeline, through a return stack in place of the single return slots. The snapshot suite now walks that chain. (#110)
+
 ## [0.11.1] - 2026-10-16
 
 ### Fixed
