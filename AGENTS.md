@@ -889,3 +889,7 @@ This block is byte-identical in every repo of the stack and is drift-checked by 
 - READMEs and logos follow `docs/house-style.md` (wolfram), checked by `flow / style`.
 - No secrets in the repo or its CI. No Vercel. No registry publishing.
 <!-- flow:end -->
+
+## File naming
+
+Source files are named `<scope>/<atom>.<ext>`: the directory is the scope and the file is one atom. This applies to every language, with the language's own extension (for C, `.c` and `.h`; for C++, `.cpp` and `.hpp`).
