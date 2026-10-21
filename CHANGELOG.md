@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Added
+
+- A video's poster shows its length, read from the video's HLS playlist with Wolfram's `wf_embed_video_playlist_duration`. The playlist is fetched off the frame loop, only when the poster is drawn, and once per playlist. A master or live playlist, or a failed fetch, shows no duration. Needs Wolfram's unreleased `wf_embed_video_playlist_duration` (on Wolfram main, PR #217); it is not in the pinned v0.41.0. (#102)
+
 ### Fixed
 
 - Backing out of a thread opened from a profile that was itself opened from a thread no longer bounces between the profile and the outer thread. Each screen returns to the one it came from, down to the timeline, through a return stack in place of the single return slots. The snapshot suite now walks that chain. (#110)

@@ -32,6 +32,7 @@
 #include "ui/listnav.h"
 #include "ui/popup.h"
 #include "ui/postcard.h"
+#include "ui/videoduration.h"
 #include "input/input.h"
 #include "util/entropy.h"
 #include "util/rng.h"
@@ -1217,6 +1218,35 @@ test_entropy_gather(const char *root)
    memset(&in, 0, sizeof in);
    in.pressed[COBALT_BTN_BACK] = true;
    CHECK(cobalt_entropy_view_update(&v, &in, 0) == COBALT_ENTROPY_VIEW_SKIP);
+}
+
+static void
+test_video_duration_format(void)
+{
+   char out[16];
+
+   begin("a video duration reads as m:ss, or h:mm:ss from an hour");
+   CHECK(cobalt_video_duration_format(0.0, out, sizeof(out)));
+   CHECK_STR(out, "0:00");
+   CHECK(cobalt_video_duration_format(5.4, out, sizeof(out)));
+   CHECK_STR(out, "0:05");
+   CHECK(cobalt_video_duration_format(83.4, out, sizeof(out)));
+   CHECK_STR(out, "1:23");
+   CHECK(cobalt_video_duration_format(754.6, out, sizeof(out)));
+   CHECK_STR(out, "12:35");
+   CHECK(cobalt_video_duration_format(3723.0, out, sizeof(out)));
+   CHECK_STR(out, "1:02:03");
+   CHECK(cobalt_video_duration_format(36000.0, out, sizeof(out)));
+   CHECK_STR(out, "10:00:00");
+
+   begin("a duration that is negative, not finite or too long for the text is unknown");
+   out[0] = 'x';
+   CHECK(!cobalt_video_duration_format(-1.0, out, sizeof(out)));
+   CHECK_STR(out, "");
+   CHECK(!cobalt_video_duration_format(NAN, out, sizeof(out)));
+   CHECK_STR(out, "");
+   CHECK(!cobalt_video_duration_format(83.0, out, 3));
+   CHECK_STR(out, "");
 }
 
 static void
@@ -3240,6 +3270,7 @@ main(int argc, char **argv)
    test_feed_counts();
    test_feed_embeds();
    test_feed_link_domain();
+   test_video_duration_format();
    test_prefs();
    test_update_manifest();
    test_update_staging(root);

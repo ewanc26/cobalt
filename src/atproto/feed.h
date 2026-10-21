@@ -97,7 +97,10 @@ typedef struct {
     * video's poster frame is drawn on the same card (title "Video", the alt
     * text as the description) with no address to show. */
    bool video;
-   char duration[16];  /* "1:23" or "12:34", empty when unknown */
+   /* A video's HLS playlist, empty when absent. Its duration is not known
+    * here: the poster looks it up when drawn (ui/videoduration.h), so the
+    * playlist is only fetched for a video that is on screen. */
+   char video_playlist[COBALT_POST_LINK_URI_MAX];
    char uri[COBALT_POST_LINK_URI_MAX];
    char title[COBALT_POST_LINK_TITLE_MAX];
    char description[COBALT_POST_LINK_DESC_MAX];
