@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Added
+
+- A video's poster shows its length, read from the video's HLS playlist with Wolfram's `wf_embed_video_playlist_duration`. The playlist is fetched off the frame loop, only when the poster is drawn, and once per playlist. A master or live playlist, or a failed fetch, shows no duration. Needs Wolfram's unreleased `wf_embed_video_playlist_duration` (on Wolfram main, PR #217); it is not in the pinned v0.41.0. (#102)
+
 ### Fixed
 
 - Going back to a thread fetches its conversation again. The return stack remembers which thread each screen showed, so after a nested unwind the outer thread no longer shows the inner conversation. (#110)
