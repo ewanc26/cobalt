@@ -37,6 +37,10 @@
 #include "util/rng.h"
 #include "util/clock.h"
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <SDL.h>
 
 #include <stdio.h>
@@ -2411,6 +2415,33 @@ test_delete_post_helpers(void)
 
 /* --- the async request handshake --- */
 
+/* A loopback listener that accepts connections but never answers, so a login
+ * against it stays in flight until the listener is closed. That makes the
+ * "refused while busy" check deterministic, instead of racing a host job that
+ * can finish before the second request is made. Returns -1 on failure. */
+static int
+hold_listener(int *port_out)
+{
+   struct sockaddr_in addr;
+   socklen_t len = sizeof(addr);
+   int fd = socket(AF_INET, SOCK_STREAM, 0);
+
+   if (fd < 0) {
+      return -1;
+   }
+   memset(&addr, 0, sizeof(addr));
+   addr.sin_family = AF_INET;
+   addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+   addr.sin_port = 0;
+   if (bind(fd, (struct sockaddr *) &addr, sizeof(addr)) != 0 || listen(fd, 4) != 0 ||
+       getsockname(fd, (struct sockaddr *) &addr, &len) != 0) {
+      close(fd);
+      return -1;
+   }
+   *port_out = ntohs(addr.sin_port);
+   return fd;
+}
+
 /*
  * Exercises the worker thread end to end. Without Wolfram every job fails with
  * a fixed message, which is uninteresting in itself — the point is that a
@@ -2439,13 +2470,21 @@ test_session_request_handshake(void)
    CHECK(!cobalt_session_begin_login("bsky.social", "", "app-pass"));
    CHECK(!cobalt_session_begin_login("bsky.social", "someone.test", ""));
 
-   CHECK(cobalt_session_begin_login("bsky.social", "someone.test", "app-pass"));
-
    /* A second request while one is in flight must be refused rather than
-    * queued behind it or, worse, racing it onto the same wf_session. Guarded
-    * because a host job finishes almost instantly and may already be done. */
-   if (cobalt_session_busy()) {
-      CHECK(!cobalt_session_begin_login("bsky.social", "other.test", "pass"));
+    * queued behind it or, worse, racing it onto the same wf_session. The first
+    * login goes to a listener that never answers, so it is still in flight when
+    * the second is made. */
+   int port = 0;
+   int listener = hold_listener(&port);
+   CHECK(listener >= 0);
+   char held[64];
+   snprintf(held, sizeof held, "http://127.0.0.1:%d", port);
+   CHECK(cobalt_session_begin_login(held, "someone.test", "app-pass"));
+   CHECK(cobalt_session_busy());
+   CHECK(!cobalt_session_begin_login(held, "other.test", "pass"));
+   /* Closing the listener resets the held connection, so the job fails fast. */
+   if (listener >= 0) {
+      close(listener);
    }
 
    bool completed = false;
