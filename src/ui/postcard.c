@@ -1,6 +1,7 @@
 #include "ui/postcard.h"
 
 #include "ui/imagecache.h"
+#include "ui/videoduration.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -492,8 +493,14 @@ draw_link_card(cobalt_render *r, const cobalt_post *post, int x, int y,
                                      text_x, ty, text_width, 1,
                                      COBALT_COLOUR_TEXT);
    }
-   if (post->link.duration[0]) {
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, post->link.duration,
+   /* Only a video's poster has a duration, and it is looked up here, on
+    * screen, so a playlist is fetched for nothing that is not drawn. Nothing
+    * is drawn until it is known. */
+   const char *duration = post->link.video
+      ? cobalt_video_duration_lookup(post->link.video_playlist)
+      : NULL;
+   if (duration) {
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, duration,
                        text_x, ty, COBALT_COLOUR_TEXT_DIM);
       ty += caption_h;
    }

@@ -105,6 +105,7 @@ UNIT_SOURCES := \
 	$(SRC)/app/signin.c \
 	$(SRC)/net/http.c \
 	$(SRC)/ui/imagecache.c \
+	$(SRC)/ui/videoduration.c \
 	$(SRC)/ui/keyboard.c \
 	$(SRC)/ui/popup.c \
 	$(SRC)/ui/imageview.c \

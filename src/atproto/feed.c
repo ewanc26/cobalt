@@ -495,6 +495,10 @@ apply_embed(cobalt_post *post, const wf_post_embed *embed)
       cobalt_feed_copy_text(post->link.description,
                             sizeof(post->link.description),
                             embed->video_alt ? embed->video_alt : "");
+      if (embed->video_playlist) {
+         snprintf(post->link.video_playlist, sizeof(post->link.video_playlist),
+                  "%s", embed->video_playlist);
+      }
    }
 
    /* Real media is now drawn, so the bracket note that used to stand in for

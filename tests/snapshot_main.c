@@ -6,7 +6,10 @@
 #include "app/app.h"
 #include "app/app_internal.h"
 #include "atproto/session.h"
+#include "atproto/feed.h"
+#include "ui/videoduration.h"
 #include "../../wolfram/test/mock_pds.h"
+#include <wolfram/feed_typed.h>
 #include "input/input.h"
 #include "ui/render.h"
 #include "fixtures.h"
@@ -20,6 +23,140 @@
 static int failures, checks;
 #define CHECK(c) do { checks++; if (!(c)) { failures++; \
    printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); } } while (0)
+#define CHECK_STR(actual, expected) do { checks++; \
+   if (!(actual) || strcmp((actual), (expected)) != 0) { failures++; \
+   printf("FAIL %s:%d got \"%s\", wanted \"%s\"\n", __FILE__, __LINE__, \
+          (actual) ? (actual) : "(null)", (expected)); } } while (0)
+
+/*
+ * Video durations (ui/videoduration.h). The playlist fetch is replaced by a
+ * fake, and no loader thread is started, so drain() resolves the queue on this
+ * thread. The chain under test is real: a postView JSON is parsed by Wolfram,
+ * flattened into a post, drawn (lookup), and then resolved.
+ */
+static const char *s_fake_body;
+static int s_fake_calls;
+static char s_fake_url[256];
+
+static bool
+fake_fetch(const char *url, cobalt_http_response *out)
+{
+   s_fake_calls++;
+   snprintf(s_fake_url, sizeof s_fake_url, "%s", url);
+   if (!s_fake_body) return false;
+   size_t n = strlen(s_fake_body);
+   out->data = malloc(n + 1);
+   if (!out->data) return false;
+   memcpy(out->data, s_fake_body, n + 1);
+   out->size = n;
+   out->status = 200;
+   return true;
+}
+
+static const char *const VOD_PLAYLIST =
+   "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:60\n"
+   "#EXTINF:60.000,\nseg0.ts\n#EXTINF:23.400,\nseg1.ts\n#EXT-X-ENDLIST\n";
+static const char *const LIVE_PLAYLIST =
+   "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:60\n"
+   "#EXTINF:60.000,\nseg0.ts\n#EXTINF:23.400,\nseg1.ts\n";
+static const char *const MASTER_PLAYLIST =
+   "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\n"
+   "var/360p.m3u8\n";
+
+static const char *
+video_post_json(const char *n, const char *playlist)
+{
+   static char buf[2400];
+   snprintf(buf, sizeof buf,
+      "{\"posts\":[{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/%s\","
+      "\"cid\":\"bafy%s\",\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\"},"
+      "\"record\":{\"$type\":\"app.bsky.feed.post\",\"text\":\"clip\","
+      "\"createdAt\":\"2026-10-01T10:00:00.000Z\"},"
+      "\"embed\":{\"$type\":\"app.bsky.embed.video#view\",\"cid\":\"bafyvid\","
+      "\"playlist\":\"%s\",\"thumbnail\":\"https://video.test/th/%s.jpg\","
+      "\"alt\":\"a clip\"},"
+      "\"likeCount\":0,\"repostCount\":0,\"replyCount\":0,"
+      "\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}]}", n, n, playlist, n);
+   return buf;
+}
+
+static void
+check_video_durations(void)
+{
+   cobalt_video_duration_set_fetcher(fake_fetch);
+   cobalt_video_duration_reset_for_test();
+
+   /* Parsing: the duration of a finished playlist is its EXTINF sum, and a
+    * master or live playlist has none. Wolfram does the parsing. */
+   double seconds = 0.0;
+   CHECK(cobalt_video_duration_parse(VOD_PLAYLIST, strlen(VOD_PLAYLIST), &seconds));
+   CHECK(seconds > 83.39 && seconds < 83.41);
+   CHECK(!cobalt_video_duration_parse(MASTER_PLAYLIST, strlen(MASTER_PLAYLIST), &seconds));
+   CHECK(!cobalt_video_duration_parse(LIVE_PLAYLIST, strlen(LIVE_PLAYLIST), &seconds));
+
+   /* A feed flatten fetches nothing: the playlist URI is only recorded. */
+   static cobalt_feed feed;
+   static wf_agent_post_list list;
+   memset(&feed, 0, sizeof feed);
+   memset(&list, 0, sizeof list);
+   const char *json = video_post_json("v1", "https://video.test/pl/v1.m3u8");
+   CHECK(wf_agent_parse_posts(json, strlen(json), &list) == WF_OK);
+   CHECK(cobalt_feed_append_posts_from_wolfram(&feed, &list, NULL, 0) == 1);
+   CHECK(feed.count == 1);
+   CHECK(feed.posts[0].link.video);
+   CHECK_STR(feed.posts[0].link.video_playlist, "https://video.test/pl/v1.m3u8");
+   CHECK(cobalt_video_duration_drain() == 0);
+   CHECK(s_fake_calls == 0);
+
+   /* The first draw queues the fetch, and nothing shows until it resolves. */
+   s_fake_body = VOD_PLAYLIST;
+   CHECK(cobalt_video_duration_lookup(feed.posts[0].link.video_playlist) == NULL);
+   CHECK(s_fake_calls == 0);
+   CHECK(cobalt_video_duration_drain() == 1);
+   CHECK(s_fake_calls == 1);
+   CHECK_STR(s_fake_url, "https://video.test/pl/v1.m3u8");
+   CHECK_STR(cobalt_video_duration_lookup(feed.posts[0].link.video_playlist), "1:23");
+
+   /* Later draws, frame after frame, read the stored text and fetch nothing. */
+   for (int i = 0; i < 5; i++) {
+      CHECK_STR(cobalt_video_duration_lookup(feed.posts[0].link.video_playlist), "1:23");
+   }
+   CHECK(cobalt_video_duration_drain() == 0);
+   CHECK(s_fake_calls == 1);
+
+   /* A master playlist shows no duration, and is not fetched again. */
+   static cobalt_feed master_feed;
+   static wf_agent_post_list master_list;
+   memset(&master_feed, 0, sizeof master_feed);
+   memset(&master_list, 0, sizeof master_list);
+   const char *master_json = video_post_json("v2", "https://video.test/pl/v2.m3u8");
+   CHECK(wf_agent_parse_posts(master_json, strlen(master_json), &master_list) == WF_OK);
+   CHECK(cobalt_feed_append_posts_from_wolfram(&master_feed, &master_list, NULL, 0) == 1);
+   s_fake_body = MASTER_PLAYLIST;
+   CHECK(cobalt_video_duration_lookup(master_feed.posts[0].link.video_playlist) == NULL);
+   CHECK(cobalt_video_duration_drain() == 1);
+   CHECK(cobalt_video_duration_lookup(master_feed.posts[0].link.video_playlist) == NULL);
+   CHECK(cobalt_video_duration_lookup(master_feed.posts[0].link.video_playlist) == NULL);
+   CHECK(cobalt_video_duration_drain() == 0);
+   CHECK(s_fake_calls == 2);
+
+   /* A failed fetch and a live playlist both leave the duration unknown. */
+   s_fake_body = NULL;
+   CHECK(cobalt_video_duration_lookup("https://video.test/pl/v3.m3u8") == NULL);
+   CHECK(cobalt_video_duration_drain() == 1);
+   CHECK(cobalt_video_duration_lookup("https://video.test/pl/v3.m3u8") == NULL);
+   CHECK(s_fake_calls == 3);
+   s_fake_body = LIVE_PLAYLIST;
+   CHECK(cobalt_video_duration_lookup("https://video.test/pl/v4.m3u8") == NULL);
+   CHECK(cobalt_video_duration_drain() == 1);
+   CHECK(cobalt_video_duration_lookup("https://video.test/pl/v4.m3u8") == NULL);
+   CHECK(s_fake_calls == 4);
+
+   wf_agent_post_list_free(&list);
+   wf_agent_post_list_free(&master_list);
+   cobalt_video_duration_set_fetcher(NULL);
+   cobalt_video_duration_reset_for_test();
+}
 
 static int
 distinct_colours(SDL_Surface *s)
@@ -222,6 +359,7 @@ main(int argc, char **argv)
    CHECK(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) == 0);
    if (TTF_Init() != 0) { printf("TTF_Init failed\n"); return 1; }
    (void) cobalt_session_init();
+   check_video_durations();
 
    g_tv = cobalt_render_create(COBALT_SURFACE_TV, font, false);
    g_drc = cobalt_render_create(COBALT_SURFACE_DRC, font, false);

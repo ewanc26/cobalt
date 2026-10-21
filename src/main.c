@@ -30,6 +30,7 @@
 #include "ui/postcard.h"
 #include "ui/render.h"
 #include "ui/theme.h"
+#include "ui/videoduration.h"
 #include "util/buildinfo.h"
 #include "util/log.h"
 #include "util/paths.h"
@@ -126,6 +127,7 @@ shutdown_all(cobalt_context *ctx)
       cobalt_imagecache_destroy(ctx->tv_images);
       ctx->tv_images = NULL;
    }
+   cobalt_video_duration_shutdown();
    if (ctx->images_up) {
       cobalt_images_shutdown();
       ctx->images_up = false;
@@ -228,6 +230,11 @@ startup(cobalt_context *ctx)
     * After cobalt_session_init(), which is what resolves the trust store.
     */
    ctx->images_up = cobalt_images_init(cobalt_session_ca_path());
+   /* Video durations are fetched through the same HTTP client, so they start
+    * only once it is up. A failed start leaves posters without a duration. */
+   if (ctx->images_up) {
+      cobalt_video_duration_init();
+   }
    if (ctx->images_up) {
       ctx->tv_images = cobalt_imagecache_create(COBALT_AVATAR_TEXTURE_MAX,
                                                 COBALT_IMAGE_FIT_CIRCLE);
