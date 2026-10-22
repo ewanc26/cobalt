@@ -36,6 +36,13 @@ typedef enum {
     */
    COBALT_BTN_ALT_X,
    COBALT_BTN_ALT_Y,
+   /*
+    * The L and R shoulder buttons. The TV's right-hand detail column scrolls
+    * on these, because every face button and both sticks are taken on the TV
+    * (the sticks drive the D-pad). Not mapped on the GamePad layout.
+    */
+   COBALT_BTN_SHOULDER_L,
+   COBALT_BTN_SHOULDER_R,
    COBALT_BTN_COUNT,
 } cobalt_button;
 

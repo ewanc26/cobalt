@@ -31,6 +31,7 @@ cobalt_thread_view_reset(cobalt_thread_view *view)
    }
    cobalt_listnav_rewind(&view->nav);
    view->text_scroll = 0;
+   view->detail_scroll = 0;
    view->text_for = 0;
    view->centred = false;
    view->confirm_delete = false;
@@ -105,8 +106,19 @@ cobalt_thread_view_update(cobalt_thread_view *view, const cobalt_input *in)
    if (view->nav.selected != view->text_for) {
       view->text_for = view->nav.selected;
       view->text_scroll = 0;
+      view->detail_scroll = 0;
       view->text_total = 0;
       view->text_window = 0;
+   }
+
+   /* L and R move the TV's detail column a line at a time. They never move the
+    * selection, and the bound is the one the last TV draw measured. */
+   if (cobalt_input_pressed(in, COBALT_BTN_SHOULDER_R) &&
+       view->detail_scroll < view->detail_max) {
+      view->detail_scroll++;
+   }
+   if (cobalt_input_pressed(in, COBALT_BTN_SHOULDER_L) && view->detail_scroll > 0) {
+      view->detail_scroll--;
    }
 
    if (view->nav.hit_valid && in->touch_ended) {
@@ -115,6 +127,7 @@ cobalt_thread_view_update(cobalt_thread_view *view, const cobalt_input *in)
             view->nav.selected = view->nav.hit_index[i];
             view->text_for = view->nav.selected;
             view->text_scroll = 0;
+            view->detail_scroll = 0;
             view->text_total = 0;
             view->text_window = 0;
             break;
@@ -246,6 +259,10 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
    int win = 0;
    int first = 0;
    int tot = 0;
+   /* The TV column's "more" line is set again by every TV draw. */
+   if (split) {
+      view->detail_more = (SDL_Rect){ 0, 0, 0, 0 };
+   }
    if (view->nav.selected >= 0 && view->nav.selected < thread->count) {
       const cobalt_post *sp = &thread->posts[view->nav.selected];
       const int full_w = split ? detail_w : m->width - 2 * m->pad_edge;
@@ -254,24 +271,32 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
       const int line_h = cobalt_font_line_height(r, COBALT_FONT_BODY) + m->line_gap;
       const int base = cobalt_postcard_height(r, sp, 0, true);
       int fit = line_h > 0 ? (bottom - top - base) / line_h : TEXT_LINES;
+      /* A column whose text overflows keeps one line free for the "more" mark. */
+      if (split && total > fit) {
+         fit--;
+      }
       if (fit < TEXT_LINES) {
          fit = TEXT_LINES;
       }
       sel_lines = total < fit ? (total > TEXT_LINES ? total : TEXT_LINES) : fit;
       win = sel_lines < total ? sel_lines : total;
-      if (touchable) {
-         view->text_total = total;
-         view->text_window = win;
-      }
       tot = total;
-      first = view->text_scroll;
+      /* The TV column has its own offset (detail_scroll); the GamePad card
+       * keeps text_scroll and its read-through measure. */
+      first = split ? view->detail_scroll : view->text_scroll;
       if (first > total - win) {
          first = total - win;
       }
       if (first < 0) {
          first = 0;
       }
-      if (touchable) {
+      if (split) {
+         /* As in the timeline, the draw shows a clamped offset but leaves the
+          * state to update, which keeps it within detail_max. */
+         view->detail_max = total - win > 0 ? total - win : 0;
+      } else if (touchable) {
+         view->text_total = total;
+         view->text_window = win;
          view->text_scroll = first;
       }
    }
@@ -342,14 +367,23 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
                                     thread->depth[view->nav.selected], first);
       if (tot > win && win > 0) {
          draw_text_scrollbar(r, m, &rect, first, win, tot);
+         const SDL_Rect column = { x, top, detail_w, bottom - top };
+         view->detail_more = cobalt_postcard_draw_more(r, &column, bottom);
       }
    }
 
    cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);
 
-   cobalt_draw_hints(r, view->confirm_delete
-                       ? "Delete this post for good?   A: delete   B: keep it"
-                    : cobalt_session_busy()
-                       ? "Working..."
-                       : "A: open/reply   Y: more   Left: like   Right: repost");
+   char footer[120];
+   if (view->confirm_delete) {
+      snprintf(footer, sizeof footer, "Delete this post for good?   A: delete   B: keep it");
+   } else if (cobalt_session_busy()) {
+      snprintf(footer, sizeof footer, "Working...");
+   } else if (split && view->detail_more.w > 0) {
+      snprintf(footer, sizeof footer,
+               "A: open/reply   Y: more   Left: like   Right: repost   L/R: scroll text");
+   } else {
+      snprintf(footer, sizeof footer, "A: open/reply   Y: more   Left: like   Right: repost");
+   }
+   cobalt_draw_hints(r, footer);
 }

@@ -12,6 +12,7 @@
 #include "app/queue_store.h"
 #include "app/graph.h"
 #include "app/search.h"
+#include "app/timeline.h"
 #include "app/signin.h"
 #include "app/update.h"
 #include "app/entropyview.h"
@@ -3157,6 +3158,51 @@ test_touch_drag_scrolls_a_list(void)
 }
 
 static void
+button_event(cobalt_input *in, Uint8 button, Uint32 type)
+{
+   SDL_Event e;
+   memset(&e, 0, sizeof(e));
+   e.type = type;
+   e.cbutton.button = button;
+   cobalt_input_handle_event(in, &e);
+}
+
+static void
+test_refresh_rewinds_detail(void)
+{
+   begin("a refresh rewinds the timeline and starts its detail column at the top");
+   cobalt_timeline view;
+   cobalt_timeline_init(&view);
+   view.detail_scroll = 2;
+   view.detail_max = 4;
+   cobalt_timeline_rewind(&view);
+   CHECK(view.detail_scroll == 0);
+   CHECK(view.nav.selected == 0);
+}
+
+static void
+test_shoulder_buttons(void)
+{
+   begin("L and R press their own buttons, and no face button or stick");
+   cobalt_input in;
+   cobalt_input_init(&in);
+
+   button_event(&in, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER, SDL_CONTROLLERBUTTONDOWN);
+   CHECK(cobalt_input_pressed(&in, COBALT_BTN_SHOULDER_R));
+   CHECK(!cobalt_input_pressed(&in, COBALT_BTN_SHOULDER_L));
+   CHECK(!cobalt_input_pressed(&in, COBALT_BTN_DOWN));
+   CHECK(!cobalt_input_pressed(&in, COBALT_BTN_ALT_X));
+   button_event(&in, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER, SDL_CONTROLLERBUTTONUP);
+
+   cobalt_input_begin_frame(&in, 0);
+   button_event(&in, SDL_CONTROLLER_BUTTON_LEFTSHOULDER, SDL_CONTROLLERBUTTONDOWN);
+   CHECK(cobalt_input_pressed(&in, COBALT_BTN_SHOULDER_L));
+   CHECK(!cobalt_input_pressed(&in, COBALT_BTN_SHOULDER_R));
+   CHECK(!cobalt_input_pressed(&in, COBALT_BTN_UP));
+   button_event(&in, SDL_CONTROLLER_BUTTON_LEFTSHOULDER, SDL_CONTROLLERBUTTONUP);
+}
+
+static void
 test_both_sticks_navigate(void)
 {
    begin("both sticks act as a D-pad");
@@ -3492,6 +3538,8 @@ main(int argc, char **argv)
    test_compose();
    test_compose_thread();
    test_both_sticks_navigate();
+   test_shoulder_buttons();
+   test_refresh_rewinds_detail();
    test_touch_drag_scrolls_a_list();
    test_popup_touch();
    test_popup_link_qr();

@@ -44,6 +44,8 @@ map_button(Uint8 sdl_button, cobalt_button *out)
       case SDL_CONTROLLER_BUTTON_START:      *out = COBALT_BTN_MENU;    return true;
       case SDL_CONTROLLER_BUTTON_X:          *out = COBALT_BTN_ALT_X;   return true;
       case SDL_CONTROLLER_BUTTON_Y:          *out = COBALT_BTN_ALT_Y;   return true;
+      case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:  *out = COBALT_BTN_SHOULDER_L; return true;
+      case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: *out = COBALT_BTN_SHOULDER_R; return true;
       default:                                                          return false;
    }
 }

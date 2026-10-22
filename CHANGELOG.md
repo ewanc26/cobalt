@@ -12,6 +12,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 - A video whose playlist is a master playlist shows the length of one variant (the lowest bandwidth), followed once, at most two playlist fetches per video. ([#102](https://github.com/ewanc26/cobalt/issues/102))
 - A video's poster shows its length, read from the video's HLS playlist with Wolfram's `wf_embed_video_playlist_duration`. The playlist is fetched off the frame loop, only when the poster is drawn, and once per playlist. A master or live playlist, or a failed fetch, shows no duration. Needs Wolfram's unreleased `wf_embed_video_playlist_duration` (on Wolfram main, PR #217); it is not in the pinned v0.41.0. (#102)
 
+### Changed
+
+- On the TV, the selected post in the timeline and thread shows as much of its text as fits in the right-hand column. A longer post ends in a "More below" line, and L and R scroll its text one line at a time. The list selection does not move while scrolling, and moving to another post starts its text at the top. The GamePad layout is unchanged. (#111)
+
 ### Fixed
 
 - Going back to a thread fetches its conversation again. The return stack remembers which thread each screen showed, so after a nested unwind the outer thread no longer shows the inner conversation. (#110)
