@@ -9,6 +9,11 @@
  * the screen opens it. Rows are the same compact shape as notifications rather
  * than post cards: a conversation is a person and a line of text, not a post
  * to read in full.
+ *
+ * Y shows the message requests: conversations someone else started. There A
+ * accepts the highlighted one, which then opens, and X declines it, which only
+ * removes it from the list. Each is one explicit press and one job; nothing is
+ * sent on entry, and nothing is retried.
  */
 
 #include "atproto/chat.h"
@@ -31,7 +36,35 @@ typedef enum {
    /* A handle or DID was accepted from the keyboard. The caller begins the
     * start job with the target, then reports whether it began. */
    COBALT_MESSAGES_START,
+   /* A request was accepted or declined. The target is in view->decision; the
+    * caller begins the job and reports whether it began. */
+   COBALT_MESSAGES_ACCEPT,
+   COBALT_MESSAGES_DECLINE,
 } cobalt_messages_action;
+
+typedef enum {
+   COBALT_MESSAGES_MODE_INBOX = 0,
+   COBALT_MESSAGES_MODE_REQUESTS,
+} cobalt_messages_mode;
+
+/*
+ * The one accept or decline in flight, or the one last pressed. Set when a
+ * press is made, and `pending` only once the job has begun, so a refused press
+ * cannot leave a decision marked as in flight.
+ */
+typedef struct {
+   char convo_id[COBALT_CHAT_ID_MAX];
+   char name[COBALT_POST_NAME_MAX];   /* the counterpart, for opening it */
+   bool accept;                       /* true to accept, false to decline */
+   bool pending;                      /* the job is in flight */
+} cobalt_messages_decision;
+
+typedef enum {
+   COBALT_MESSAGES_DECISION_NONE = 0,   /* no job was in flight */
+   COBALT_MESSAGES_DECISION_ACCEPTED,
+   COBALT_MESSAGES_DECISION_DECLINED,
+   COBALT_MESSAGES_DECISION_FAILED,
+} cobalt_messages_decision_outcome;
 
 /*
  * The new-conversation state, apart from the screen so its transitions can be
@@ -53,7 +86,10 @@ typedef enum {
 
 typedef struct {
    cobalt_listnav nav;
+   cobalt_listnav requests_nav;
+   cobalt_messages_mode mode;
    cobalt_messages_start start;
+   cobalt_messages_decision decision;
 } cobalt_messages_view;
 
 void cobalt_messages_view_init(cobalt_messages_view *view);
@@ -83,6 +119,17 @@ cobalt_messages_start_outcome cobalt_messages_start_finished(cobalt_messages_sta
 
 /* The target as a display name: no leading '@' and no surrounding spaces. */
 bool cobalt_messages_start_name(const cobalt_messages_start *s, char *out, size_t cap);
+
+/* The accept or decline job began (`began`). A refusal changes nothing, so an
+ * accept already in flight keeps its state. */
+void cobalt_messages_decision_began(cobalt_messages_view *view, bool began);
+
+/*
+ * The accept or decline job finished. Only a finish that follows a began
+ * decision counts; otherwise NONE. A failure leaves the request where it is.
+ */
+cobalt_messages_decision_outcome cobalt_messages_decision_finished(cobalt_messages_view *view,
+                                                                   bool ok);
 
 #ifdef __cplusplus
 }
