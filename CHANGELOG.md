@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-22
+
 ### Added
 
 - A video whose playlist is a master playlist shows the length of one variant (the lowest bandwidth), followed once, at most two playlist fetches per video. ([#102](https://github.com/ewanc26/cobalt/issues/102))
@@ -247,7 +249,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/ewanc26/cobalt/compare/v0.11.1...v0.12.0
 [0.10.0]: https://github.com/ewanc26/cobalt/compare/v0.9.1...v0.10.0
 [0.9.0]: https://github.com/ewanc26/cobalt/compare/v0.8.1...v0.9.0
 [0.9.1]: https://github.com/ewanc26/cobalt/compare/v0.9.0...v0.9.1
