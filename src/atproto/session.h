@@ -96,6 +96,8 @@ typedef enum {
    COBALT_JOB_CHAT_SEND,
    COBALT_JOB_CHAT_START,
    COBALT_JOB_CHAT_REQUESTS,
+   COBALT_JOB_CHAT_ACCEPT,
+   COBALT_JOB_CHAT_DECLINE,
 } cobalt_job_kind;
 
 typedef struct {
@@ -320,6 +322,21 @@ bool cobalt_session_begin_chat_requests(bool paging);
 
 /* The request inbox as last fetched; never NULL. */
 const cobalt_chat_inbox *cobalt_session_chat_requests(void);
+
+/*
+ * Accept the request for `convo_id`. On success the conversation moves to the
+ * inbox, which is refreshed by hand only when it is already loaded, and leaves
+ * the request list. Refused, without a job, when the id is not a valid convo id
+ * or another request is in flight. Never retried: a failure leaves the request.
+ */
+bool cobalt_session_begin_chat_accept(const char *convo_id);
+
+/*
+ * Decline the request for `convo_id`, by leaving the conversation. Same rules
+ * as cobalt_session_begin_chat_accept. The server keeps the membership but
+ * stops listing the conversation for the viewer.
+ */
+bool cobalt_session_begin_chat_decline(const char *convo_id);
 
 /*
  * Fetch the newest messages of one conversation, by its convo id. Read-only.

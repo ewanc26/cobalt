@@ -630,7 +630,99 @@ cobalt_session_run_chat_start(const cobalt_job_input *in, cobalt_job_result *r,
    r->ok = true;
 }
 
+/* Accept or decline one request. Both come through here: the call differs, and
+ * the list change is the same. The convo id is in `in->uri`. */
+static void
+cobalt_session_run_convo_decision(const cobalt_job_input *in, cobalt_job_result *r,
+                                  cobalt_auth_state *state, bool accept)
+{
+   const cobalt_job_kind kind = accept ? COBALT_JOB_CHAT_ACCEPT : COBALT_JOB_CHAT_DECLINE;
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in to see messages.");
+      return;
+   }
+
+   char id[COBALT_CHAT_ID_MAX];
+   if (!cobalt_chat_convo_id_copy(id, sizeof(id), in->uri)) {
+      cobalt_session_set_message(r, "That message request is not valid.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   /* Accepting answers with a rev or nothing, and declining with the convo ref.
+    * Neither body is needed, so the status-only calls are used: the typed
+    * wrapper for accept parses a convoView, which the server does not send. */
+   COBALT_LOGI("session: %s", accept ? "acceptConvo" : "leaveConvo");
+   wf_status status = accept ? wf_agent_chat_accept_convo(g_session.wf, id)
+                             : wf_agent_chat_leave_convo(g_session.wf, id);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: %s failed (%d)", accept ? "acceptConvo" : "leaveConvo", (int) status);
+      cobalt_session_describe_failure(r, status, kind);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   /* Accepted, the conversation joins the inbox, copied from the request list
+    * so no fetch is needed. Only when the inbox is already loaded: an empty one
+    * is fetched when Messages is opened, and one row would hide the rest. */
+   SDL_LockMutex(g_session.lock);
+   const cobalt_chat_convo *row = cobalt_chat_inbox_find(&g_session.requests, id);
+   if (row) {
+      cobalt_chat_convo moved = *row;
+      cobalt_chat_inbox_remove(&g_session.requests, id);
+      if (accept && g_session.chat.count > 0) {
+         cobalt_chat_inbox_add_front(&g_session.chat, &moved);
+      }
+   }
+   SDL_UnlockMutex(g_session.lock);
+
+   cobalt_session_publish();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+void
+cobalt_session_run_chat_accept(const cobalt_job_input *in, cobalt_job_result *r,
+                               cobalt_auth_state *state)
+{
+   cobalt_session_run_convo_decision(in, r, state, true);
+}
+
+void
+cobalt_session_run_chat_decline(const cobalt_job_input *in, cobalt_job_result *r,
+                                cobalt_auth_state *state)
+{
+   cobalt_session_run_convo_decision(in, r, state, false);
+}
+
 #endif /* COBALT_HAS_WOLFRAM */
+
+bool
+cobalt_session_begin_chat_accept(const char *convo_id)
+{
+   char id[COBALT_CHAT_ID_MAX];
+   if (!cobalt_chat_convo_id_copy(id, sizeof(id), convo_id)) {
+      return false;
+   }
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", id);
+   return cobalt_session_submit(COBALT_JOB_CHAT_ACCEPT, &in);
+}
+
+bool
+cobalt_session_begin_chat_decline(const char *convo_id)
+{
+   char id[COBALT_CHAT_ID_MAX];
+   if (!cobalt_chat_convo_id_copy(id, sizeof(id), convo_id)) {
+      return false;
+   }
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", id);
+   return cobalt_session_submit(COBALT_JOB_CHAT_DECLINE, &in);
+}
 
 bool
 cobalt_session_begin_timeline(bool paging)
