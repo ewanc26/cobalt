@@ -9,6 +9,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Added
 
+- A video whose playlist is a master playlist shows the length of one variant (the lowest bandwidth), followed once, at most two playlist fetches per video. ([#102](https://github.com/ewanc26/cobalt/issues/102))
 - A video's poster shows its length, read from the video's HLS playlist with Wolfram's `wf_embed_video_playlist_duration`. The playlist is fetched off the frame loop, only when the poster is drawn, and once per playlist. A master or live playlist, or a failed fetch, shows no duration. Needs Wolfram's unreleased `wf_embed_video_playlist_duration` (on Wolfram main, PR #217); it is not in the pinned v0.41.0. (#102)
 
 ### Fixed
