@@ -298,6 +298,9 @@ cobalt_session_describe_failure(cobalt_job_result *r, wf_status status, cobalt_j
          } else if (kind == COBALT_JOB_CHAT_START) {
             cobalt_session_set_message(r, "Could not open a conversation with that account. "
                            "They may not accept messages from you.");
+         } else if (kind == COBALT_JOB_CHAT_ACCEPT || kind == COBALT_JOB_CHAT_DECLINE) {
+            cobalt_session_set_message(r, "The server did not update that message request. "
+                           "Try again.");
          } else {
             cobalt_session_set_message(r, "The server refused that request. The post may be gone, or the "
                            "session may have expired - try again, then sign in "
@@ -448,6 +451,12 @@ run_job(cobalt_job_kind kind, const cobalt_job_input *in, cobalt_auth_state *sta
          break;
       case COBALT_JOB_CHAT_START:
          cobalt_session_run_chat_start(in, &r, state);
+         break;
+      case COBALT_JOB_CHAT_ACCEPT:
+         cobalt_session_run_chat_accept(in, &r, state);
+         break;
+      case COBALT_JOB_CHAT_DECLINE:
+         cobalt_session_run_chat_decline(in, &r, state);
          break;
       case COBALT_JOB_PROFILE:  cobalt_session_run_profile(in, &r, state);   break;
       case COBALT_JOB_FOLLOW:   cobalt_session_run_follow(in, &r, state);    break;
