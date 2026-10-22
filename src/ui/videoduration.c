@@ -146,6 +146,276 @@ cobalt_video_duration_format(double seconds, char *out, size_t out_size)
    return true;
 }
 
+/* --- master playlists --- */
+
+/* 9 digits is 999999999, which fits a 32-bit long as PowerPC's is. */
+#define BANDWIDTH_DIGITS_MAX 9
+
+/* Appends `len` bytes of `s` to `out` at `*n`, NUL-terminated, or fails when
+ * they do not fit. */
+static bool
+append(char *out, size_t out_size, size_t *n, const char *s, size_t len)
+{
+   if (len >= out_size || *n > out_size - len - 1) {
+      return false;
+   }
+   memcpy(out + *n, s, len);
+   *n += len;
+   out[*n] = '\0';
+   return true;
+}
+
+/* The BANDWIDTH value in an attribute list (the text after "#EXT-X-STREAM-INF:").
+ * A quoted value may hold commas, so the list is walked attribute by attribute
+ * rather than split on commas. */
+static bool
+stream_bandwidth(const char *p, size_t n, long *out)
+{
+   size_t i = 0;
+   while (i < n) {
+      while (i < n && (p[i] == ',' || p[i] == ' ')) {
+         i++;
+      }
+      const size_t key = i;
+      while (i < n && p[i] != '=' && p[i] != ',') {
+         i++;
+      }
+      const size_t key_len = i - key;
+      if (i >= n || p[i] != '=') {
+         continue;   /* a bare word with no value */
+      }
+      i++;
+
+      size_t value, value_end;
+      if (i < n && p[i] == '"') {
+         value = ++i;
+         while (i < n && p[i] != '"') {
+            i++;
+         }
+         value_end = i;
+         if (i < n) {
+            i++;
+         }
+      } else {
+         value = i;
+         while (i < n && p[i] != ',') {
+            i++;
+         }
+         value_end = i;
+      }
+
+      if (key_len == 9 && memcmp(p + key, "BANDWIDTH", 9) == 0) {
+         if (value_end == value) {
+            return false;
+         }
+         long v = 0;
+         size_t digits = 0;
+         for (size_t k = value; k < value_end; k++) {
+            if (p[k] < '0' || p[k] > '9') {
+               return false;
+            }
+            digits++;
+            if (digits <= BANDWIDTH_DIGITS_MAX) {
+               v = v * 10 + (p[k] - '0');
+            }
+         }
+         if (digits > BANDWIDTH_DIGITS_MAX) {
+            v = 999999999L;
+         }
+         *out = v;
+         return true;
+      }
+   }
+   return false;
+}
+
+/* Resolves a variant's URI reference against the playlist's own URL. */
+static bool
+resolve_uri(const char *base, const char *ref, size_t ref_len,
+            char *out, size_t out_size)
+{
+   size_t n = 0;
+   out[0] = '\0';
+
+   if ((ref_len >= 8 && memcmp(ref, "https://", 8) == 0) ||
+       (ref_len >= 7 && memcmp(ref, "http://", 7) == 0)) {
+      return append(out, out_size, &n, ref, ref_len);
+   }
+
+   const char *scheme_sep = strstr(base, "://");
+   const size_t after_scheme = scheme_sep ? (size_t) (scheme_sep - base) + 3 : 0;
+   /* The base up to any query or fragment. */
+   const size_t end = strcspn(base, "?#");
+
+   if (ref_len >= 2 && ref[0] == '/' && ref[1] == '/') {
+      /* Scheme-relative: keep the base's scheme, including its colon. */
+      if (!scheme_sep) {
+         return false;
+      }
+      return append(out, out_size, &n, base, (size_t) (scheme_sep - base) + 1) &&
+             append(out, out_size, &n, ref, ref_len);
+   }
+
+   if (ref[0] == '/') {
+      /* Root-relative: keep the base's scheme and host. */
+      if (!scheme_sep) {
+         return false;
+      }
+      size_t origin = end;
+      if (end > after_scheme) {
+         const char *slash = memchr(base + after_scheme, '/', end - after_scheme);
+         if (slash) {
+            origin = (size_t) (slash - base);
+         }
+      }
+      return append(out, out_size, &n, base, origin) &&
+             append(out, out_size, &n, ref, ref_len);
+   }
+
+   /* Relative: keep the base's directory, which ends at its last slash in the
+    * path. A base with no path at all gets one. */
+   size_t dir_end = 0;
+   for (size_t k = after_scheme; k < end; k++) {
+      if (base[k] == '/') {
+         dir_end = k + 1;
+      }
+   }
+   if (dir_end) {
+      if (!append(out, out_size, &n, base, dir_end)) {
+         return false;
+      }
+   } else {
+      if (!append(out, out_size, &n, base, end) ||
+          !append(out, out_size, &n, "/", 1)) {
+         return false;
+      }
+   }
+   return append(out, out_size, &n, ref, ref_len);
+}
+
+bool
+cobalt_video_master_variant(const char *body, size_t len, const char *base_uri,
+                            char *out, size_t out_size)
+{
+   static const char tag[] = "#EXT-X-STREAM-INF:";
+   const size_t tag_len = sizeof(tag) - 1;
+
+   if (!body || !base_uri || !out || out_size == 0) {
+      return false;
+   }
+   out[0] = '\0';
+
+   /* A variant with a BANDWIDTH beats one without; among those with one the
+    * lowest wins; among those without, the first. */
+   bool pending = false;
+   bool pending_has_bw = false;
+   long pending_bw = 0;
+   bool have = false;
+   bool best_has_bw = false;
+   long best_bw = 0;
+   size_t best_start = 0;
+   size_t best_len = 0;
+
+   size_t pos = 0;
+   while (pos < len) {
+      size_t end = pos;
+      while (end < len && body[end] != '\n') {
+         end++;
+      }
+      size_t a = pos;
+      size_t b = end;
+      pos = end + 1;
+      while (b > a && (body[b - 1] == '\r' || body[b - 1] == ' ' || body[b - 1] == '\t')) {
+         b--;
+      }
+      while (a < b && (body[a] == ' ' || body[a] == '\t')) {
+         a++;
+      }
+      if (a == b) {
+         continue;
+      }
+
+      if (b - a >= tag_len && memcmp(body + a, tag, tag_len) == 0) {
+         pending = true;
+         pending_bw = 0;
+         pending_has_bw = stream_bandwidth(body + a + tag_len,
+                                           b - a - tag_len, &pending_bw);
+         continue;
+      }
+      if (body[a] == '#' || !pending) {
+         continue;   /* another tag, a comment, or a URI with no entry before it */
+      }
+
+      /* The URI line that follows a STREAM-INF entry is that variant's URI. */
+      pending = false;
+      const bool take = !have ||
+                        (pending_has_bw && (!best_has_bw || pending_bw < best_bw));
+      if (take) {
+         have = true;
+         best_has_bw = pending_has_bw;
+         best_bw = pending_bw;
+         best_start = a;
+         best_len = b - a;
+      }
+   }
+
+   if (!have) {
+      return false;
+   }
+   return resolve_uri(base_uri, body + best_start, best_len, out, out_size);
+}
+
+/* --- fetching --- */
+
+/* Every HTTP request goes through here, so the counter is requests, not
+ * queued playlists. Caller holds no lock. */
+static bool
+counted_fetch(cobalt_video_fetch_fn fetch, const char *url,
+              cobalt_http_response *out)
+{
+   lock();
+   s_fetches++;
+   unlock();
+   return fetch(url, out);
+}
+
+/*
+ * The duration of the playlist at `uri`, in seconds. A master playlist is
+ * followed to one variant and no further: the variant is parsed as it is, so a
+ * variant that is itself a master gives no duration. That bounds a video at two
+ * fetches.
+ */
+static bool
+playlist_seconds(const char *uri, cobalt_video_fetch_fn fetch, double *seconds)
+{
+   cobalt_http_response response;
+   memset(&response, 0, sizeof(response));
+   bool found = false;
+
+   if (counted_fetch(fetch, uri, &response) && response.data &&
+       response.status == 200) {
+      if (cobalt_video_duration_parse((const char *) response.data,
+                                      response.size, seconds)) {
+         found = true;
+      } else {
+         char variant[COBALT_VIDEO_DURATION_URI_MAX];
+         if (cobalt_video_master_variant((const char *) response.data,
+                                         response.size, uri,
+                                         variant, sizeof(variant))) {
+            cobalt_http_response_free(&response);
+            memset(&response, 0, sizeof(response));
+            if (counted_fetch(fetch, variant, &response) && response.data &&
+                response.status == 200) {
+               found = cobalt_video_duration_parse((const char *) response.data,
+                                                   response.size, seconds);
+            }
+         }
+      }
+   }
+   cobalt_http_response_free(&response);
+   return found;
+}
+
 /*
  * Fetch and parse one playlist. Called with the lock NOT held; `uri` is a copy
  * the caller took while the slot was LOADING, so the slot cannot move under us.
@@ -153,24 +423,15 @@ cobalt_video_duration_format(double seconds, char *out, size_t out_size)
 static void
 resolve(int index, const char *uri, cobalt_video_fetch_fn fetch)
 {
-   cobalt_http_response response;
-   memset(&response, 0, sizeof(response));
-
    char text[COBALT_VIDEO_DURATION_TEXT_MAX];
    text[0] = '\0';
 
-   const bool fetched = fetch(uri, &response);
-   if (fetched && response.data && response.status == 200) {
-      double seconds = 0.0;
-      if (cobalt_video_duration_parse((const char *) response.data,
-                                      response.size, &seconds)) {
-         cobalt_video_duration_format(seconds, text, sizeof(text));
-      }
+   double seconds = 0.0;
+   if (playlist_seconds(uri, fetch, &seconds)) {
+      cobalt_video_duration_format(seconds, text, sizeof(text));
    }
-   cobalt_http_response_free(&response);
 
    lock();
-   s_fetches++;
    slot *s = &s_slots[index];
    if (text[0]) {
       snprintf(s->text, sizeof(s->text), "%s", text);

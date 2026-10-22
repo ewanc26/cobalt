@@ -12,9 +12,11 @@
  * video that is actually drawn: cobalt_video_duration_lookup() queues a
  * playlist the first time it is asked about, and never again. The result is
  * kept per playlist URI, so a playlist is fetched at most once however many
- * frames or posts ask for it. A master playlist, a live one, a failed fetch or
- * an unparseable body all leave the duration unknown, and the poster then shows
- * no duration.
+ * frames or posts ask for it. A master playlist is followed to one variant
+ * playlist, and no further: a variant that is itself a master is not followed.
+ * A live one, a failed fetch or an unparseable body all leave the duration
+ * unknown, and the poster then shows no duration. At most two fetches run per
+ * video.
  *
  * Main thread only for lookup. The loader thread never touches the frame loop.
  */
@@ -59,6 +61,18 @@ bool cobalt_video_duration_format(double seconds, char *out, size_t out_size);
  * give one (a master playlist, a live playlist, or not a playlist), and always
  * false on a build without Wolfram. */
 bool cobalt_video_duration_parse(const char *body, size_t len, double *seconds);
+
+/*
+ * The variant to follow in a master (multivariant) m3u8 body: the #EXT-X-STREAM-INF
+ * entry with the lowest BANDWIDTH, or the first entry when none has one. Its URI
+ * is resolved against `base_uri`, the playlist's own URL, so an absolute URI
+ * passes through and a relative or root-relative one is joined to it. Returns
+ * false when the body has no STREAM-INF entry with a URI, or the result does not
+ * fit `out`. Pure: no I/O, and no Wolfram.
+ */
+bool cobalt_video_master_variant(const char *body, size_t len,
+                                 const char *base_uri,
+                                 char *out, size_t out_size);
 
 /* --- for the host tests only --- */
 
