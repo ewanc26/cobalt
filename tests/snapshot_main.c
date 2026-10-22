@@ -349,6 +349,47 @@ open_post_menu(int idx)
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
 }
 
+/* A checksum of the TV frame inside `rect`, and how many of its pixels are
+ * dark enough to be text. Reads the frame the last update drew. */
+static void
+tv_region(const SDL_Rect *rect, uint32_t *sum, int *dark)
+{
+   SDL_Renderer *rd = cobalt_render_sdl_renderer(g_tv);
+   int w, h;
+   SDL_GetRendererOutputSize(rd, &w, &h);
+   SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_ARGB8888);
+   CHECK(SDL_RenderReadPixels(rd, NULL, SDL_PIXELFORMAT_ARGB8888, s->pixels, s->pitch) == 0);
+   *sum = 2166136261u;
+   *dark = 0;
+   for (int y = rect->y; y < rect->y + rect->h && y < h; y++)
+      for (int x = rect->x; x < rect->x + rect->w && x < w; x++) {
+         const uint32_t v = *(const uint32_t *) ((const uint8_t *) s->pixels + y * s->pitch + x * 4);
+         *sum = (*sum ^ v) * 16777619u;
+         const int lum = (int) ((v >> 16) & 255) + (int) ((v >> 8) & 255) + (int) (v & 255);
+         if (lum < 450) (*dark)++;
+      }
+   SDL_FreeSurface(s);
+}
+
+/* The TV's right-hand detail column, from the same metrics the draw uses. */
+static SDL_Rect
+tv_detail_column(void)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(g_tv);
+   const int list_w = (m->width - 2 * m->pad_edge - m->gap) * 2 / 5;
+   const int x = m->pad_edge + list_w + m->gap;
+   const int top = cobalt_content_top(g_tv);
+   const SDL_Rect r = { x, top, m->width - m->pad_edge - x, m->height - top - m->pad_edge - 24 };
+   return r;
+}
+
+/* Presses one button n times, a frame each. */
+static void
+press_n(cobalt_button btn, int n)
+{
+   for (int i = 0; i < n; i++) { frame(btn); settle(1); }
+}
+
 int
 main(int argc, char **argv)
 {
@@ -520,6 +561,121 @@ main(int argc, char **argv)
       CHECK(cobalt_session_thread_requests() == requests + 1);
       settle(10);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_THREAD);
+      frame(COBALT_BTN_BACK); settle(10);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
+   }
+
+   /* The TV's detail column (cobalt#111). A short post fits and has no "more"
+    * line. A long one gets the line, and L and R scroll its text while the
+    * selection stays where it is. */
+   {
+      int sel, scr;
+      select_timeline(2); /* "third post with unicode": short */
+      settle(3);
+      CHECK(g_app->timeline.detail_max == 0);
+      CHECK(g_app->timeline.detail_more.w == 0);
+
+      select_timeline(3); /* the long post */
+      settle(3);
+      const int tmax = g_app->timeline.detail_max;
+      const SDL_Rect more = g_app->timeline.detail_more;
+      printf("timeline detail: max %d, more at %d,%d %dx%d\n", tmax, more.x, more.y, more.w, more.h);
+      CHECK(tmax > 0);
+      CHECK(more.w > 0 && more.h > 0);
+      uint32_t more_sum; int more_dark;
+      tv_region(&more, &more_sum, &more_dark);
+      CHECK(more_dark >= 20); /* the marker's words are drawn, not just its rect recorded */
+
+      const SDL_Rect col = tv_detail_column();
+      uint32_t h0, h1, h2; int d0, d1, d2;
+      tv_region(&col, &h0, &d0);
+
+      /* (c) L and R scroll the text; the list selection does not move. */
+      press_n(COBALT_BTN_SHOULDER_R, 2);
+      cobalt_app_timeline_position(g_app, &sel, &scr);
+      CHECK(g_app->timeline.detail_scroll == 2);
+      CHECK(sel == 3);
+      tv_region(&col, &h1, &d1);
+      CHECK(h1 != h0);
+      shoot("timeline-detail-scrolled");
+
+      /* The offset stops at the text's end, and the list still does not move. */
+      press_n(COBALT_BTN_SHOULDER_R, 20);
+      CHECK(g_app->timeline.detail_scroll == tmax);
+      cobalt_app_timeline_position(g_app, &sel, &scr);
+      CHECK(sel == 3);
+      /* One press back from the end is one line, not a jump: the state was
+       * kept within the bound, not just clamped on the way to the screen. */
+      press_n(COBALT_BTN_SHOULDER_L, 1);
+      CHECK(g_app->timeline.detail_scroll == tmax - 1);
+      press_n(COBALT_BTN_SHOULDER_L, 20);
+      CHECK(g_app->timeline.detail_scroll == 0);
+      tv_region(&col, &h2, &d2);
+      CHECK(h2 == h0); /* back at the top, the same pixels as before */
+
+      /* (d) Moving the selection starts the detail at the top again. */
+      press_n(COBALT_BTN_SHOULDER_R, 20);
+      CHECK(g_app->timeline.detail_scroll == tmax);
+      frame(COBALT_BTN_DOWN); settle(3);
+      cobalt_app_timeline_position(g_app, &sel, &scr);
+      CHECK(sel == 4);
+      CHECK(g_app->timeline.detail_scroll == 0);
+      press_n(COBALT_BTN_SHOULDER_R, 20);
+      frame(COBALT_BTN_UP); settle(3);
+      cobalt_app_timeline_position(g_app, &sel, &scr);
+      CHECK(sel == 3);
+      CHECK(g_app->timeline.detail_scroll == 0);
+      /* Leave the timeline on the long post's top, for the thread below. */
+   }
+
+   /* The thread's TV column scrolls the same way (cobalt#111). The fixture's
+    * focused post is long, and its reply is what DOWN reaches. */
+   {
+      int sel0, sel;
+      select_timeline(0);
+      frame(COBALT_BTN_CONFIRM); settle(30);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_THREAD);
+      settle(5);
+      const int tmax = g_app->thread.detail_max;
+      printf("thread detail: max %d\n", tmax);
+      CHECK(tmax > 0);
+      CHECK(g_app->thread.detail_more.w > 0);
+      {
+         uint32_t ms; int md;
+         tv_region(&g_app->thread.detail_more, &ms, &md);
+         CHECK(md >= 20);
+      }
+
+      const SDL_Rect col = tv_detail_column();
+      uint32_t h0, h1; int d0, d1;
+      tv_region(&col, &h0, &d0);
+      sel0 = g_app->thread.nav.selected; /* no THREAD case in cobalt_app_view_position */
+      press_n(COBALT_BTN_SHOULDER_R, 2);
+      CHECK(g_app->thread.detail_scroll == 2);
+      sel = g_app->thread.nav.selected;
+      CHECK(sel == sel0);
+      tv_region(&col, &h1, &d1);
+      CHECK(h1 != h0);
+      shoot("thread-detail-scrolled");
+      press_n(COBALT_BTN_SHOULDER_R, 20);
+      CHECK(g_app->thread.detail_scroll == tmax);
+      press_n(COBALT_BTN_SHOULDER_L, 1);
+      CHECK(g_app->thread.detail_scroll == tmax - 1);
+
+      /* Moving to the reply, with DOWN, starts its column at the top. Up/Down
+       * read the GamePad card's text before they leave a post, so keep pressing
+       * until the selection has moved. */
+      press_n(COBALT_BTN_SHOULDER_R, 20);
+      CHECK(g_app->thread.detail_scroll == tmax);
+      for (int k = 0; k < 200; k++) {
+         sel = g_app->thread.nav.selected;
+         if (sel != sel0) break;
+         frame(COBALT_BTN_DOWN); settle(1);
+      }
+      sel = g_app->thread.nav.selected;
+      CHECK(sel != sel0);
+      CHECK(g_app->thread.detail_scroll == 0);
+
       frame(COBALT_BTN_BACK); settle(10);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
    }

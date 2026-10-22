@@ -98,6 +98,12 @@ void cobalt_postcard_draw_scrolled(cobalt_render *r, const cobalt_post *post,
 int cobalt_postcard_text_total(cobalt_render *r, const cobalt_post *post,
                                int card_w, int indent);
 
+/* The "more below" line at the foot of a TV detail column whose text does not
+ * fit. Drawn in the column's last caption line, ending at `bottom`. Returns
+ * the rect it drew into, so a caller can check it. */
+SDL_Rect cobalt_postcard_draw_more(cobalt_render *r, const SDL_Rect *column,
+                                   int bottom);
+
 #ifdef __cplusplus
 }
 #endif

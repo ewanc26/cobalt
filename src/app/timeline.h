@@ -20,6 +20,7 @@
 #include "ui/listnav.h"
 #include "ui/render.h"
 
+#include <SDL.h>
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -40,6 +41,16 @@ typedef struct {
     * surfaces and is always present, so what it fitted is what scrolling
     * follows, keeping anything visible there visible on the TV as well. */
    cobalt_listnav nav;
+
+   /* The TV's detail column: which wrapped line of the selected post it starts
+    * at, scrolled by L and R. detail_max is the last TV draw's bound (total
+    * lines less the window; 0 when the text fits). detail_for is the selection
+    * the offset belongs to, so moving the selection starts it at the top. */
+   int detail_scroll;
+   int detail_max;
+   int detail_for;
+   /* Where the last TV draw put the column's marker, zero when it drew none. */
+   SDL_Rect detail_more;
 } cobalt_timeline;
 
 void cobalt_timeline_init(cobalt_timeline *view);
