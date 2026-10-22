@@ -14,6 +14,7 @@ cobalt_messages_view_init(cobalt_messages_view *view)
    }
    memset(view, 0, sizeof(*view));
    cobalt_listnav_init(&view->nav);
+   cobalt_listnav_init(&view->requests_nav);
 }
 
 void
@@ -21,7 +22,100 @@ cobalt_messages_view_rewind(cobalt_messages_view *view)
 {
    if (view) {
       cobalt_listnav_rewind(&view->nav);
+      cobalt_listnav_rewind(&view->requests_nav);
    }
+}
+
+/* --- accepting and declining requests --- */
+
+void
+cobalt_messages_decision_began(cobalt_messages_view *view, bool began)
+{
+   if (view && began) {
+      view->decision.pending = true;
+   }
+}
+
+cobalt_messages_decision_outcome
+cobalt_messages_decision_finished(cobalt_messages_view *view, bool ok)
+{
+   if (!view || !view->decision.pending) {
+      return COBALT_MESSAGES_DECISION_NONE;
+   }
+   view->decision.pending = false;
+   if (!ok) {
+      return COBALT_MESSAGES_DECISION_FAILED;
+   }
+   return view->decision.accept ? COBALT_MESSAGES_DECISION_ACCEPTED
+                                : COBALT_MESSAGES_DECISION_DECLINED;
+}
+
+/* Fill the decision from a row and report which action it is. The row is copied,
+ * because the worker may remove it while the job runs. */
+static cobalt_messages_action
+press_decision(cobalt_messages_view *view, const cobalt_chat_inbox *requests, int index,
+               bool accept)
+{
+   const cobalt_chat_convo *row = &requests->items[index];
+   snprintf(view->decision.convo_id, sizeof(view->decision.convo_id), "%s", row->id);
+   snprintf(view->decision.name, sizeof(view->decision.name), "%s", row->name);
+   view->decision.accept = accept;
+   return accept ? COBALT_MESSAGES_ACCEPT : COBALT_MESSAGES_DECLINE;
+}
+
+/* Y: open the request list and fetch it. Entering the list is a read only;
+ * nothing is accepted or declined until a button is pressed on a row. */
+static void
+enter_requests(cobalt_messages_view *view)
+{
+   COBALT_LOGI("messages: opening message requests");
+   view->mode = COBALT_MESSAGES_MODE_REQUESTS;
+   cobalt_listnav_rewind(&view->requests_nav);
+   cobalt_session_begin_chat_requests(false);
+}
+
+static cobalt_messages_action
+update_requests(cobalt_messages_view *view, const cobalt_input *in)
+{
+   const cobalt_chat_inbox *requests = cobalt_session_chat_requests();
+   const bool working = cobalt_session_busy() || view->decision.pending;
+
+   /* B returns to the inbox, not out of Messages. */
+   if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
+      view->mode = COBALT_MESSAGES_MODE_INBOX;
+      return COBALT_MESSAGES_STAY;
+   }
+
+   if (cobalt_input_pressed(in, COBALT_BTN_MENU) && !working) {
+      COBALT_LOGI("messages: requests refresh requested");
+      if (cobalt_session_begin_chat_requests(false)) {
+         cobalt_listnav_rewind(&view->requests_nav);
+      }
+      return COBALT_MESSAGES_STAY;
+   }
+
+   if (requests->count == 0) {
+      return COBALT_MESSAGES_STAY;
+   }
+
+   cobalt_listnav_move(&view->requests_nav, in, requests->count);
+   cobalt_listnav_follow(&view->requests_nav);
+
+   const int sel = (int) view->requests_nav.selected;
+   if (!working && sel < requests->count) {
+      if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
+         return press_decision(view, requests, sel, true);
+      }
+      if (cobalt_input_pressed(in, COBALT_BTN_ALT_X)) {
+         return press_decision(view, requests, sel, false);
+      }
+   }
+
+   if (!working && cobalt_chat_inbox_can_page(requests) && sel >= requests->count - 1) {
+      cobalt_session_begin_chat_requests(true);
+   }
+
+   return COBALT_MESSAGES_STAY;
 }
 
 /* --- starting a conversation --- */
@@ -106,6 +200,10 @@ cobalt_messages_view_update(cobalt_messages_view *view, const cobalt_input *in)
       return COBALT_MESSAGES_STAY;
    }
 
+   if (view->mode == COBALT_MESSAGES_MODE_REQUESTS) {
+      return update_requests(view, in);
+   }
+
    if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
       return COBALT_MESSAGES_BACK;
    }
@@ -117,6 +215,11 @@ cobalt_messages_view_update(cobalt_messages_view *view, const cobalt_input *in)
     * be started from an inbox with nothing in it yet. */
    if (cobalt_input_pressed(in, COBALT_BTN_ALT_X) && !busy && !view->start.pending) {
       cobalt_messages_start_open(&view->start);
+      return COBALT_MESSAGES_STAY;
+   }
+
+   if (cobalt_input_pressed(in, COBALT_BTN_ALT_Y) && !busy) {
+      enter_requests(view);
       return COBALT_MESSAGES_STAY;
    }
 
@@ -235,6 +338,80 @@ draw_start(cobalt_messages_view *view, cobalt_render *r, cobalt_surface_id surfa
    cobalt_draw_hints(r, "Type a handle or DID, then OK");
 }
 
+/* One list of rows, as the inbox and the request list both draw it. An empty
+ * list shows `empty` on a card. */
+static void
+draw_list(cobalt_render *r, cobalt_surface_id surface, cobalt_listnav *nav,
+          const cobalt_chat_inbox *list, const char *empty, const char *hint)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const int top = cobalt_content_top(r);
+   const int bottom = m->height - m->pad_edge - 28;
+   const bool touchable = (surface == COBALT_SURFACE_DRC);
+   const bool busy = cobalt_session_busy();
+
+   cobalt_listnav_draw_begin(nav, touchable);
+
+   if (list->count == 0) {
+      SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge, m->font_body * 4 };
+      cobalt_draw_tile(r, &card, 0.0f);
+      cobalt_draw_text(r, COBALT_FONT_BODY, busy ? "Loading..." : empty,
+                       card.x + m->pad_tile, card.y + m->pad_tile, COBALT_COLOUR_TEXT);
+      cobalt_listnav_draw_empty(nav, touchable);
+      cobalt_draw_hints(r, busy ? "Working..." : hint);
+      return;
+   }
+
+   int y = top;
+   int last_fitted = nav->scroll;
+
+   for (int i = nav->scroll; i < list->count; i++) {
+      const cobalt_chat_convo *item = &list->items[i];
+      const int h = row_height(r, item, m);
+
+      if (y + h > bottom && i > nav->scroll) {
+         break;
+      }
+
+      SDL_Rect rect = { m->pad_edge, y, m->width - 2 * m->pad_edge, h };
+      draw_row(r, item, &rect, i == nav->selected, m);
+      cobalt_listnav_draw_add(nav, touchable, &rect, i);
+
+      last_fitted = i;
+      y += h + m->gap / 2;
+   }
+
+   cobalt_listnav_draw_end(nav, touchable, last_fitted);
+
+   cobalt_draw_hints(r, busy ? "Working..." : hint);
+}
+
+static void
+draw_requests(cobalt_messages_view *view, cobalt_render *r, cobalt_surface_id surface)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const cobalt_chat_inbox *requests = cobalt_session_chat_requests();
+
+   cobalt_draw_text(r, COBALT_FONT_TITLE, "Message requests", m->pad_edge, m->pad_edge,
+                    COBALT_COLOUR_TILE_FOCUS);
+   {
+      char subtitle[96];
+      if (cobalt_session_busy()) {
+         snprintf(subtitle, sizeof(subtitle), "Loading...");
+      } else {
+         cobalt_chat_requests_count_label(requests->count, subtitle, sizeof(subtitle));
+      }
+      SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
+                       m->pad_edge + cobalt_font_line_height(r, COBALT_FONT_TITLE) -
+                          m->line_gap,
+                       dim);
+   }
+
+   draw_list(r, surface, &view->requests_nav, requests, "No message requests.",
+             "A: accept   X: decline   B: inbox   +: refresh");
+}
+
 void
 cobalt_messages_view_draw(cobalt_messages_view *view, cobalt_render *r,
                           cobalt_surface_id surface)
@@ -243,9 +420,13 @@ cobalt_messages_view_draw(cobalt_messages_view *view, cobalt_render *r,
       return;
    }
 
+   if (view->mode == COBALT_MESSAGES_MODE_REQUESTS) {
+      draw_requests(view, r, surface);
+      return;
+   }
+
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const cobalt_chat_inbox *inbox = cobalt_session_chat_inbox();
-   const bool touchable = (surface == COBALT_SURFACE_DRC);
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Messages", m->pad_edge, m->pad_edge,
                     COBALT_COLOUR_TILE_FOCUS);
@@ -270,44 +451,6 @@ cobalt_messages_view_draw(cobalt_messages_view *view, cobalt_render *r,
       return;
    }
 
-   const int top = cobalt_content_top(r);
-   const int bottom = m->height - m->pad_edge - 28;
-
-   cobalt_listnav_draw_begin(&view->nav, touchable);
-
-   if (inbox->count == 0) {
-      SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge, m->font_body * 4 };
-      cobalt_draw_tile(r, &card, 0.0f);
-      cobalt_draw_text(r, COBALT_FONT_BODY,
-                       cobalt_session_busy() ? "Loading..." : "No messages yet.",
-                       card.x + m->pad_tile, card.y + m->pad_tile, COBALT_COLOUR_TEXT);
-      cobalt_listnav_draw_empty(&view->nav, touchable);
-      cobalt_draw_hints(r, cobalt_session_busy() ? "Working..."
-                                                 : "X: new message   B: back   +: refresh");
-      return;
-   }
-
-   int y = top;
-   int last_fitted = view->nav.scroll;
-
-   for (int i = view->nav.scroll; i < inbox->count; i++) {
-      const cobalt_chat_convo *item = &inbox->items[i];
-      const int h = row_height(r, item, m);
-
-      if (y + h > bottom && i > view->nav.scroll) {
-         break;
-      }
-
-      SDL_Rect rect = { m->pad_edge, y, m->width - 2 * m->pad_edge, h };
-      draw_row(r, item, &rect, i == view->nav.selected, m);
-      cobalt_listnav_draw_add(&view->nav, touchable, &rect, i);
-
-      last_fitted = i;
-      y += h + m->gap / 2;
-   }
-
-   cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);
-
-   cobalt_draw_hints(r, cobalt_session_busy() ? "Working..."
-                                              : "X: new message   B: back   +: refresh");
+   draw_list(r, surface, &view->nav, inbox, "No messages yet.",
+             "X: new message   Y: requests   B: back   +: refresh");
 }
