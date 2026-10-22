@@ -82,6 +82,12 @@ You type on Cobalt's own keyboard: move with the D-pad or tap on the GamePad. Po
 
 Replies, mentions, quotes, likes, reposts and follows. A opens the post or the follower's profile. Y opens the More menu: the account's profile, the post, and refresh. + also refreshes.
 
+## Messages
+
+Messages lists your conversations with the last message and any unread count. A opens one. X starts a new conversation with a handle or DID you type.
+
+Y lists message requests, from people you have not talked with yet. A accepts the highlighted request: it moves to your conversations and opens. X declines it: it leaves the list. Nothing is sent on entering the list, and a request is accepted or declined only by its own press. B goes back to the conversations. A request cannot be pressed again until the one in progress has finished.
+
 ## Profiles
 
 ![Profile](screenshots/profile.png)
