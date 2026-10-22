@@ -35,6 +35,8 @@ static int failures, checks;
  * flattened into a post, drawn (lookup), and then resolved.
  */
 static const char *s_fake_body;
+/* Answers any URL under /var/ (a master's variant), when set. */
+static const char *s_fake_variant_body;
 static int s_fake_calls;
 static char s_fake_url[256];
 
@@ -43,11 +45,13 @@ fake_fetch(const char *url, cobalt_http_response *out)
 {
    s_fake_calls++;
    snprintf(s_fake_url, sizeof s_fake_url, "%s", url);
-   if (!s_fake_body) return false;
-   size_t n = strlen(s_fake_body);
+   const char *body = (s_fake_variant_body && strstr(url, "/var/"))
+                         ? s_fake_variant_body : s_fake_body;
+   if (!body) return false;
+   size_t n = strlen(body);
    out->data = malloc(n + 1);
    if (!out->data) return false;
-   memcpy(out->data, s_fake_body, n + 1);
+   memcpy(out->data, body, n + 1);
    out->size = n;
    out->status = 200;
    return true;
@@ -138,19 +142,36 @@ check_video_durations(void)
    CHECK(cobalt_video_duration_lookup(master_feed.posts[0].link.video_playlist) == NULL);
    CHECK(cobalt_video_duration_lookup(master_feed.posts[0].link.video_playlist) == NULL);
    CHECK(cobalt_video_duration_drain() == 0);
-   CHECK(s_fake_calls == 2);
+   /* The master is fetched, then its one variant, and nothing below that. */
+   CHECK(s_fake_calls == 3);
+   CHECK_STR(s_fake_url, "https://video.test/pl/var/360p.m3u8");
+
+   /* A master whose variant is a finished playlist shows that variant's duration. */
+   static cobalt_feed var_feed;
+   static wf_agent_post_list var_list;
+   memset(&var_feed, 0, sizeof var_feed);
+   memset(&var_list, 0, sizeof var_list);
+   const char *var_json = video_post_json("v5", "https://video.test/pl/v5.m3u8");
+   CHECK(wf_agent_parse_posts(var_json, strlen(var_json), &var_list) == WF_OK);
+   CHECK(cobalt_feed_append_posts_from_wolfram(&var_feed, &var_list, NULL, 0) == 1);
+   s_fake_variant_body = VOD_PLAYLIST;
+   CHECK(cobalt_video_duration_lookup(var_feed.posts[0].link.video_playlist) == NULL);
+   CHECK(cobalt_video_duration_drain() == 1);
+   CHECK_STR(cobalt_video_duration_lookup(var_feed.posts[0].link.video_playlist), "1:23");
+   CHECK(s_fake_calls == 5);
+   s_fake_variant_body = NULL;
 
    /* A failed fetch and a live playlist both leave the duration unknown. */
    s_fake_body = NULL;
    CHECK(cobalt_video_duration_lookup("https://video.test/pl/v3.m3u8") == NULL);
    CHECK(cobalt_video_duration_drain() == 1);
    CHECK(cobalt_video_duration_lookup("https://video.test/pl/v3.m3u8") == NULL);
-   CHECK(s_fake_calls == 3);
+   CHECK(s_fake_calls == 6);
    s_fake_body = LIVE_PLAYLIST;
    CHECK(cobalt_video_duration_lookup("https://video.test/pl/v4.m3u8") == NULL);
    CHECK(cobalt_video_duration_drain() == 1);
    CHECK(cobalt_video_duration_lookup("https://video.test/pl/v4.m3u8") == NULL);
-   CHECK(s_fake_calls == 4);
+   CHECK(s_fake_calls == 7);
 
    wf_agent_post_list_free(&list);
    wf_agent_post_list_free(&master_list);

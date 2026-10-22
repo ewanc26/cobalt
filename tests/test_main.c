@@ -1253,6 +1253,165 @@ test_video_duration_format(void)
    CHECK_STR(out, "");
 }
 
+/* A master playlist names its variants; the duration is read from one of them. */
+static const char *const MASTER_TWO_VARIANTS =
+   "#EXTM3U\r\n"
+   "#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720\r\nhigh/index.m3u8\r\n"
+   "#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\r\nlow/index.m3u8\r\n";
+static const char *const MASTER_URL = "https://video.test/pl/master.m3u8";
+static const char *const LOW_URL = "https://video.test/pl/low/index.m3u8";
+/* A variant that is itself a master must not be followed a second time. */
+static const char *const NESTED_MASTER =
+   "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=100000\ndeeper/index.m3u8\n";
+static const char *const VOD_BODY =
+   "#EXTM3U\n#EXTINF:10.000,\nseg0.ts\n#EXT-X-ENDLIST\n";
+
+static const char *
+variant_of(const char *body, const char *base, char *out, size_t out_size)
+{
+   if (!cobalt_video_master_variant(body, strlen(body), base, out, out_size)) {
+      out[0] = '\0';
+   }
+   return out;
+}
+
+static void
+test_video_master_variant(void)
+{
+   char out[COBALT_VIDEO_DURATION_URI_MAX];
+
+   begin("a master playlist picks the lowest BANDWIDTH variant, not the first");
+   CHECK_STR(variant_of(MASTER_TWO_VARIANTS, MASTER_URL, out, sizeof(out)), LOW_URL);
+
+   begin("a master playlist resolves relative and absolute variant URIs");
+   CHECK_STR(variant_of("#EXT-X-STREAM-INF:BANDWIDTH=900000\nrel/a.m3u8\n"
+                        "#EXT-X-STREAM-INF:BANDWIDTH=300000\n"
+                        "https://cdn.test/abs/b.m3u8\n",
+                        MASTER_URL, out, sizeof(out)),
+             "https://cdn.test/abs/b.m3u8");
+   CHECK_STR(variant_of("#EXT-X-STREAM-INF:BANDWIDTH=1\nrel/a.m3u8\n",
+                        "https://video.test/pl/master.m3u8?sig=1&x=2", out, sizeof(out)),
+             "https://video.test/pl/rel/a.m3u8");
+   CHECK_STR(variant_of("#EXT-X-STREAM-INF:BANDWIDTH=1\n/root/a.m3u8\n",
+                        MASTER_URL, out, sizeof(out)),
+             "https://video.test/root/a.m3u8");
+   CHECK_STR(variant_of("#EXT-X-STREAM-INF:BANDWIDTH=1\n//cdn.test/s.m3u8\n",
+                        MASTER_URL, out, sizeof(out)),
+             "https://cdn.test/s.m3u8");
+
+   begin("a variant with no BANDWIDTH is the first one; a bandwidth beats none");
+   CHECK_STR(variant_of("#EXT-X-STREAM-INF:RESOLUTION=640x360\nfirst.m3u8\n"
+                        "#EXT-X-STREAM-INF:RESOLUTION=1280x720\nsecond.m3u8\n",
+                        MASTER_URL, out, sizeof(out)),
+             "https://video.test/pl/first.m3u8");
+   CHECK_STR(variant_of("#EXT-X-STREAM-INF:RESOLUTION=640x360\nnobw.m3u8\n"
+                        "#EXT-X-STREAM-INF:BANDWIDTH=500\nbw.m3u8\n",
+                        MASTER_URL, out, sizeof(out)),
+             "https://video.test/pl/bw.m3u8");
+
+   begin("attribute lists are read whole: quoted commas and AVERAGE-BANDWIDTH do not confuse BANDWIDTH");
+   /* A split on commas would read BANDWIDTH=1 out of the quoted CODECS and pick r
+    * only by luck of order; the walk reads 500000 and picks r for its 100. */
+   CHECK_STR(variant_of("#EXT-X-STREAM-INF:CODECS=\"BANDWIDTH=1,x\",BANDWIDTH=500000\r\nq.m3u8\r\n"
+                        "#EXT-X-STREAM-INF:BANDWIDTH=100\nr.m3u8\n",
+                        MASTER_URL, out, sizeof(out)),
+             "https://video.test/pl/r.m3u8");
+   CHECK_STR(variant_of("#EXT-X-STREAM-INF:AVERAGE-BANDWIDTH=10,BANDWIDTH=900000\nq.m3u8\n"
+                        "#EXT-X-STREAM-INF:AVERAGE-BANDWIDTH=1,BANDWIDTH=5000\nr.m3u8\n",
+                        MASTER_URL, out, sizeof(out)),
+             "https://video.test/pl/r.m3u8");
+   CHECK_STR(variant_of("#EXT-X-STREAM-INF:AVERAGE-BANDWIDTH=1,BANDWIDTH=900\na.m3u8\n"
+                        "#EXT-X-STREAM-INF:AVERAGE-BANDWIDTH=9000000,BANDWIDTH=100\nb.m3u8\n",
+                        MASTER_URL, out, sizeof(out)),
+             "https://video.test/pl/b.m3u8");
+
+   begin("a playlist with no STREAM-INF, or a STREAM-INF with no URI, has no variant");
+   CHECK(!cobalt_video_master_variant(VOD_BODY, strlen(VOD_BODY), MASTER_URL,
+                                      out, sizeof(out)));
+   CHECK(!cobalt_video_master_variant("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\n",
+                                      strlen("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\n"),
+                                      MASTER_URL, out, sizeof(out)));
+   CHECK(!cobalt_video_master_variant(NULL, 0, MASTER_URL, out, sizeof(out)));
+}
+
+/* The fake fetch answers by URL and records each request in order. */
+#define FETCH_LOG_MAX 8
+static char s_fetch_log[FETCH_LOG_MAX][COBALT_VIDEO_DURATION_URI_MAX];
+static int s_fetch_log_n;
+static const char *s_fetch_answer_master;
+static const char *s_fetch_answer_variant;
+
+static bool
+logging_fetch(const char *url, cobalt_http_response *out)
+{
+   if (s_fetch_log_n < FETCH_LOG_MAX) {
+      snprintf(s_fetch_log[s_fetch_log_n], sizeof(s_fetch_log[0]), "%s", url);
+   }
+   s_fetch_log_n++;
+
+   const char *body = NULL;
+   if (strcmp(url, MASTER_URL) == 0) {
+      body = s_fetch_answer_master;
+   } else if (strcmp(url, LOW_URL) == 0) {
+      body = s_fetch_answer_variant;
+   }
+   if (!body) {
+      return false;
+   }
+   const size_t n = strlen(body);
+   out->data = malloc(n + 1);
+   if (!out->data) {
+      return false;
+   }
+   memcpy(out->data, body, n + 1);
+   out->size = n;
+   out->status = 200;
+   return true;
+}
+
+static void
+test_video_master_fetch_count(void)
+{
+   cobalt_video_duration_set_fetcher(logging_fetch);
+
+   begin("a VOD playlist is one fetch");
+   cobalt_video_duration_reset_for_test();
+   s_fetch_log_n = 0;
+   s_fetch_answer_master = VOD_BODY;
+   CHECK(cobalt_video_duration_lookup(MASTER_URL) == NULL);
+   CHECK(cobalt_video_duration_drain() == 1);
+   CHECK(cobalt_video_duration_fetch_count() == 1);
+   CHECK(s_fetch_log_n == 1);
+
+   begin("a master playlist is followed to one variant: two fetches, the lowest variant second");
+   cobalt_video_duration_reset_for_test();
+   s_fetch_log_n = 0;
+   s_fetch_answer_master = MASTER_TWO_VARIANTS;
+   s_fetch_answer_variant = VOD_BODY;
+   CHECK(cobalt_video_duration_lookup(MASTER_URL) == NULL);
+   CHECK(cobalt_video_duration_drain() == 1);
+   CHECK(cobalt_video_duration_fetch_count() == 2);
+   CHECK(s_fetch_log_n == 2);
+   CHECK_STR(s_fetch_log[0], MASTER_URL);
+   CHECK_STR(s_fetch_log[1], LOW_URL);
+
+   begin("a variant that is itself a master stops the chain: no third fetch");
+   cobalt_video_duration_reset_for_test();
+   s_fetch_log_n = 0;
+   s_fetch_answer_master = MASTER_TWO_VARIANTS;
+   s_fetch_answer_variant = NESTED_MASTER;
+   CHECK(cobalt_video_duration_lookup(MASTER_URL) == NULL);
+   CHECK(cobalt_video_duration_drain() == 1);
+   CHECK(cobalt_video_duration_fetch_count() == 2);
+   CHECK(s_fetch_log_n == 2);
+   CHECK(cobalt_video_duration_lookup(MASTER_URL) == NULL);
+   CHECK(cobalt_video_duration_drain() == 0);
+   CHECK(cobalt_video_duration_fetch_count() == 2);
+
+   cobalt_video_duration_set_fetcher(NULL);
+   cobalt_video_duration_reset_for_test();
+}
+
 static void
 test_feed_link_domain(void)
 {
@@ -3310,6 +3469,8 @@ main(int argc, char **argv)
    test_feed_embeds();
    test_feed_link_domain();
    test_video_duration_format();
+   test_video_master_variant();
+   test_video_master_fetch_count();
    test_prefs();
    test_update_manifest();
    test_update_staging(root);
