@@ -1746,6 +1746,117 @@ test_chat_inbox_counterpart(void)
    CHECK(!cobalt_chat_inbox_can_page(&inbox));
 }
 
+static cobalt_chat_convo
+test_row(const char *id, int unread)
+{
+   cobalt_chat_convo c;
+   memset(&c, 0, sizeof(c));
+   snprintf(c.id, sizeof(c.id), "%s", id);
+   c.unread = unread;
+   return c;
+}
+
+static void
+test_chat_request_rows(void)
+{
+   begin("request rows: find, remove and add to the front");
+
+   cobalt_chat_inbox box;
+   memset(&box, 0, sizeof(box));
+   box.items[0] = test_row("c1", 2);
+   box.items[1] = test_row("c2", 0);
+   box.items[2] = test_row("c3", 4);
+   box.count = 3;
+   box.unread = 6;
+
+   CHECK(cobalt_chat_inbox_find(&box, "c2") == &box.items[1]);
+   CHECK(cobalt_chat_inbox_find(&box, "nope") == NULL);
+   CHECK(cobalt_chat_inbox_find(NULL, "c1") == NULL);
+   CHECK(cobalt_chat_inbox_find(&box, NULL) == NULL);
+
+   /* Removing a row keeps the order of the rest, and takes its unread with it. */
+   CHECK(!cobalt_chat_inbox_remove(&box, "nope"));
+   CHECK(!cobalt_chat_inbox_remove(NULL, "c1"));
+   CHECK(box.count == 3);
+   CHECK(cobalt_chat_inbox_remove(&box, "c3"));
+   CHECK(box.count == 2);
+   CHECK(box.unread == 2);
+   CHECK_STR(box.items[0].id, "c1");
+   CHECK_STR(box.items[1].id, "c2");
+   CHECK(cobalt_chat_inbox_find(&box, "c3") == NULL);
+
+   /* A row added goes first; the same id is never held twice. */
+   cobalt_chat_convo fresh = test_row("c9", 1);
+   CHECK(cobalt_chat_inbox_add_front(&box, &fresh));
+   CHECK(box.count == 3);
+   CHECK_STR(box.items[0].id, "c9");
+   CHECK_STR(box.items[1].id, "c1");
+   CHECK(box.unread == 3);
+   CHECK(!cobalt_chat_inbox_add_front(&box, &fresh));
+   CHECK(box.count == 3);
+   CHECK(!cobalt_chat_inbox_add_front(NULL, &fresh));
+   CHECK(!cobalt_chat_inbox_add_front(&box, NULL));
+
+   /* Full: the last row goes, and its unread messages leave the total. */
+   box.count = COBALT_CHAT_CONVOS_MAX;
+   for (int i = 0; i < COBALT_CHAT_CONVOS_MAX; i++) {
+      char id[COBALT_CHAT_ID_MAX];
+      snprintf(id, sizeof(id), "f%d", i);
+      box.items[i] = test_row(id, 1);
+   }
+   box.unread = COBALT_CHAT_CONVOS_MAX;
+   cobalt_chat_convo newest = test_row("new", 0);
+   CHECK(cobalt_chat_inbox_add_front(&box, &newest));
+   CHECK(box.count == COBALT_CHAT_CONVOS_MAX);
+   CHECK_STR(box.items[0].id, "new");
+   CHECK(cobalt_chat_inbox_find(&box, "f48") != NULL);
+   CHECK(cobalt_chat_inbox_find(&box, "f49") == NULL);
+   CHECK(box.unread == COBALT_CHAT_CONVOS_MAX - 1);
+}
+
+static void
+test_message_decision_states(void)
+{
+   begin("accepting or declining a request: one job at a time");
+
+   cobalt_messages_view view;
+   cobalt_messages_view_init(&view);
+   CHECK(view.mode == COBALT_MESSAGES_MODE_INBOX);
+   CHECK(!view.decision.pending);
+
+   /* Finishing with nothing in flight is nothing. */
+   CHECK(cobalt_messages_decision_finished(&view, true) == COBALT_MESSAGES_DECISION_NONE);
+   CHECK(cobalt_messages_decision_finished(NULL, true) == COBALT_MESSAGES_DECISION_NONE);
+
+   /* A refused begin marks nothing in flight, so its finish is nothing. */
+   view.decision.accept = true;
+   snprintf(view.decision.convo_id, sizeof(view.decision.convo_id), "%s", "c1");
+   cobalt_messages_decision_began(&view, false);
+   CHECK(!view.decision.pending);
+   CHECK(cobalt_messages_decision_finished(&view, true) == COBALT_MESSAGES_DECISION_NONE);
+
+   /* An accept that began and succeeded reports once. */
+   cobalt_messages_decision_began(&view, true);
+   CHECK(view.decision.pending);
+   CHECK(cobalt_messages_decision_finished(&view, true) == COBALT_MESSAGES_DECISION_ACCEPTED);
+   CHECK(!view.decision.pending);
+   CHECK(cobalt_messages_decision_finished(&view, true) == COBALT_MESSAGES_DECISION_NONE);
+
+   /* A decline reports declined. */
+   view.decision.accept = false;
+   cobalt_messages_decision_began(&view, true);
+   CHECK(cobalt_messages_decision_finished(&view, true) == COBALT_MESSAGES_DECISION_DECLINED);
+
+   /* A failure reports failed, clears the flag, and keeps the target so the same
+    * request can be pressed again. */
+   view.decision.accept = true;
+   cobalt_messages_decision_began(&view, true);
+   CHECK(cobalt_messages_decision_finished(&view, false) == COBALT_MESSAGES_DECISION_FAILED);
+   CHECK(!view.decision.pending);
+   CHECK_STR(view.decision.convo_id, "c1");
+   cobalt_messages_decision_began(NULL, true);
+}
+
 static void
 test_chat_requests_count_label(void)
 {
@@ -3342,6 +3453,8 @@ main(int argc, char **argv)
    test_notification_wording();
    test_chat_inbox_counterpart();
    test_chat_requests_count_label();
+   test_chat_request_rows();
+   test_message_decision_states();
    test_chat_thread_state();
    test_messages_start();
    test_chat_start_target();
