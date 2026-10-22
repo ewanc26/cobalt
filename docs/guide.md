@@ -13,6 +13,7 @@ I have not walked through all of this on my console since I wrote it down, so if
 | B | Back. On the keyboard screens B types a backspace instead; leave with the keyboard's Cancel key. |
 | X | A second action: new post on the timeline, quote on a thread, followers on a profile. |
 | Y | The "More" menu for the highlighted post, notification or profile row. |
+| L, R | On the TV, scroll the text of the selected post in the right-hand column when it is longer than the column (timeline and thread). The list does not move. Nothing on the GamePad. |
 | + | Refresh, or on a profile, the next tab. |
 | GamePad touch | Tap what you would press. Rows, the Back pill in the corner and the footer prompts are all tappable. Drag a finger up or down a list to scroll it; a drag never also counts as a tap. |
 
@@ -50,6 +51,7 @@ The first time Cobalt runs without a seed file it asks you to scribble on the Ga
 | X | New post. |
 | Y | The More menu. |
 | + | Refresh. |
+| L, R | On the TV, scroll the selected post's text when it is longer than the right-hand column. The footer shows "L/R: scroll text" while it is. |
 | B | Back to home. |
 
 ![The More menu](screenshots/more-menu.png)
@@ -62,7 +64,7 @@ The More menu lists, for the highlighted post: the author's profile, View image,
 
 Shows the conversation around a post. Like and repost work as on the timeline. A on the post you opened is Reply; A on any other post opens the conversation from that post. X quotes, + replies, Y opens the More menu, which here also has Quote post and, on your own posts, Delete post (it asks first).
 
-On the TV the conversation is a column on the left, and the post you have selected is shown in full on the right, with a scrollbar when its text is longer than the screen. The GamePad keeps the full-width view.
+On the TV the conversation is a column on the left, and the post you have selected is shown on the right. When its text is longer than the column it ends with a "More below" line, and L and R scroll the text, one line at a time, without moving the selection. A scrollbar shows where you are. Moving to another post starts its text at the top. The GamePad keeps the full-width view.
 
 ## Queued posts
 

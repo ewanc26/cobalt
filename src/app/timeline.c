@@ -28,6 +28,7 @@ cobalt_timeline_rewind(cobalt_timeline *view)
       return;
    }
    cobalt_listnav_rewind(&view->nav);
+   view->detail_scroll = 0;
 }
 
 /* --- input --- */
@@ -92,6 +93,21 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
     * uses what the last frame actually fitted, since card heights vary and are
     * only known after a draw. */
    cobalt_listnav_follow(&view->nav);
+
+   /* The detail column belongs to the selected post. Moving the selection, by
+    * D-pad, touch or refresh, starts it at the top; L and R only move the text
+    * and never the selection. */
+   if (view->detail_for != view->nav.selected) {
+      view->detail_for = view->nav.selected;
+      view->detail_scroll = 0;
+   }
+   if (cobalt_input_pressed(in, COBALT_BTN_SHOULDER_R) &&
+       view->detail_scroll < view->detail_max) {
+      view->detail_scroll++;
+   }
+   if (cobalt_input_pressed(in, COBALT_BTN_SHOULDER_L) && view->detail_scroll > 0) {
+      view->detail_scroll--;
+   }
 
    /*
     * Reaching the last loaded post fetches the next page. Doing it on arrival
@@ -185,6 +201,12 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
    const int list_w = split ? (m->width - 2 * m->pad_edge - m->gap) * 2 / 5
                             : m->width - 2 * m->pad_edge;
 
+   /* Only the TV draws the detail column, so only the TV sets its state: the
+    * GamePad draws after the TV in the same frame and must not clear it. */
+   if (split) {
+      view->detail_more = (SDL_Rect){ 0, 0, 0, 0 };
+   }
+
    int y = top;
    int last_fitted = view->nav.scroll;
 
@@ -215,25 +237,39 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
    }
 
    if (split && view->nav.selected < feed->count) {
-      /* The selected post in the right-hand column, with as many of its lines
-       * as fit the viewport. Lines beyond that are cut, not wrapped onto the
-       * left column: a later pass can scroll the detail. */
+      /* The selected post in the right-hand column, showing as many of its
+       * lines as fit from detail_scroll on. When the text is longer than that
+       * the column ends in a "more" line, and L and R move the window. */
       const cobalt_post *sel = &feed->posts[view->nav.selected];
       const int x = m->pad_edge + list_w + m->gap;
       const int w = m->width - m->pad_edge - x;
       const int avail = bottom - top;
-      int lines = cobalt_postcard_text_total(r, sel, w, 0);
+      const int total = cobalt_postcard_text_total(r, sel, w, 0);
+      /* One body line is kept free for the marker when the text overflows. */
+      const int more_h = cobalt_font_line_height(r, COBALT_FONT_BODY) + m->gap;
+      int lines = total < 1 ? 1 : total;
 
-      if (lines < 1) {
-         lines = 1;
-      }
-      while (lines > 1 && cobalt_postcard_height(r, sel, lines, true) > avail) {
+      while (lines > 1 && cobalt_postcard_height(r, sel, lines, true) >
+                             avail - (lines < total ? more_h : 0)) {
          lines--;
       }
+
+      int max = total - lines;
+      if (max < 0) {
+         max = 0;
+      }
+      /* Update owns the offset and keeps it within detail_max. The draw only
+       * clamps what it shows, so a stale offset is never silently rewritten. */
+      view->detail_max = max;
+      const int first = view->detail_scroll > max ? max : view->detail_scroll;
       {
          const SDL_Rect rect = { x, top, w,
                                  cobalt_postcard_height(r, sel, lines, true) };
-         cobalt_postcard_draw(r, sel, &rect, true, lines, 0);
+         cobalt_postcard_draw_scrolled(r, sel, &rect, true, lines, 0, first);
+      }
+      if (max > 0) {
+         const SDL_Rect column = { x, top, w, avail };
+         view->detail_more = cobalt_postcard_draw_more(r, &column, bottom);
       }
    }
 
@@ -245,8 +281,14 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
                             m->pad_edge + 22 };
    cobalt_fill_rect(r, &strip, COBALT_COLOUR_BG_BOTTOM);
 
-   const char *footer = cobalt_session_busy()
-                           ? "Working..."
-                           : "A: thread  Y: more  Left: like  Right: repost";
+   char footer[120];
+   if (cobalt_session_busy()) {
+      snprintf(footer, sizeof footer, "Working...");
+   } else if (split && view->detail_more.w > 0) {
+      snprintf(footer, sizeof footer,
+               "A: thread  Y: more  Left: like  Right: repost  L/R: scroll text");
+   } else {
+      snprintf(footer, sizeof footer, "A: thread  Y: more  Left: like  Right: repost");
+   }
    cobalt_draw_hints(r, footer);
 }

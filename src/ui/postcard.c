@@ -753,3 +753,20 @@ cobalt_postcard_text_total(cobalt_render *r, const cobalt_post *post, int card_w
    return width > 0 ? cobalt_text_wrapped_lines(r, COBALT_FONT_BODY, post->text, width)
                     : 0;
 }
+
+SDL_Rect
+cobalt_postcard_draw_more(cobalt_render *r, const SDL_Rect *column, int bottom)
+{
+   SDL_Rect rect = { 0, 0, 0, 0 };
+   if (!r || !column) {
+      return rect;
+   }
+   const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+   rect.x = column->x;
+   rect.y = bottom - caption_h;
+   rect.w = column->w;
+   rect.h = caption_h;
+   cobalt_draw_text(r, COBALT_FONT_CAPTION, "More below. L and R scroll this post.",
+                    rect.x, rect.y, COBALT_COLOUR_TEXT_DIM);
+   return rect;
+}

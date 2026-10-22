@@ -17,6 +17,7 @@
 #include "ui/listnav.h"
 #include "ui/render.h"
 
+#include <SDL.h>
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -40,6 +41,15 @@ typedef struct {
    int text_total;
    int text_window;
    int text_for;
+
+   /* The TV's detail column scrolls its own copy of that offset, moved by L and
+    * R, so the GamePad's read-through above is not disturbed. detail_max is the
+    * last TV draw's bound. It is reset with text_scroll whenever the selection
+    * moves. detail_more is where the last TV draw put the "more" line, zero
+    * when the text fitted. */
+   int detail_scroll;
+   int detail_max;
+   SDL_Rect detail_more;
 
    /* Set once after a fetch so the view can jump to the post that was opened,
     * exactly once, rather than fighting the user's scrolling afterwards. */
