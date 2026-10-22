@@ -30,6 +30,61 @@ cobalt_chat_inbox_can_page(const cobalt_chat_inbox *inbox)
    return inbox && inbox->has_more && inbox->count < COBALT_CHAT_CONVOS_MAX;
 }
 
+const cobalt_chat_convo *
+cobalt_chat_inbox_find(const cobalt_chat_inbox *inbox, const char *convo_id)
+{
+   if (!inbox || !convo_id) {
+      return NULL;
+   }
+   for (int i = 0; i < inbox->count && i < COBALT_CHAT_CONVOS_MAX; i++) {
+      if (strcmp(inbox->items[i].id, convo_id) == 0) {
+         return &inbox->items[i];
+      }
+   }
+   return NULL;
+}
+
+bool
+cobalt_chat_inbox_remove(cobalt_chat_inbox *inbox, const char *convo_id)
+{
+   if (!inbox || !convo_id) {
+      return false;
+   }
+   for (int i = 0; i < inbox->count && i < COBALT_CHAT_CONVOS_MAX; i++) {
+      if (strcmp(inbox->items[i].id, convo_id) != 0) {
+         continue;
+      }
+      const int unread = inbox->items[i].unread > 0 ? inbox->items[i].unread : 0;
+      inbox->unread = inbox->unread > unread ? inbox->unread - unread : 0;
+      memmove(&inbox->items[i], &inbox->items[i + 1],
+              (size_t) (inbox->count - i - 1) * sizeof(inbox->items[0]));
+      inbox->count--;
+      return true;
+   }
+   return false;
+}
+
+bool
+cobalt_chat_inbox_add_front(cobalt_chat_inbox *inbox, const cobalt_chat_convo *item)
+{
+   if (!inbox || !item || cobalt_chat_inbox_find(inbox, item->id)) {
+      return false;
+   }
+   int n = inbox->count < COBALT_CHAT_CONVOS_MAX ? inbox->count : COBALT_CHAT_CONVOS_MAX - 1;
+   if (n < inbox->count) {
+      /* Full: the last row goes, and its unread messages leave the total. */
+      const int dropped = inbox->items[n].unread > 0 ? inbox->items[n].unread : 0;
+      inbox->unread = inbox->unread > dropped ? inbox->unread - dropped : 0;
+   }
+   memmove(&inbox->items[1], &inbox->items[0], (size_t) n * sizeof(inbox->items[0]));
+   inbox->items[0] = *item;
+   inbox->count = n + 1;
+   if (item->unread > 0) {
+      inbox->unread += item->unread;
+   }
+   return true;
+}
+
 bool
 cobalt_chat_requests_count_label(int count, char *out, size_t cap)
 {
