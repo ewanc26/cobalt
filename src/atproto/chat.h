@@ -10,9 +10,9 @@
  * member DIDs against the signed-in account, which is the one thing a row
  * cannot show without.
  *
- * The inbox and the request inbox's list live here. Accepting a request, the
- * request screen, reading a conversation's messages and replying are later
- * steps (cobalt#107).
+ * The inbox and the request inbox's list live here, with accepting and
+ * declining a request. Groups and sending to a conversation from the request
+ * list are later steps (cobalt#107).
  */
 
 #include "atproto/feed.h"
@@ -58,6 +58,23 @@ bool cobalt_chat_inbox_can_page(const cobalt_chat_inbox *inbox);
  * text does not fit in `cap` bytes with its terminator.
  */
 bool cobalt_chat_requests_count_label(int count, char *out, size_t cap);
+
+/* The row for `convo_id`, borrowed from `inbox`, or NULL when there is none. */
+const cobalt_chat_convo *cobalt_chat_inbox_find(const cobalt_chat_inbox *inbox,
+                                                const char *convo_id);
+
+/*
+ * Drop the row for `convo_id`, keeping the order of the rest. Its unread count
+ * leaves the inbox total. False when no row has that id, or `inbox` is NULL.
+ */
+bool cobalt_chat_inbox_remove(cobalt_chat_inbox *inbox, const char *convo_id);
+
+/*
+ * Put `item` at the front of `inbox`, dropping the last row when it is full.
+ * False when `inbox` or `item` is NULL, or a row with the same id is already
+ * held, so one conversation never appears twice.
+ */
+bool cobalt_chat_inbox_add_front(cobalt_chat_inbox *inbox, const cobalt_chat_convo *item);
 
 /*
  * Index of the first member whose DID is not the viewer's, or -1 when every
