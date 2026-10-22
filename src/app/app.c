@@ -474,6 +474,37 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          break;
       }
 
+      case COBALT_JOB_CHAT_ACCEPT:
+      case COBALT_JOB_CHAT_DECLINE: {
+         /* The name and id are copied out first: a finished decision clears
+          * nothing, but the request is gone from the list by now. */
+         char id[COBALT_CHAT_ID_MAX];
+         char name[COBALT_POST_NAME_MAX];
+         snprintf(id, sizeof(id), "%s", app->messages.decision.convo_id);
+         snprintf(name, sizeof(name), "%s", app->messages.decision.name);
+         const cobalt_messages_decision_outcome outcome =
+            cobalt_messages_decision_finished(&app->messages, result->ok);
+         if (outcome == COBALT_MESSAGES_DECISION_ACCEPTED) {
+            if (app->screen != COBALT_SCREEN_MESSAGES) {
+               set_notice(app, "Request accepted. Open Messages to see it.", false);
+            } else if (cobalt_session_begin_chat_messages(id)) {
+               cobalt_chat_thread_view_open(&app->chat_view, name, id);
+               app->screen = COBALT_SCREEN_CHAT_THREAD;
+               COBALT_LOGI("messages: accepted a request and opened it");
+            } else {
+               set_notice(app, "Request accepted, but it could not be opened. "
+                               "Open Messages, then open it.", true);
+            }
+         } else if (outcome == COBALT_MESSAGES_DECISION_DECLINED) {
+            set_notice(app, "Request declined.", false);
+         } else if (outcome == COBALT_MESSAGES_DECISION_FAILED) {
+            set_notice(app, result->message[0] ? result->message
+                                               : "Could not update that request.",
+                       true);
+         }
+         break;
+      }
+
       case COBALT_JOB_NOTIFICATIONS:
       case COBALT_JOB_CHAT_INBOX:
       case COBALT_JOB_CHAT_MESSAGES:
@@ -795,6 +826,21 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                cobalt_messages_start_began(&app->messages.start, began);
                if (!began) {
                   set_notice(app, "Could not start that conversation. Check the handle or DID.",
+                             true);
+               }
+               break;
+            }
+            case COBALT_MESSAGES_ACCEPT:
+            case COBALT_MESSAGES_DECLINE: {
+               /* The view has filled in the target. A refused begin changes
+                * nothing, so the request stays where it is. */
+               const bool accept = app->messages.decision.accept;
+               const bool began = accept
+                  ? cobalt_session_begin_chat_accept(app->messages.decision.convo_id)
+                  : cobalt_session_begin_chat_decline(app->messages.decision.convo_id);
+               cobalt_messages_decision_began(&app->messages, began);
+               if (!began) {
+                  set_notice(app, "Could not update that request. Wait for the last request to finish.",
                              true);
                }
                break;
