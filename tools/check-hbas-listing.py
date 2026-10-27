@@ -57,7 +57,7 @@ def check(out, expect):
         if u.get("url") != want:
             errs.append("update url %r is not %r" % (u.get("url"), want))
         if u.get("dest") != "/wiiu/apps/cobalt.wuhb":
-            errs.append("update dest must be /wiiu/apps/cobalt.wuhb (where the updater expects it)")
+            errs.append("update dest must be /wiiu/apps/cobalt.wuhb (where Aroma loads the bundle from)")
     types = [x.get("type") for x in assets]
     for t in ("icon", "banner"):
         if types.count(t) != 1:
