@@ -233,7 +233,7 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Profile", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE_FOCUS);
+                    COBALT_COLOUR_TILE);
    {
       SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
       cobalt_draw_text(r, COBALT_FONT_CAPTION,

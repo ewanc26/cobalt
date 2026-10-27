@@ -348,7 +348,7 @@ draw_join_requests(cobalt_chat_thread_view *view, cobalt_render *r,
    const bool busy = cobalt_session_busy();
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Join requests", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE_FOCUS);
+                    COBALT_COLOUR_TILE);
    {
       char subtitle[96];
       if (busy) {
@@ -421,7 +421,7 @@ cobalt_chat_thread_view_draw(cobalt_chat_thread_view *view, cobalt_render *r,
    }
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Messages", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE_FOCUS);
+                    COBALT_COLOUR_TILE);
    {
       char subtitle[128];
       snprintf(subtitle, sizeof(subtitle), "%s",
