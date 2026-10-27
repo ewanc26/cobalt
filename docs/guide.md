@@ -86,6 +86,8 @@ Replies, mentions, quotes, likes, reposts and follows. A opens the post or the f
 
 Messages lists your conversations with the last message and any unread count. A opens one. X starts a new conversation with a handle or DID you type.
 
+Opening a conversation shows its messages as bubbles: yours on the right, the other person's on the left. Up and Down move back through the messages held. A writes a reply and Y sends it; a reply that fails to send stays as the draft. In a group, X opens the group's join requests: A approves the highlighted one and X rejects it, and B returns to the conversation. Only a group's owner can list them, and nothing is approved or rejected until you press a button on a row.
+
 Y lists message requests, from people you have not talked with yet. A accepts the highlighted request: it moves to your conversations and opens. X declines it: it leaves the list. Nothing is sent on entering the list, and a request is accepted or declined only by its own press. B goes back to the conversations. A request cannot be pressed again until the one in progress has finished.
 
 ## Profiles

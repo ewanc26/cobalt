@@ -805,6 +805,47 @@ There is a **third** step for the same reason. The sweep is `-fsyntax-only`, so 
 
 Verified to work by deleting a function that only the Wolfram-side code calls: the sweep passed, the link check failed.
 
+### Direct messages: inbox, replies, requests, and a group's join requests
+
+`src/app/messages.c` is the inbox and `src/app/chat_thread.c` one conversation;
+each is a single screen with a second sub-mode rather than two more screens.
+`src/atproto/chat.{c,h}` flattens Wolfram's owned `chat.bsky.convo` types into
+fixed rows — the same split `feed.c`/`notifications.h`/`actors.c` use — and the
+job runners live in `session_read.c`.
+
+Routing is Wolfram's: `chat.bsky.*` is proxied through the account's PDS by
+`wf_agent`'s chat client, so no `atproto-proxy` header or chat-DID resolution is
+written here. Under OAuth the console talks to the node instead, and the node
+does not forward `chat.bsky.*` yet, so DMs need an app-password session; that is
+a Wolfram node-side gap, not something to paper over in Cobalt.
+
+Four rules the DM screens share with the rest of the client, worth knowing
+before adding to them:
+
+- **A decision is one press and one job, never on entry.** Accepting or
+declining a message request, and approving or rejecting a join request, each
+begins only from a button press; opening the list sends nothing, and a refused
+begin (one job already in flight) changes nothing.
+- **A successful decision is applied locally.** An accepted request moves to
+the front of the inbox, and a settled join request leaves the loaded list,
+without a refetch.
+- **A group is `others > 1` by member count**, which is what the inbox's `group`
+flag already meant, so a group with exactly one other member reads as
+one-to-one and does not offer join requests. Wolfram's convo type carries no
+`name` (only an opaque `type` tag), so the inbox labels every group "Group" and
+nothing can draw its name; that is a Wolfram-side gap, not a Cobalt one.
+- **Join requests are reachable only from a conversation.**
+`chat.bsky.group.listJoinRequests` takes a conversation id and only a group's
+owner may call it, so `chat_thread.c`'s X offers them only for a group, and a
+one-to-one leaves X inert rather than offering a list that can only be refused.
+
+**Verification note:** host sweep (both configurations), `linkcheck`, the unit
+tests, `make -C tests e2e` (a new `test_group_join_requests`: fetch, approve,
+reject, a one-to-one X being inert, and a failed approve keeping the request and
+not retrying) and the snapshot suite all pass, and `make -j4` builds
+`cobalt.elf`/`.rpx`/`.wuhb` with no warnings. Still no hardware pass: nothing
+here has run on a console, so the console flow remains a `needs-owner` check.
+
 ### Threadgates: reply controls on new top-level posts, via Wolfram's existing `wf_agent_create_threadgate`
 
 `compose.c`'s confirmation screen gained a Y-cycled reply-gate choice (everyone / followed+mentioned / nobody), shown and editable only for a new top-level post — not for a reply, since Bluesky scopes a threadgate to the post it is attached to and the official client does not offer a separate choice for a reply's own replies either. `cobalt_session_begin_post` grew a `reply_gate` parameter (a plain `int`, not `compose.h`'s `cobalt_reply_gate` enum, to avoid `atproto/` — which sits below `app/` — depending on an app-layer type); `run_post` writes the `app.bsky.feed.threadgate` record right after a successful post via `wf_agent_create_threadgate`, using `followingRule`+`mentionRule` for the middle option and an empty allow array for nobody. A threadgate failure is logged but does not roll back the already-published post.
