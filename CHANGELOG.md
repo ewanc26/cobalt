@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Added
+
+- A group conversation has its join requests. On the conversation, X opens the group's pending requests; A approves the highlighted one, which lets that person in, and X rejects it. B returns to the conversation. Only a group's owner can list them, nothing is approved or rejected until a button is pressed, and a failure is shown and not retried. (#107)
+
 ## [0.12.0] - 2026-10-22
 
 ### Added
