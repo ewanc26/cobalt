@@ -4,6 +4,7 @@
  * refresh through the same entry points the UI uses. Not run by `make test`;
  * see `make e2e`.
  */
+#include "app/chat_thread.h"
 #include "app/messages.h"
 #include "atproto/prefs.h"
 #include "atproto/session.h"
@@ -552,6 +553,155 @@ test_message_requests(void)
    cs_stop(&s);
 }
 
+/* A group convo view: the viewer and two others, so it is more than a pair and
+ * so the inbox marks it a group. */
+static const char *
+group_convo_json(const char *id)
+{
+   static char buf[640];
+   snprintf(buf, sizeof buf,
+      "{\"id\":\"%s\",\"rev\":\"1\",\"unreadCount\":0,\"members\":["
+      "{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\"},"
+      "{\"did\":\"did:plc:bob\",\"handle\":\"bob.test\",\"displayName\":\"bob\"},"
+      "{\"did\":\"did:plc:carol\",\"handle\":\"carol.test\",\"displayName\":\"carol\"}]}",
+      id);
+   return buf;
+}
+
+/* A group's two pending join requests, for the listJoinRequests route. */
+static const char *
+join_requests_two(void)
+{
+   return "{\"requests\":["
+      "{\"convoId\":\"g1\",\"requestedBy\":{\"did\":\"did:plc:bob\","
+      "\"handle\":\"bob.test\",\"displayName\":\"bob\"},"
+      "\"requestedAt\":\"2026-10-01T10:00:00.000Z\"},"
+      "{\"convoId\":\"g1\",\"requestedBy\":{\"did\":\"did:plc:dave\","
+      "\"handle\":\"dave.test\",\"displayName\":\"dave\"},"
+      "\"requestedAt\":\"2026-10-01T10:00:00.000Z\"}]}";
+}
+
+/* A group's join requests: opened from the conversation, one decision per press,
+ * and only a group offers it at all. */
+static void
+test_group_join_requests(void)
+{
+   cs_server s;
+   CHECK(cs_start(&s));
+   char svc[64];
+   snprintf(svc, sizeof svc, "http://127.0.0.1:%d", s.port);
+
+   cs_set(&s, "com.atproto.server.createSession", 200,
+      "{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\","
+      "\"accessJwt\":\"a.b.c\",\"refreshJwt\":\"d.e.f\",\"active\":true}");
+   char convos[700];
+   snprintf(convos, sizeof convos, "{\"convos\":[%s]}", group_convo_json("g1"));
+   cs_set(&s, "chat.bsky.convo.listConvos", 200, convos);
+   cs_set(&s, "chat.bsky.group.listJoinRequests", 200, join_requests_two());
+
+   char approved[720];
+   snprintf(approved, sizeof approved, "{\"convo\":%s}", group_convo_json("g1"));
+   cs_set(&s, "chat.bsky.group.approveJoinRequest", 200, approved);
+   cs_set(&s, "chat.bsky.group.rejectJoinRequest", 200, "{}");
+
+   cobalt_job_result r;
+   CHECK(cobalt_session_begin_login(svc, "alice.test", "app-pass"));
+   CHECK(wait_job(&r) && r.ok);
+
+   cobalt_chat_thread_view view;
+   cobalt_chat_thread_view_init(&view);
+   cobalt_input none;
+   memset(&none, 0, sizeof none);
+
+   /* X opens the join requests and fetches them once. Entering decides nothing,
+    * however many frames pass. */
+   cobalt_chat_thread_view_open(&view, "Group", "g1", true);
+   CHECK(view.group);
+   cobalt_input x = press(COBALT_BTN_ALT_X);
+   CHECK(cobalt_chat_thread_view_update(&view, &x) == COBALT_CHAT_THREAD_STAY);
+   CHECK(view.mode == COBALT_CHAT_THREAD_MODE_JOIN_REQUESTS);
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cobalt_session_chat_join_requests()->count == 2);
+   CHECK_STR(cobalt_session_chat_join_requests()->items[0].did, "did:plc:bob");
+   CHECK_STR(cobalt_session_chat_join_requests()->items[0].name, "bob");
+   CHECK_STR(cobalt_session_chat_join_requests()->items[1].did, "did:plc:dave");
+   for (int i = 0; i < 5; i++) {
+      cobalt_chat_thread_view_update(&view, &none);
+   }
+   CHECK(cs_hits(&s, "chat.bsky.group.listJoinRequests") == 1);
+   CHECK(cs_hits(&s, "chat.bsky.group.approveJoinRequest") == 0);
+   CHECK(cs_hits(&s, "chat.bsky.group.rejectJoinRequest") == 0);
+
+   /* A approves the highlighted request, which then leaves the list. */
+   cobalt_input a = press(COBALT_BTN_CONFIRM);
+   CHECK(cobalt_chat_thread_view_update(&view, &a) == COBALT_CHAT_THREAD_JOIN_APPROVE);
+   CHECK_STR(view.join_decision.did, "did:plc:bob");
+   CHECK(view.join_decision.approve);
+   const bool began = cobalt_session_begin_chat_join_approve(view.convo_id,
+                                                             view.join_decision.did);
+   cobalt_chat_thread_decision_began(&view, began);
+   CHECK(began);
+   CHECK(view.join_decision.pending);
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cobalt_chat_thread_decision_finished(&view, r.ok) == COBALT_CHAT_THREAD_DECISION_APPROVED);
+   CHECK(cs_hits(&s, "chat.bsky.group.approveJoinRequest") == 1);
+   CHECK(cobalt_session_chat_join_requests()->count == 1);
+   CHECK_STR(cobalt_session_chat_join_requests()->items[0].did, "did:plc:dave");
+
+   /* X rejects what is left: one reject, no further approve. */
+   CHECK(cobalt_chat_thread_view_update(&view, &x) == COBALT_CHAT_THREAD_JOIN_REJECT);
+   CHECK_STR(view.join_decision.did, "did:plc:dave");
+   CHECK(!view.join_decision.approve);
+   const bool rejected = cobalt_session_begin_chat_join_reject(view.convo_id,
+                                                               view.join_decision.did);
+   cobalt_chat_thread_decision_began(&view, rejected);
+   CHECK(rejected);
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cobalt_chat_thread_decision_finished(&view, r.ok) == COBALT_CHAT_THREAD_DECISION_REJECTED);
+   CHECK(cs_hits(&s, "chat.bsky.group.rejectJoinRequest") == 1);
+   CHECK(cs_hits(&s, "chat.bsky.group.approveJoinRequest") == 1);
+   CHECK(cobalt_session_chat_join_requests()->count == 0);
+
+   /* B leaves the sub-mode for the conversation, not out of it. */
+   cobalt_input back = press(COBALT_BTN_BACK);
+   CHECK(cobalt_chat_thread_view_update(&view, &back) == COBALT_CHAT_THREAD_STAY);
+   CHECK(view.mode == COBALT_CHAT_THREAD_MODE_MESSAGES);
+
+   /* A one-to-one conversation has no join requests, so its X does nothing. */
+   cobalt_chat_thread_view_open(&view, "bob", "d1", false);
+   CHECK(!view.group);
+   CHECK(cobalt_chat_thread_view_update(&view, &x) == COBALT_CHAT_THREAD_STAY);
+   CHECK(view.mode == COBALT_CHAT_THREAD_MODE_MESSAGES);
+   CHECK(cs_hits(&s, "chat.bsky.group.listJoinRequests") == 1);
+
+   /* A failed approve keeps the request, says why, and is not retried by
+    * itself. */
+   cs_set(&s, "chat.bsky.group.listJoinRequests", 200, join_requests_two());
+   cs_set(&s, "chat.bsky.group.approveJoinRequest", 500,
+          "{\"error\":\"InternalServerError\",\"message\":\"try later\"}");
+   cobalt_chat_thread_view_open(&view, "Group", "g1", true);
+   CHECK(cobalt_chat_thread_view_update(&view, &x) == COBALT_CHAT_THREAD_STAY);
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cobalt_session_chat_join_requests()->count == 2);
+   CHECK(cobalt_chat_thread_view_update(&view, &a) == COBALT_CHAT_THREAD_JOIN_APPROVE);
+   const bool failing = cobalt_session_begin_chat_join_approve(view.convo_id,
+                                                               view.join_decision.did);
+   cobalt_chat_thread_decision_began(&view, failing);
+   CHECK(failing);
+   CHECK(wait_job(&r));
+   CHECK(!r.ok);
+   CHECK(r.message[0] != '\0');
+   CHECK(cobalt_chat_thread_decision_finished(&view, r.ok) == COBALT_CHAT_THREAD_DECISION_FAILED);
+   CHECK(cobalt_session_chat_join_requests()->count == 2);
+   SDL_Delay(300);
+   for (int i = 0; i < 3; i++) {
+      cobalt_chat_thread_view_update(&view, &none);
+   }
+   CHECK(cs_hits(&s, "chat.bsky.group.approveJoinRequest") == 2);
+
+   cs_stop(&s);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -693,6 +843,7 @@ main(int argc, char **argv)
    CHECK(cobalt_session_feed()->count == 2);
 
    test_message_requests();
+   test_group_join_requests();
 
    wf_mock_pds_free(pds);
    printf("%d checks, %d failures\n", checks, failures);
