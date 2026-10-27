@@ -350,6 +350,7 @@ cobalt_session_run_logout(cobalt_job_result *r, cobalt_auth_state *state)
    cobalt_chat_inbox_reset(&g_session.chat);
    cobalt_chat_inbox_reset(&g_session.requests);
    cobalt_chat_thread_reset(&g_session.chat_thread);
+   cobalt_chat_join_requests_reset(&g_session.join_requests);
    g_session.chat_started[0] = '\0';
    cobalt_profile_reset(&g_session.profile);
    cobalt_feed_reset(&g_session.author_feed);
