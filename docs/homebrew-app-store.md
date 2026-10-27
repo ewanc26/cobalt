@@ -1,6 +1,8 @@
 # Homebrew App Store
 
-This is how Cobalt gets onto the Wii U Homebrew App Store (`fortheusers/hb-appstore`), what I could and could not check about the process, and the one command that does the submission. I have not submitted anything: it is a pull request on someone else's repository in my name, so it is mine to send.
+This is how Cobalt gets onto the Wii U Homebrew App Store (`fortheusers/hb-appstore`), what I could and could not check about the process, and the one command that does the submission. Cobalt is listed there now: the package `packages/Cobalt` in [`fortheusers/wiiu-hbas-repo`](https://github.com/fortheusers/wiiu-hbas-repo) carries version 0.12.0 and points its `update` asset at the `cobalt-0.12.0.wuhb` release download. Getting it there was a pull request on someone else's repository in my name, so it was mine to send; later releases update the same package with `tools/submit-hbas.sh`.
+
+What has not been checked is the store client itself: nothing here has installed the package from `hb-appstore` on a console, so the listing is confirmed from the repository that the store serves, not from a Wii U.
 
 ## What the store is
 
