@@ -93,6 +93,14 @@ jobs:
           tools/check-hbas-listing-selftest.sh
           python3 tools/make-hbas-listing.py --screenshots tests/build/snapshot --out dist/hbas
           python3 tools/check-hbas-listing.py dist/hbas
+      - name: Release layout
+        # The store asks for .../v<version>/cobalt-<version>.wuhb, which four
+        # tools have to agree on; only the listing half of that is covered by
+        # the step above. Its own self-test breaks each rule on purpose.
+        working-directory: cobalt
+        run: |
+          python3 tools/check-release-layout.py
+          bash tools/check-release-layout-selftest.sh
       - uses: actions/upload-artifact@v4
         with:
           name: hbas-listing
