@@ -14,6 +14,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Removed
 
 - Cobalt no longer updates itself. The Updates entry is gone from the Home menu, and with it the in-app download, the signature check and the replacement of the running `.wuhb` on quit; the screenshots and the entry indices that pointed at it are gone too. Updates come from the Homebrew App Store, which carries each release's file, or from a `.wuhb` you copy across yourself. ([#252](https://github.com/ewanc26/cobalt/pull/252))
+- Releases no longer carry an `update.json` manifest or its `update.json.sig` signature, and the job that signed it is gone with them; `tools/publish.sh` attaches the `.wuhb` and its checksum only. Releases published before this keep their manifest on GitHub. ([#253](https://github.com/ewanc26/cobalt/pull/253))
 
 ## [0.12.0] - 2026-10-22
 
