@@ -81,5 +81,10 @@ dkms.conf
 # debug information files
 *.dwo
 
+# Python bytecode from tools/*.py. The interpreter writes it next to the source,
+# and it is specific to the interpreter that ran, so it must not be committed.
+__pycache__/
+*.pyc
+
 # macOS
 .DS_Store
