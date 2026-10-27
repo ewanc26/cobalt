@@ -49,8 +49,7 @@ DETAILS = (
     "On first run, Cobalt asks you to scribble on the GamePad to make a private "
     "random seed (nothing can go online without one).\n"
     "\n"
-    "Cobalt can check this GitHub project for updates from its Updates screen. "
-    "It only downloads when you press A."
+    "Cobalt does not update itself: this store is where a newer release comes from."
 )
 
 
