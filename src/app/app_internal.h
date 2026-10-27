@@ -28,8 +28,6 @@
 #include "audio/sound.h"
 #include "util/buildinfo.h"
 #include "app/timeline.h"
-#include "app/update.h"
-#include "app/update.h"
 #include "atproto/atproto.h"
 #include "atproto/session.h"
 #include "net/net.h"
@@ -46,7 +44,7 @@
 #include <string.h>
 
 /* Entries on the home menu; app_home.c checks its table against this. */
-#define COBALT_HOME_MENU_COUNT 13
+#define COBALT_HOME_MENU_COUNT 12
 /* How deep a chain of thread and profile screens can nest before the oldest
  * return is dropped. */
 #define COBALT_RETURN_DEPTH 16
@@ -66,7 +64,6 @@ struct cobalt_app {
    float focus[COBALT_HOME_MENU_COUNT];
 
    cobalt_signin signin;
-   cobalt_update_view update;
    cobalt_entropy_view entropy;
    cobalt_timeline timeline;
    cobalt_thread_view thread;

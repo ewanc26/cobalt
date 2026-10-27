@@ -801,7 +801,7 @@ main(int argc, char **argv)
 
    frame(COBALT_BTN_BACK);
    settle(10);
-   open_home_item(10);
+   open_home_item(9); /* diagnostics, after the Updates entry was removed */
    settle(10);
    shoot("diagnostics");
 
@@ -880,11 +880,11 @@ main(int argc, char **argv)
 
    /* The Back pill is drawn on every screen that does not give B to the
     * keyboard, and tapping it must leave each one (cobalt#112). The home items
-    * are: timeline 0, notifications 5, dms 6, queue 7, account 8, updates 9, diagnostics
-    * 10, and the two lists, feeds 3 and lists 4. Compose and search are left
+    * are: timeline 0, notifications 5, dms 6, queue 7, account 8, diagnostics
+    * 9, and the two lists, feeds 3 and lists 4. Compose and search are left
     * out on purpose: B types there, so they have no pill. */
    {
-       static const int items[] = {0, 3, 4, 5, 6, 8, 9, 10};
+      static const int items[] = {0, 3, 4, 5, 6, 8, 9};
       for (size_t k = 0; k < sizeof items / sizeof items[0]; k++) {
          open_home_item(items[k]);
          settle(20);

@@ -25,7 +25,7 @@ The footer names the buttons that work on the current screen. A prompt that name
 
 ![Home](screenshots/home-signedin.png)
 
-Timeline, New post, Search, Feeds, Lists, Notifications, Messages, Queued posts, Account (or Sign in), Updates, Diagnostics, TV display and Quit. Timeline, New post, Search, Feeds, Lists, Notifications and Messages need you signed in; Queued posts and the rest do not.
+Timeline, New post, Search, Feeds, Lists, Notifications, Messages, Queued posts, Account (or Sign in), Diagnostics, TV display and Quit. Timeline, New post, Search, Feeds, Lists, Notifications and Messages need you signed in; Queued posts and the rest do not.
 
 TV display switches between TV plus GamePad and Off-TV Play, where the TV goes idle and everything happens on the GamePad.
 
@@ -108,7 +108,7 @@ Muted accounts and Blocked accounts (A on one undoes it), the post language sett
 
 ## Updates
 
-Updates asks GitHub whether there is a newer Cobalt. If there is, it shows the version and the notes and waits. A downloads it, the file is checked against its published checksum, and it replaces Cobalt when you quit; start it again from the Wii U Menu. The old copy is kept until the new one has started. It never updates by itself. The release's manifest is signed and Cobalt refuses one that is not; see the README.
+Cobalt does not update itself, and there is no Updates screen. New versions come from the Homebrew App Store, which offers one when its package `version` moves on, or from a release `.wuhb` you copy over the old one yourself. Nothing is downloaded from inside Cobalt; see the README.
 
 ## Diagnostics
 
