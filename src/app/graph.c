@@ -250,7 +250,7 @@ cobalt_graph_view_draw(cobalt_graph_view *view, cobalt_render *r,
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, title_for(view->kind), m->pad_edge,
-                    m->pad_edge, COBALT_COLOUR_TILE_FOCUS);
+                    m->pad_edge, COBALT_COLOUR_TILE);
 
    const int top = cobalt_content_top(r);
    const int bottom = m->height - m->pad_edge - 28;
