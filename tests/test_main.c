@@ -2044,6 +2044,103 @@ test_chat_requests_count_label(void)
    CHECK(!cobalt_chat_requests_count_label(0, NULL, sizeof(out)));
 }
 
+static cobalt_chat_join_request
+test_join_row(const char *did)
+{
+   cobalt_chat_join_request r;
+   memset(&r, 0, sizeof(r));
+   snprintf(r.did, sizeof(r.did), "%s", did);
+   return r;
+}
+
+static void
+test_chat_join_request_rows(void)
+{
+   begin("group join requests: find, remove and paging");
+
+   cobalt_chat_join_requests list;
+   memset(&list, 0, sizeof(list));
+   list.items[0] = test_join_row("did:plc:aa");
+   list.items[1] = test_join_row("did:plc:bb");
+   list.items[2] = test_join_row("did:plc:cc");
+   list.count = 3;
+   snprintf(list.convo_id, sizeof(list.convo_id), "%s", "convo-1");
+
+   CHECK(cobalt_chat_join_requests_find(&list, "did:plc:bb") == &list.items[1]);
+   CHECK(cobalt_chat_join_requests_find(&list, "did:plc:zz") == NULL);
+   CHECK(cobalt_chat_join_requests_find(NULL, "did:plc:aa") == NULL);
+   CHECK(cobalt_chat_join_requests_find(&list, NULL) == NULL);
+
+   /* Removing a row keeps the order of the rest, and an unknown DID is not it. */
+   CHECK(!cobalt_chat_join_requests_remove(&list, "did:plc:zz"));
+   CHECK(!cobalt_chat_join_requests_remove(NULL, "did:plc:aa"));
+   CHECK(!cobalt_chat_join_requests_remove(&list, NULL));
+   CHECK(cobalt_chat_join_requests_remove(&list, "did:plc:aa"));
+   CHECK(list.count == 2);
+   CHECK_STR(list.items[0].did, "did:plc:bb");
+   CHECK_STR(list.items[1].did, "did:plc:cc");
+   CHECK(cobalt_chat_join_requests_find(&list, "did:plc:aa") == NULL);
+   CHECK(!cobalt_chat_join_requests_remove(&list, "did:plc:aa"));
+
+   /* Paging stops when the window fills, as the other lists do. */
+   list.has_more = false;
+   CHECK(!cobalt_chat_join_requests_can_page(&list));
+   list.has_more = true;
+   CHECK(cobalt_chat_join_requests_can_page(&list));
+   list.count = COBALT_CHAT_JOIN_REQUESTS_MAX;
+   CHECK(!cobalt_chat_join_requests_can_page(&list));
+   CHECK(!cobalt_chat_join_requests_can_page(NULL));
+
+   /* Reset clears everything, including the group they belonged to. */
+   cobalt_chat_join_requests_reset(&list);
+   CHECK(list.count == 0);
+   CHECK(list.convo_id[0] == '\0');
+   CHECK(!list.has_more);
+   cobalt_chat_join_requests_reset(NULL);
+}
+
+static void
+test_chat_thread_decision_states(void)
+{
+   begin("approving or rejecting a join request: one job at a time");
+
+   cobalt_chat_thread_view view;
+   cobalt_chat_thread_view_init(&view);
+   CHECK(!view.join_decision.pending);
+
+   /* Finishing with nothing in flight is nothing. */
+   CHECK(cobalt_chat_thread_decision_finished(&view, true) == COBALT_CHAT_THREAD_DECISION_NONE);
+   CHECK(cobalt_chat_thread_decision_finished(NULL, true) == COBALT_CHAT_THREAD_DECISION_NONE);
+
+   /* A refused begin marks nothing in flight, so its finish is nothing. */
+   view.join_decision.approve = true;
+   snprintf(view.join_decision.did, sizeof(view.join_decision.did), "%s", "did:plc:aa");
+   cobalt_chat_thread_decision_began(&view, false);
+   CHECK(!view.join_decision.pending);
+   CHECK(cobalt_chat_thread_decision_finished(&view, true) == COBALT_CHAT_THREAD_DECISION_NONE);
+
+   /* An approve that began and succeeded reports once. */
+   cobalt_chat_thread_decision_began(&view, true);
+   CHECK(view.join_decision.pending);
+   CHECK(cobalt_chat_thread_decision_finished(&view, true) == COBALT_CHAT_THREAD_DECISION_APPROVED);
+   CHECK(!view.join_decision.pending);
+   CHECK(cobalt_chat_thread_decision_finished(&view, true) == COBALT_CHAT_THREAD_DECISION_NONE);
+
+   /* A reject reports rejected. */
+   view.join_decision.approve = false;
+   cobalt_chat_thread_decision_began(&view, true);
+   CHECK(cobalt_chat_thread_decision_finished(&view, true) == COBALT_CHAT_THREAD_DECISION_REJECTED);
+
+   /* A failure reports failed, clears the flag, and keeps the target so the same
+    * request can be pressed again. */
+   view.join_decision.approve = true;
+   cobalt_chat_thread_decision_began(&view, true);
+   CHECK(cobalt_chat_thread_decision_finished(&view, false) == COBALT_CHAT_THREAD_DECISION_FAILED);
+   CHECK(!view.join_decision.pending);
+   CHECK_STR(view.join_decision.did, "did:plc:aa");
+   cobalt_chat_thread_decision_began(NULL, true);
+}
+
 /* A string one byte longer than a reply may be. */
 static const char *
 std_pad_1024(void)
@@ -2073,10 +2170,12 @@ test_chat_thread_state(void)
    cobalt_chat_thread_view view;
    cobalt_chat_thread_view_init(&view);
    view.offset = 4;
-   cobalt_chat_thread_view_open(&view, "Bob", "convo-bob");
+   cobalt_chat_thread_view_open(&view, "Bob", "convo-bob", false);
    CHECK(view.offset == 0);
    CHECK(strcmp(view.title, "Bob") == 0);
    CHECK(strcmp(view.convo_id, "convo-bob") == 0);
+   CHECK(!view.group);
+   CHECK(view.mode == COBALT_CHAT_THREAD_MODE_MESSAGES);
 
    /* A reply must have something other than spaces in it, and fit the buffer. */
    CHECK(!cobalt_chat_reply_valid(NULL));
@@ -2089,13 +2188,23 @@ test_chat_thread_state(void)
     * it. A different conversation starts with no draft, so it cannot be sent by
     * mistake. */
    snprintf(view.reply, sizeof(view.reply), "%s", "half a thought");
-   cobalt_chat_thread_view_open(&view, "Bob", "convo-bob");
+   cobalt_chat_thread_view_open(&view, "Bob", "convo-bob", false);
    CHECK(strcmp(view.reply, "half a thought") == 0);
-   cobalt_chat_thread_view_open(&view, "Cat", "convo-cat");
+   cobalt_chat_thread_view_open(&view, "Cat", "convo-cat", false);
    CHECK(view.reply[0] == '\0');
    snprintf(view.reply, sizeof(view.reply), "%s", "thanks");
    cobalt_chat_thread_view_sent(&view);
    CHECK(view.reply[0] == '\0');
+
+   /* A group remembers that it has join requests to open, and opening another
+    * conversation comes back to its messages rather than a stale sub-mode. */
+   cobalt_chat_thread_view_open(&view, "Group", "convo-group", true);
+   CHECK(view.group);
+   CHECK(view.mode == COBALT_CHAT_THREAD_MODE_MESSAGES);
+   view.mode = COBALT_CHAT_THREAD_MODE_JOIN_REQUESTS;
+   cobalt_chat_thread_view_open(&view, "Bob", "convo-bob", false);
+   CHECK(!view.group);
+   CHECK(view.mode == COBALT_CHAT_THREAD_MODE_MESSAGES);
 }
 
 /* --- starting a conversation from the inbox --- */
@@ -3663,7 +3772,9 @@ main(int argc, char **argv)
    test_chat_inbox_counterpart();
    test_chat_requests_count_label();
    test_chat_request_rows();
+   test_chat_join_request_rows();
    test_message_decision_states();
+   test_chat_thread_decision_states();
    test_chat_thread_state();
    test_messages_start();
    test_chat_start_target();
