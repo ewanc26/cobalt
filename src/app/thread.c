@@ -202,7 +202,7 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
    const int detail_w = m->width - m->pad_edge - detail_x;
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Thread", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE_FOCUS);
+                    COBALT_COLOUR_TILE);
    {
       char subtitle[96];
       if (cobalt_session_busy()) {
