@@ -11,8 +11,10 @@
  * cannot show without.
  *
  * The inbox and the request inbox's list live here, with accepting and
- * declining a request. Groups and sending to a conversation from the request
- * list are later steps (cobalt#107).
+ * declining a request. A group's pending join requests are here too: the same
+ * flattening, for the same reason, but only a group's owner can list them, so
+ * a screen reaches them from a conversation rather than the inbox. Groups
+ * themselves — creating one, editing it — are still later steps (cobalt#107).
  */
 
 #include "atproto/feed.h"
@@ -156,6 +158,48 @@ bool cobalt_chat_is_self(const char *viewer_did, const char *target_did);
  */
 bool cobalt_chat_convo_id_copy(char *out, size_t cap, const char *id);
 
+/* --- a group's pending join requests --- */
+
+/*
+ * Who asked to join a group, flattened for drawing. Only the group's owner can
+ * list these, so a screen opens them from the group's own conversation. The DID
+ * is the handle the approve and reject calls take, so a row keeps it whether or
+ * not the name could be read.
+ */
+#define COBALT_CHAT_JOIN_REQUESTS_MAX 50
+
+typedef struct {
+   char did[COBALT_CHAT_TARGET_MAX];   /* who asked, for the decision */
+   char name[COBALT_POST_NAME_MAX];    /* display name, or the handle */
+   char handle[COBALT_POST_NAME_MAX];  /* with a leading '@' */
+   char age[COBALT_RELATIVE_MAX];      /* "3h" since they asked */
+} cobalt_chat_join_request;
+
+typedef struct {
+   char convo_id[COBALT_CHAT_ID_MAX];  /* the group these belong to */
+   cobalt_chat_join_request items[COBALT_CHAT_JOIN_REQUESTS_MAX];
+   int count;
+   char cursor[COBALT_CURSOR_MAX];
+   bool has_more;
+} cobalt_chat_join_requests;
+
+void cobalt_chat_join_requests_reset(cobalt_chat_join_requests *list);
+
+/* As cobalt_feed_can_page, for the same reason: a full window with a cursor
+ * left must not be paged forever. */
+bool cobalt_chat_join_requests_can_page(const cobalt_chat_join_requests *list);
+
+/* The row for `did`, borrowed, or NULL when there is none. */
+const cobalt_chat_join_request *cobalt_chat_join_requests_find(
+   const cobalt_chat_join_requests *list, const char *did);
+
+/*
+ * Drop the request from `did`, keeping the order of the rest. False when no row
+ * has that DID, or `list` is NULL. Called once a decision has been accepted, so
+ * the row leaves without a refetch.
+ */
+bool cobalt_chat_join_requests_remove(cobalt_chat_join_requests *list, const char *did);
+
 #ifdef COBALT_HAS_WOLFRAM
 struct wf_chat_convo_list;
 struct wf_chat_message_list;
@@ -175,6 +219,17 @@ int cobalt_chat_thread_fill_from_wolfram(cobalt_chat_thread *out,
 int cobalt_chat_inbox_append_from_wolfram(cobalt_chat_inbox *out,
                                           const struct wf_chat_convo_list *list,
                                           const char *viewer_did);
+
+struct wf_chat_join_requests;
+
+/*
+ * Append every request in a parsed listJoinRequests page. Returns the number
+ * added. A request whose DID is already held is skipped, so paging never
+ * doubles a row; a full list clears the cursor, as the other lists do.
+ */
+int cobalt_chat_join_requests_append_from_wolfram(cobalt_chat_join_requests *out,
+                                                  const struct wf_chat_join_requests *list,
+                                                  int64_t now);
 #endif
 
 #ifdef __cplusplus

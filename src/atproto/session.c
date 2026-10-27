@@ -301,6 +301,11 @@ cobalt_session_describe_failure(cobalt_job_result *r, wf_status status, cobalt_j
          } else if (kind == COBALT_JOB_CHAT_ACCEPT || kind == COBALT_JOB_CHAT_DECLINE) {
             cobalt_session_set_message(r, "The server did not update that message request. "
                            "Try again.");
+         } else if (kind == COBALT_JOB_CHAT_JOIN_REQUESTS ||
+                    kind == COBALT_JOB_CHAT_JOIN_APPROVE ||
+                    kind == COBALT_JOB_CHAT_JOIN_REJECT) {
+            cobalt_session_set_message(r, "The server did not update that group's join "
+                           "requests. Only a group's owner can see them; try again.");
          } else {
             cobalt_session_set_message(r, "The server refused that request. The post may be gone, or the "
                            "session may have expired - try again, then sign in "
@@ -457,6 +462,15 @@ run_job(cobalt_job_kind kind, const cobalt_job_input *in, cobalt_auth_state *sta
          break;
       case COBALT_JOB_CHAT_DECLINE:
          cobalt_session_run_chat_decline(in, &r, state);
+         break;
+      case COBALT_JOB_CHAT_JOIN_REQUESTS:
+         cobalt_session_run_chat_join_requests(in, &r, state);
+         break;
+      case COBALT_JOB_CHAT_JOIN_APPROVE:
+         cobalt_session_run_chat_join_approve(in, &r, state);
+         break;
+      case COBALT_JOB_CHAT_JOIN_REJECT:
+         cobalt_session_run_chat_join_reject(in, &r, state);
          break;
       case COBALT_JOB_PROFILE:  cobalt_session_run_profile(in, &r, state);   break;
       case COBALT_JOB_FOLLOW:   cobalt_session_run_follow(in, &r, state);    break;
