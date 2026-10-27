@@ -438,7 +438,7 @@ draw_header(cobalt_compose *compose, cobalt_render *r)
       title = title_buf;
    }
    cobalt_draw_text(r, COBALT_FONT_TITLE, title, m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE_FOCUS);
+                    COBALT_COLOUR_TILE);
 
    char subtitle[COBALT_POST_NAME_MAX + 40];
    const int remaining = cobalt_compose_remaining(compose);

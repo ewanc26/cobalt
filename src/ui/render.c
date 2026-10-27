@@ -737,7 +737,7 @@ cobalt_draw_tile(cobalt_render *r, const SDL_Rect *rect, float focus)
       cobalt_fill_rounded_rect(r, &ring, radius + 2, edge);
    }
 
-   SDL_Color base = focus > 0.0f ? COBALT_COLOUR_TILE_FOCUS : COBALT_COLOUR_TILE;
+   SDL_Color base = focus > 0.0f ? COBALT_COLOUR_TILE : COBALT_COLOUR_TILE;
    cobalt_fill_rounded_rect(r, &body, radius, base);
 
    /* Top sheen: a translucent band across the upper third, giving the glassy

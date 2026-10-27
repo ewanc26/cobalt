@@ -164,7 +164,7 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
 
    /* Header. */
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Timeline", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE_FOCUS);
+                    COBALT_COLOUR_TILE);
    {
       char subtitle[96];
       if (cobalt_session_busy()) {
