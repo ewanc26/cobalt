@@ -67,14 +67,13 @@ WOLFRAM_CJSON := $(firstword $(wildcard \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.$(SOEXT) \
    $(WOLFRAM_HOST_BUILD)/_deps/cjson-build/libcjson.a))
 
-# The updater and the entropy seed use wolfram/update.h, and the touch input uses
+# The entropy seed uses wolfram/update.h for SHA-256, and the touch input uses
 # wolfram/drag.h, so the unit tests need a Wolfram checkout (at least v0.37.0).
 # They compile those sources directly rather than linking the whole library.
 ifeq ($(HAVE_WOLFRAM),)
 $(error No Wolfram checkout at $(WOLFRAM_ROOT). Clone ewanc26/wolfram there, or set WOLFRAM_ROOT)
 endif
-WOLFRAM_SOURCES := $(WOLFRAM_ROOT)/src/update/update_core.c $(WOLFRAM_ROOT)/src/update/manifest.c \
-                   $(WOLFRAM_ROOT)/src/update/ed25519.c $(WOLFRAM_ROOT)/src/update/signature.c \
+WOLFRAM_SOURCES := $(WOLFRAM_ROOT)/src/update/update_core.c \
                    $(WOLFRAM_ROOT)/src/drag.c $(WOLFRAM_ROOT)/src/failure.c \
                    $(WOLFRAM_ROOT)/src/time.c $(WOLFRAM_ROOT)/src/agent/muted_words.c \
                    $(WOLFRAM_ROOT)/src/agent/moderation.c $(WOLFRAM_ROOT)/src/qr.c $(WOLFRAM_ROOT)/src/attach.c $(WOLFRAM_ROOT)/src/agent/profile_tab.c $(WOLFRAM_ROOT)/src/util.c
@@ -113,10 +112,7 @@ UNIT_SOURCES := \
 	$(SRC)/util/clock.c \
 	$(SRC)/atproto/feed.c \
 	$(SRC)/atproto/prefs.c \
-	$(SRC)/update/selfupdate.c \
 	$(WOLFRAM_SOURCES) \
-	$(SRC)/app/update.c \
-	$(SRC)/util/wuhb.c \
 	$(SRC)/app/entropyview.c \
 	$(SRC)/util/entropy_gather.c \
 	$(SRC)/util/entropy.c \
@@ -254,15 +250,9 @@ sim:
 		$(MHD_LIBS) $(LDLIBS) -Wl,-rpath,$(abspath $(E2E_BUILD)) -Wl,-rpath,$(abspath $(E2E_BUILD))/_deps/cjson-build
 	@cd .. && ./tests/$(SIM_BIN) $(SIM_ARGS)
 
-# The release script's manifest is fed to the updater's reader, so the two
-# cannot drift: tools/make-update-manifest.sh writes it, src/update/selfupdate.c
-# has to accept it and agree with the file's own SHA-256.
 check: $(TEST_BIN)
 	@mkdir -p $(SCRATCH)
-	@printf 'not really a wuhb\n' > $(SCRATCH)/sample.wuhb
-	@printf 'Fixed things.\n' > $(SCRATCH)/sample-notes.txt
-	@$(ROOT)/tools/make-update-manifest.sh 9.9.9 $(SCRATCH)/sample.wuhb $(SCRATCH)/sample-notes.txt > $(SCRATCH)/update-sample.json
-	@./$(TEST_BIN) $(SCRATCH) $(SCRATCH)/update-sample.json $(SCRATCH)/sample.wuhb
+	@./$(TEST_BIN) $(SCRATCH)
 
 $(WOLFRAM_CXX_OBJ): $(WOLFRAM_ROOT)/cpp/wolfram/syntax.cpp
 	@mkdir -p $(OUT)

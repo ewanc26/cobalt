@@ -12,7 +12,6 @@ typedef enum {
    ACTION_MESSAGES,
    ACTION_QUEUE,
    ACTION_ACCOUNT,
-   ACTION_UPDATES,
    ACTION_DIAGNOSTICS,
    ACTION_TOGGLE_DISPLAY,
    ACTION_QUIT,
@@ -34,7 +33,6 @@ static const menu_action MENU[] = {
    ACTION_MESSAGES,
    ACTION_QUEUE,
    ACTION_ACCOUNT,
-   ACTION_UPDATES,
    ACTION_DIAGNOSTICS,
    ACTION_TOGGLE_DISPLAY,
    ACTION_QUIT,
@@ -123,7 +121,6 @@ menu_label(int index)
       case ACTION_MESSAGES:       return "Messages";
       case ACTION_QUEUE:          return "Queued posts";
       case ACTION_ACCOUNT:        return signed_in() ? "Account" : "Sign in";
-      case ACTION_UPDATES:        return "Updates";
       case ACTION_DIAGNOSTICS:    return "Diagnostics";
       case ACTION_TOGGLE_DISPLAY: return "TV display";
       case ACTION_QUIT:           return "Quit";
@@ -160,8 +157,6 @@ menu_hint(int index)
          }
          return cobalt_session_available() ? "Connect with an app password"
                                            : "Unavailable — see Diagnostics";
-      case ACTION_UPDATES:
-         return "Check GitHub for a newer Cobalt";
       case ACTION_DIAGNOSTICS:
          return "Paths, network and library status";
       case ACTION_TOGGLE_DISPLAY:
@@ -274,12 +269,6 @@ activate(cobalt_app *app, int index)
             cobalt_signin_set_status(&app->signin, "", false);
             app->screen = COBALT_SCREEN_SIGN_IN;
          }
-         break;
-
-      case ACTION_UPDATES:
-         app->screen = COBALT_SCREEN_UPDATE;
-         cobalt_update_view_open(&app->update);
-         COBALT_LOGI("menu: opened updates");
          break;
 
       case ACTION_DIAGNOSTICS:

@@ -48,8 +48,6 @@ cobalt_app_create(void)
    app->selected = 1; /* Sign in — the one thing worth doing on run one. */
 
    cobalt_signin_init(&app->signin);
-   cobalt_update_view_init(&app->update);
-   cobalt_update_view_startup(&app->update, cobalt_data_root());
 
    /* An install made without `make bundle` has no entropy seed, and without one
     * Cobalt will not use the network: ask for one before anything else. */
@@ -211,9 +209,6 @@ cobalt_app_destroy(cobalt_app *app)
       /* The password buffer lives in this allocation; do not hand it back to
        * the heap still holding one. */
       cobalt_signin_clear_password(&app->signin);
-      /* A verified update replaces the build only now, with the app closing. */
-      cobalt_update_view_apply_on_quit(&app->update);
-      cobalt_update_view_destroy(&app->update);
    }
    free(app);
 }
@@ -598,7 +593,6 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
 
    (void) now_ms;
    app->frames++;
-   cobalt_update_view_tick(&app->update);
 
    cobalt_input tapped_back;
    if (s_back_hit_valid && screen_has_back_pill(app->screen) &&
@@ -689,12 +683,6 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             case COBALT_ENTROPY_VIEW_STAY:
                break;
-         }
-         break;
-
-      case COBALT_SCREEN_UPDATE:
-         if (cobalt_update_view_update(&app->update, in) == COBALT_UPDATE_VIEW_BACK) {
-            app->screen = COBALT_SCREEN_HOME;
          }
          break;
 
@@ -1191,11 +1179,6 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
       case COBALT_SCREEN_ENTROPY:
          cobalt_app_draw_header(r, "Set up");
          cobalt_entropy_view_draw(&app->entropy, r, surface, cobalt_content_top(r));
-         break;
-
-      case COBALT_SCREEN_UPDATE:
-         cobalt_app_draw_header(r, "Updates");
-         cobalt_update_view_draw(&app->update, r, cobalt_content_top(r));
          break;
 
       case COBALT_SCREEN_DIAGNOSTICS:

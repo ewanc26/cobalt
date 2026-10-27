@@ -16,7 +16,7 @@ Not verifiable from here, so not claimed: the format is documented as a TODO ups
 
 ## What is generated
 
-`tools/make-hbas-listing.py` writes `dist/hbas/packages/Cobalt/` from what the repository already has: the version from `src/util/version.h`, the changelog from `CHANGELOG.md`, the icon from `assets/icon.png`, the banner from `assets/tv_splash.png`, the screenshots from the host snapshot renderer, and the `.wuhb` URL from the release layout `tools/publish.sh` produces (`https://github.com/ewanc26/cobalt/releases/download/v<version>/cobalt-<version>.wuhb`, installed to `/wiiu/apps/cobalt.wuhb`, which is where the in-app updater expects it).
+`tools/make-hbas-listing.py` writes `dist/hbas/packages/Cobalt/` from what the repository already has: the version from `src/util/version.h`, the changelog from `CHANGELOG.md`, the icon from `assets/icon.png`, the banner from `assets/tv_splash.png`, the screenshots from the host snapshot renderer, and the `.wuhb` URL from the release layout `tools/publish.sh` produces (`https://github.com/ewanc26/cobalt/releases/download/v<version>/cobalt-<version>.wuhb`, installed to `/wiiu/apps/cobalt.wuhb`, the path the `.wuhb` has to land in).
 
 `tools/check-hbas-listing.py` validates it and `tools/check-hbas-listing-selftest.sh` breaks each rule on purpose. CI runs all three on every push and uploads the folder as the `hbas-listing` artifact.
 
