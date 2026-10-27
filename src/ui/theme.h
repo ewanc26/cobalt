@@ -40,7 +40,6 @@ extern const SDL_Color COBALT_COLOUR_BG_BOTTOM;
 extern const SDL_Color COBALT_COLOUR_BAND_TOP;
 extern const SDL_Color COBALT_COLOUR_BAND_BOTTOM;
 extern const SDL_Color COBALT_COLOUR_TILE;
-extern const SDL_Color COBALT_COLOUR_TILE_FOCUS;
 extern const SDL_Color COBALT_COLOUR_TILE_EDGE;
 extern const SDL_Color COBALT_COLOUR_TEXT;
 extern const SDL_Color COBALT_COLOUR_TEXT_DIM;

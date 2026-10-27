@@ -269,7 +269,7 @@ cobalt_search_view_draw(cobalt_search_view *view, cobalt_render *r,
 
    const cobalt_metrics *m = cobalt_render_metrics(r);
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Search", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE_FOCUS);
+                    COBALT_COLOUR_TILE);
 
    if (view->browsing) {
       draw_browsing(view, r, surface);

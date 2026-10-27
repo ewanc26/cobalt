@@ -394,7 +394,7 @@ draw_requests(cobalt_messages_view *view, cobalt_render *r, cobalt_surface_id su
    const cobalt_chat_inbox *requests = cobalt_session_chat_requests();
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Message requests", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE_FOCUS);
+                    COBALT_COLOUR_TILE);
    {
       char subtitle[96];
       if (cobalt_session_busy()) {
@@ -430,7 +430,7 @@ cobalt_messages_view_draw(cobalt_messages_view *view, cobalt_render *r,
    const cobalt_chat_inbox *inbox = cobalt_session_chat_inbox();
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Messages", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE_FOCUS);
+                    COBALT_COLOUR_TILE);
    {
       char subtitle[96];
       if (cobalt_session_busy()) {

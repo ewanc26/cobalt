@@ -193,7 +193,7 @@ draw_header(cobalt_render *r, const char *title, const char *subtitle)
    const cobalt_metrics *m = cobalt_render_metrics(r);
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, title, m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE_FOCUS);
+                    COBALT_COLOUR_TILE);
 
    const int title_h = cobalt_font_line_height(r, COBALT_FONT_TITLE);
    SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
