@@ -99,13 +99,26 @@ For networked AT Protocol features, you need one of two ways to sign in:
 
 ## Installing
 
-The normal WUHB installation is:
+**Recommended:** Download Cobalt from the [Homebrew App Store](https://hb-app.store/) (HBAS)
+using the `hb-appstore` client on your Wii U. Search for "Cobalt" and install it
+directly — this is the easiest and safest way to get updates.
+
+If Cobalt is not yet visible in the store in your region, you can install it
+manually from a GitHub release.
+
+### Manual installation
+
+Download `cobalt-<version>.wuhb` from the
+[latest GitHub release](https://github.com/ewanc26/cobalt/releases/latest) and
+place it at:
 
 ```
 sd:/wiiu/apps/cobalt.wuhb
 ```
 
-For a complete bundle, `make bundle` creates:
+### Complete bundle (recommended for first-time manual installs)
+
+For a complete bundle with a pre-generated entropy seed, `make bundle` creates:
 
 ```
 dist/wiiu/
@@ -116,17 +129,20 @@ dist/wiiu/
 ```
 
 The entropy seed is generated for that installation and must not be shared
-between consoles.
+between consoles. Copy both to your SD card as above.
 
-If you install only the `.wuhb` (from a release, or from the Homebrew App Store
-once Cobalt is listed there) there is no seed, and Cobalt will not go online
-without one. The first time it starts it asks you to scribble on the GamePad
-screen until a bar fills, builds a seed from that, saves it, and asks you to
-start it again. I have not measured how much randomness a scribble carries, so
-treat that as better than nothing rather than as a proof; `make bundle` is still
-the better way. I have only run this on the host, not on a console.
+### Entropy seed note
 
-I have prepared a [Homebrew App Store listing](docs/homebrew-app-store.md) but it is not submitted yet, so Cobalt is not in the store at the moment.
+If you install only the `.wuhb` (from HBAS or from a GitHub release) there is no
+seed, and Cobalt will not go online without one. The first time it starts it
+asks you to scribble on the GamePad screen until a bar fills, builds a seed
+from that, saves it, and asks you to start it again. I have not measured how
+much randomness a scribble carries, so treat that as better than nothing rather
+than as a proof; `make bundle` is still the better way. I have only run this on
+the host, not on a console.
+
+A [Homebrew App Store listing](docs/homebrew-app-store.md) has been prepared
+for submission.
 
 Cobalt can also be loaded in Cemu for development. Cemu is useful for broad
 application and UI checks, but it does not reproduce every GamePad, networking,
