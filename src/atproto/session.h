@@ -98,6 +98,9 @@ typedef enum {
    COBALT_JOB_CHAT_REQUESTS,
    COBALT_JOB_CHAT_ACCEPT,
    COBALT_JOB_CHAT_DECLINE,
+   COBALT_JOB_CHAT_JOIN_REQUESTS,
+   COBALT_JOB_CHAT_JOIN_APPROVE,
+   COBALT_JOB_CHAT_JOIN_REJECT,
 } cobalt_job_kind;
 
 typedef struct {
@@ -337,6 +340,26 @@ bool cobalt_session_begin_chat_accept(const char *convo_id);
  * stops listing the conversation for the viewer.
  */
 bool cobalt_session_begin_chat_decline(const char *convo_id);
+
+/*
+ * Fetch the pending join requests of the group `convo_id` (a group's owner can
+ * list these; anyone else is refused by the server). `paging` appends the next
+ * page; false replaces the list. Read-only, and nothing is approved or rejected
+ * until a button is pressed on a row.
+ */
+bool cobalt_session_begin_chat_join_requests(const char *convo_id, bool paging);
+
+/* The group join requests as last fetched; never NULL. */
+const cobalt_chat_join_requests *cobalt_session_chat_join_requests(void);
+
+/*
+ * Approve or reject `did`'s request to join the group `convo_id`. On success
+ * the request leaves the loaded list, so no refetch is needed. Refused, without
+ * a job, for an invalid convo id or DID, or while another request is in flight.
+ * Never retried: a failure leaves the request where it is.
+ */
+bool cobalt_session_begin_chat_join_approve(const char *convo_id, const char *did);
+bool cobalt_session_begin_chat_join_reject(const char *convo_id, const char *did);
 
 /*
  * Fetch the newest messages of one conversation, by its convo id. Read-only.

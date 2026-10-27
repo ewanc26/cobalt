@@ -100,6 +100,10 @@ typedef struct {
    /* Optional image to attach (SD path); empty for none. */
    char attach_path[COBALT_ATTACH_PATH_MAX];
    char attach_alt[COBALT_ATTACH_ALT_MAX];
+
+   /* Group join requests: the requester's DID, alongside `uri` = the convo id
+    * of the group. Empty for everything else. */
+   char member_did[COBALT_CHAT_TARGET_MAX];
 } cobalt_job_input;
 
 typedef struct {
@@ -153,6 +157,8 @@ typedef struct {
    /* Conversations the viewer has not accepted yet. Same shape as `chat`. */
    cobalt_chat_inbox requests;
    cobalt_chat_thread chat_thread;
+   /* A group's pending join requests, for the conversation last opened. */
+   cobalt_chat_join_requests join_requests;
    /* Set by a successful CHAT_START, read by the app once it has ok. */
    char chat_started[COBALT_CHAT_ID_MAX];
    cobalt_profile profile;
@@ -228,6 +234,9 @@ void cobalt_session_run_chat_requests(const cobalt_job_input *in, cobalt_job_res
 void cobalt_session_run_chat_accept(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_chat_decline(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_chat_messages(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_chat_join_requests(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_chat_join_approve(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_chat_join_reject(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_chat_send(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_chat_start(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_post(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);

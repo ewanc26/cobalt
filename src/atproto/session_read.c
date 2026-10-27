@@ -696,6 +696,152 @@ cobalt_session_run_chat_decline(const cobalt_job_input *in, cobalt_job_result *r
    cobalt_session_run_convo_decision(in, r, state, false);
 }
 
+void
+cobalt_session_run_chat_join_requests(const cobalt_job_input *in, cobalt_job_result *r,
+                                      cobalt_auth_state *state)
+{
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in to see messages.");
+      return;
+   }
+   if (!in->uri[0]) {
+      cobalt_session_set_message(r, "That group could not be opened.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   char cursor_buf[COBALT_CURSOR_MAX];
+   const char *cursor = NULL;
+   if (in->paging) {
+      SDL_LockMutex(g_session.lock);
+      if (g_session.join_requests.cursor[0]) {
+         snprintf(cursor_buf, sizeof(cursor_buf), "%s", g_session.join_requests.cursor);
+         cursor = cursor_buf;
+      }
+      SDL_UnlockMutex(g_session.lock);
+      if (!cursor) {
+         *state = COBALT_AUTH_SIGNED_IN;
+         r->ok = true;
+         return;
+      }
+   }
+
+   wf_chat_join_requests list;
+   memset(&list, 0, sizeof(list));
+
+   COBALT_LOGI("session: listJoinRequests cursor=%s", cursor ? cursor : "(top)");
+   wf_status status = wf_agent_chat_list_join_requests_typed(g_session.wf, in->uri,
+                                                             COBALT_SESSION_PAGE, cursor,
+                                                             &list);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: listJoinRequests failed (%d)", (int) status);
+      cobalt_session_describe_failure(r, status, COBALT_JOB_CHAT_JOIN_REQUESTS);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   const int64_t now = cobalt_time_now();
+
+   SDL_LockMutex(g_session.lock);
+   if (!in->paging) {
+      cobalt_chat_join_requests_reset(&g_session.join_requests);
+      /* The id was validated before this job was submitted, so the copy cannot
+       * refuse, and it does not truncate the way a bare %s would. */
+      (void) cobalt_chat_convo_id_copy(g_session.join_requests.convo_id,
+                                       sizeof(g_session.join_requests.convo_id), in->uri);
+   }
+   const int added = cobalt_chat_join_requests_append_from_wolfram(
+      &g_session.join_requests, &list, now);
+   if (in->paging && added == 0) {
+      g_session.join_requests.has_more = false;
+      g_session.join_requests.cursor[0] = '\0';
+   }
+   const int total = g_session.join_requests.count;
+   SDL_UnlockMutex(g_session.lock);
+
+   wf_chat_join_requests_free(&list);
+   COBALT_LOGI("session: listJoinRequests +%d (%d held)", added, total);
+
+   if (total == 0) {
+      cobalt_session_set_message(r, "No join requests.");
+   }
+
+   cobalt_session_publish();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+/* Approve or reject one join request. Both come through here: the call differs,
+ * and the list change is the same. The convo id is in `in->uri` and the
+ * requester's DID in `in->member_did`. */
+static void
+cobalt_session_run_join_decision(const cobalt_job_input *in, cobalt_job_result *r,
+                                 cobalt_auth_state *state, bool approve)
+{
+   const cobalt_job_kind kind = approve ? COBALT_JOB_CHAT_JOIN_APPROVE
+                                        : COBALT_JOB_CHAT_JOIN_REJECT;
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in to see messages.");
+      return;
+   }
+
+   char id[COBALT_CHAT_ID_MAX];
+   if (!cobalt_chat_convo_id_copy(id, sizeof(id), in->uri) ||
+       cobalt_chat_target_kind_of(in->member_did) != COBALT_CHAT_TARGET_DID) {
+      cobalt_session_set_message(r, "That join request is not valid.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   COBALT_LOGI("session: %s", approve ? "approveJoinRequest" : "rejectJoinRequest");
+   wf_status status;
+   if (approve) {
+      /* Approving answers with the updated convo view, which is not needed. */
+      wf_chat_convo convo;
+      memset(&convo, 0, sizeof(convo));
+      status = wf_agent_chat_approve_join_request_typed(g_session.wf, id, in->member_did,
+                                                        &convo);
+      wf_chat_convo_free(&convo);
+   } else {
+      wf_chat_ok ok;
+      memset(&ok, 0, sizeof(ok));
+      status = wf_agent_chat_reject_join_request_typed(g_session.wf, id, in->member_did,
+                                                       &ok);
+      wf_chat_ok_free(&ok);
+   }
+   if (status != WF_OK) {
+      COBALT_LOGW("session: join decision failed (%d)", (int) status);
+      cobalt_session_describe_failure(r, status, kind);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   /* Settled, so the row leaves the loaded list without a refetch. */
+   SDL_LockMutex(g_session.lock);
+   cobalt_chat_join_requests_remove(&g_session.join_requests, in->member_did);
+   SDL_UnlockMutex(g_session.lock);
+
+   cobalt_session_publish();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+void
+cobalt_session_run_chat_join_approve(const cobalt_job_input *in, cobalt_job_result *r,
+                                     cobalt_auth_state *state)
+{
+   cobalt_session_run_join_decision(in, r, state, true);
+}
+
+void
+cobalt_session_run_chat_join_reject(const cobalt_job_input *in, cobalt_job_result *r,
+                                    cobalt_auth_state *state)
+{
+   cobalt_session_run_join_decision(in, r, state, false);
+}
+
 #endif /* COBALT_HAS_WOLFRAM */
 
 bool
@@ -722,6 +868,55 @@ cobalt_session_begin_chat_decline(const char *convo_id)
    memset(&in, 0, sizeof(in));
    snprintf(in.uri, sizeof(in.uri), "%s", id);
    return cobalt_session_submit(COBALT_JOB_CHAT_DECLINE, &in);
+}
+
+bool
+cobalt_session_begin_chat_join_requests(const char *convo_id, bool paging)
+{
+   char id[COBALT_CHAT_ID_MAX];
+   if (!cobalt_chat_convo_id_copy(id, sizeof(id), convo_id)) {
+      return false;
+   }
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", id);
+   in.paging = paging;
+   return cobalt_session_submit(COBALT_JOB_CHAT_JOIN_REQUESTS, &in);
+}
+
+const cobalt_chat_join_requests *
+cobalt_session_chat_join_requests(void)
+{
+   return &g_session.join_requests;
+}
+
+/* Both decisions name the group and the requester, so they share the guard. */
+static bool
+begin_join_decision(const char *convo_id, const char *did, bool approve)
+{
+   char id[COBALT_CHAT_ID_MAX];
+   if (!cobalt_chat_convo_id_copy(id, sizeof(id), convo_id) ||
+       cobalt_chat_target_kind_of(did) != COBALT_CHAT_TARGET_DID) {
+      return false;
+   }
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", id);
+   snprintf(in.member_did, sizeof(in.member_did), "%s", did);
+   return cobalt_session_submit(approve ? COBALT_JOB_CHAT_JOIN_APPROVE
+                                        : COBALT_JOB_CHAT_JOIN_REJECT, &in);
+}
+
+bool
+cobalt_session_begin_chat_join_approve(const char *convo_id, const char *did)
+{
+   return begin_join_decision(convo_id, did, true);
+}
+
+bool
+cobalt_session_begin_chat_join_reject(const char *convo_id, const char *did)
+{
+   return begin_join_decision(convo_id, did, false);
 }
 
 bool

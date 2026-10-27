@@ -325,6 +325,57 @@ cobalt_chat_thread_reset(cobalt_chat_thread *thread)
    }
 }
 
+/* --- a group's pending join requests --- */
+
+void
+cobalt_chat_join_requests_reset(cobalt_chat_join_requests *list)
+{
+   if (list) {
+      list->convo_id[0] = '\0';
+      list->count = 0;
+      list->cursor[0] = '\0';
+      list->has_more = false;
+   }
+}
+
+bool
+cobalt_chat_join_requests_can_page(const cobalt_chat_join_requests *list)
+{
+   return list && list->has_more && list->count < COBALT_CHAT_JOIN_REQUESTS_MAX;
+}
+
+const cobalt_chat_join_request *
+cobalt_chat_join_requests_find(const cobalt_chat_join_requests *list, const char *did)
+{
+   if (!list || !did) {
+      return NULL;
+   }
+   for (int i = 0; i < list->count && i < COBALT_CHAT_JOIN_REQUESTS_MAX; i++) {
+      if (strcmp(list->items[i].did, did) == 0) {
+         return &list->items[i];
+      }
+   }
+   return NULL;
+}
+
+bool
+cobalt_chat_join_requests_remove(cobalt_chat_join_requests *list, const char *did)
+{
+   if (!list || !did) {
+      return false;
+   }
+   for (int i = 0; i < list->count && i < COBALT_CHAT_JOIN_REQUESTS_MAX; i++) {
+      if (strcmp(list->items[i].did, did) != 0) {
+         continue;
+      }
+      memmove(&list->items[i], &list->items[i + 1],
+              (size_t) (list->count - i - 1) * sizeof(list->items[0]));
+      list->count--;
+      return true;
+   }
+   return false;
+}
+
 #ifdef COBALT_HAS_WOLFRAM
 
 int
@@ -440,6 +491,75 @@ cobalt_chat_inbox_append_from_wolfram(cobalt_chat_inbox *out,
    /* Cursor handling matches the notifications list: a full inbox clears it so
     * an auto-paging screen cannot request further pages forever. */
    if (out->count >= COBALT_CHAT_CONVOS_MAX) {
+      out->cursor[0] = '\0';
+      out->has_more = false;
+   } else if (typed->cursor && typed->cursor[0]) {
+      snprintf(out->cursor, sizeof(out->cursor), "%s", typed->cursor);
+      out->has_more = true;
+   } else {
+      out->cursor[0] = '\0';
+      out->has_more = false;
+   }
+
+   return added;
+}
+
+int
+cobalt_chat_join_requests_append_from_wolfram(cobalt_chat_join_requests *out,
+                                              const struct wf_chat_join_requests *list,
+                                              int64_t now)
+{
+   if (!out || !list) {
+      return 0;
+   }
+
+   const wf_chat_join_requests *typed = (const wf_chat_join_requests *) list;
+   int added = 0;
+
+   for (size_t i = 0; i < typed->item_count; i++) {
+      if (out->count >= COBALT_CHAT_JOIN_REQUESTS_MAX) {
+         COBALT_LOGI("chat: join requests full at %d", out->count);
+         break;
+      }
+
+      const wf_chat_join_request *src = &typed->items[i];
+      const wf_agent_profile_view *who = &src->requested_by;
+      const char *did = who->did;
+
+      /* The DID is the handle approve and reject take, so a request without one
+       * cannot be acted on and is not worth a row. */
+      if (!did || cobalt_chat_target_kind_of(did) != COBALT_CHAT_TARGET_DID) {
+         continue;
+      }
+      if (cobalt_chat_join_requests_find(out, did)) {
+         continue;
+      }
+
+      cobalt_chat_join_request *item = &out->items[out->count];
+      memset(item, 0, sizeof(*item));
+      snprintf(item->did, sizeof(item->did), "%s", did);
+
+      const char *handle = who->handle ? who->handle : "";
+      const char *display = who->display_name ? who->display_name : "";
+      if (display[0] == '\0') {
+         display = handle;
+      }
+      cobalt_feed_copy_text(item->name, sizeof(item->name), display);
+      snprintf(item->handle, sizeof(item->handle), "@%s", handle);
+
+      int64_t epoch = 0;
+      if (src->requested_at && now > 0 &&
+          wf_time_parse_rfc3339(src->requested_at, &epoch) == WF_OK) {
+         wf_time_relative(epoch, now, item->age, sizeof(item->age));
+      }
+
+      out->count++;
+      added++;
+   }
+
+   /* Cursor handling matches the notifications list: a full list clears it so
+    * an auto-paging screen cannot request further pages forever. */
+   if (out->count >= COBALT_CHAT_JOIN_REQUESTS_MAX) {
       out->cursor[0] = '\0';
       out->has_more = false;
    } else if (typed->cursor && typed->cursor[0]) {
