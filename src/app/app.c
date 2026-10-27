@@ -459,7 +459,8 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
                 * into a thread they did not ask to see. */
                set_notice(app, "Conversation started. Refresh Messages to see it.", false);
             } else if (cobalt_session_begin_chat_messages(convo)) {
-               cobalt_chat_thread_view_open(&app->chat_view, name, convo);
+               /* A conversation started from the inbox is one-to-one. */
+               cobalt_chat_thread_view_open(&app->chat_view, name, convo, false);
                app->screen = COBALT_SCREEN_CHAT_THREAD;
                COBALT_LOGI("messages: opened a new conversation");
             } else {
@@ -488,7 +489,8 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
             if (app->screen != COBALT_SCREEN_MESSAGES) {
                set_notice(app, "Request accepted. Open Messages to see it.", false);
             } else if (cobalt_session_begin_chat_messages(id)) {
-               cobalt_chat_thread_view_open(&app->chat_view, name, id);
+               cobalt_chat_thread_view_open(&app->chat_view, name, id,
+                                            app->messages.decision.group);
                app->screen = COBALT_SCREEN_CHAT_THREAD;
                COBALT_LOGI("messages: accepted a request and opened it");
             } else {
@@ -505,9 +507,28 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          break;
       }
 
+      case COBALT_JOB_CHAT_JOIN_APPROVE:
+      case COBALT_JOB_CHAT_JOIN_REJECT: {
+         /* The row has already left the loaded list; this only says which way
+          * the decision went, or why it did not. */
+         const cobalt_chat_thread_decision_outcome outcome =
+            cobalt_chat_thread_decision_finished(&app->chat_view, result->ok);
+         if (outcome == COBALT_CHAT_THREAD_DECISION_APPROVED) {
+            set_notice(app, "Request approved.", false);
+         } else if (outcome == COBALT_CHAT_THREAD_DECISION_REJECTED) {
+            set_notice(app, "Request rejected.", false);
+         } else if (outcome == COBALT_CHAT_THREAD_DECISION_FAILED) {
+            set_notice(app, result->message[0] ? result->message
+                                               : "Could not update that join request.",
+                       true);
+         }
+         break;
+      }
+
       case COBALT_JOB_NOTIFICATIONS:
       case COBALT_JOB_CHAT_INBOX:
       case COBALT_JOB_CHAT_MESSAGES:
+      case COBALT_JOB_CHAT_JOIN_REQUESTS:
       case COBALT_JOB_PROFILE:
       case COBALT_JOB_FOLLOW:
       case COBALT_JOB_THREAD:
@@ -815,7 +836,8 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                if (sel < inbox->count &&
                    cobalt_session_begin_chat_messages(inbox->items[sel].id)) {
                   cobalt_chat_thread_view_open(&app->chat_view, inbox->items[sel].name,
-                                               inbox->items[sel].id);
+                                               inbox->items[sel].id,
+                                               inbox->items[sel].group);
                   app->screen = COBALT_SCREEN_CHAT_THREAD;
                   COBALT_LOGI("messages: opened a conversation");
                }
@@ -852,8 +874,30 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
          break;
 
       case COBALT_SCREEN_CHAT_THREAD:
-         if (cobalt_chat_thread_view_update(&app->chat_view, in) == COBALT_CHAT_THREAD_BACK) {
-            app->screen = COBALT_SCREEN_MESSAGES;
+         switch (cobalt_chat_thread_view_update(&app->chat_view, in)) {
+            case COBALT_CHAT_THREAD_BACK:
+               app->screen = COBALT_SCREEN_MESSAGES;
+               break;
+            case COBALT_CHAT_THREAD_JOIN_APPROVE:
+            case COBALT_CHAT_THREAD_JOIN_REJECT: {
+               /* The view has filled in the target. A refused begin changes
+                * nothing, so the request stays where it is. */
+               const bool approve = app->chat_view.join_decision.approve;
+               const bool began = approve
+                  ? cobalt_session_begin_chat_join_approve(
+                       app->chat_view.convo_id, app->chat_view.join_decision.did)
+                  : cobalt_session_begin_chat_join_reject(
+                       app->chat_view.convo_id, app->chat_view.join_decision.did);
+               cobalt_chat_thread_decision_began(&app->chat_view, began);
+               if (!began) {
+                  set_notice(app, "Could not update that join request. Wait for the "
+                                  "last request to finish.", true);
+               }
+               break;
+            }
+            case COBALT_CHAT_THREAD_STAY:
+            default:
+               break;
          }
          break;
 

@@ -59,6 +59,7 @@ press_decision(cobalt_messages_view *view, const cobalt_chat_inbox *requests, in
    const cobalt_chat_convo *row = &requests->items[index];
    snprintf(view->decision.convo_id, sizeof(view->decision.convo_id), "%s", row->id);
    snprintf(view->decision.name, sizeof(view->decision.name), "%s", row->name);
+   view->decision.group = row->group;
    view->decision.accept = accept;
    return accept ? COBALT_MESSAGES_ACCEPT : COBALT_MESSAGES_DECLINE;
 }

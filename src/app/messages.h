@@ -55,6 +55,7 @@ typedef enum {
 typedef struct {
    char convo_id[COBALT_CHAT_ID_MAX];
    char name[COBALT_POST_NAME_MAX];   /* the counterpart, for opening it */
+   bool group;                        /* more than one other member */
    bool accept;                       /* true to accept, false to decline */
    bool pending;                      /* the job is in flight */
 } cobalt_messages_decision;
