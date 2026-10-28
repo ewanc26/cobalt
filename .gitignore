@@ -22,8 +22,8 @@ dist/
 *.wuhb
 *.lst
 
-# Agent tooling scratch
-.letta/
+# Agent tooling scratch (only the repository-root directory)
+/.letta/
 
 # Prerequisites
 *.d
