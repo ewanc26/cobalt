@@ -24,8 +24,9 @@ Protocol work on hardware that was never designed for it, and I wanted to do
 it properly rather than turning the Wii U into a thin browser target.
 
 Cobalt treats the Wii U as the platform it is rather than as a browser target:
-the TV and GamePad are both first-class displays, with support for normal
-two-screen use and Off-TV Play.
+the TV and GamePad are both first-class displays. With both on they divide the
+work — the TV reads, the GamePad is the remote — and Off-TV Play gives the
+GamePad the whole interface on its own.
 
 Cobalt uses [Wolfram](https://github.com/ewanc26/wolfram), my C AT Protocol
 SDK, for its AT Protocol implementation. The project sits alongside the rest
@@ -342,7 +343,9 @@ constraints behind the implementation.
 ## Accessibility
 
 The GamePad is a first-class display and input surface, including touch input
-and a dedicated on-screen keyboard.
+and a dedicated on-screen keyboard. With both screens on it holds the compact
+list of what is on the TV, the actions and the keyboard, so a post can be read
+at TV size while it is chosen and answered on the pad.
 
 The footer prompts are controls rather than captions: on the GamePad, tapping a
 hint pill presses the button it names. That is what makes them readable by
