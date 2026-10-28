@@ -280,6 +280,32 @@ tap_rect_centre(const SDL_Rect *r)
    tap(r->x + r->w / 2, r->y + r->h / 2);
 }
 
+/* A finger pressed at (x, from), dragged to (x, to) and lifted. The touch state
+ * lives across frames, which is what the screens read to drag a list. */
+static void
+drag_to(int x, int from, int to)
+{
+   const float sx = 1.0f / (float) COBALT_DRC_WIDTH;
+   const float sy = 1.0f / (float) COBALT_DRC_HEIGHT;
+   SDL_Event e;
+   memset(&e, 0, sizeof e);
+   e.tfinger.x = (float) x * sx;
+
+   e.type = SDL_FINGERDOWN;
+   e.tfinger.y = (float) from * sy;
+   cobalt_input_handle_event(&g_in, &e);
+   frame(COBALT_BTN_COUNT);
+
+   e.type = SDL_FINGERMOTION;
+   e.tfinger.y = (float) to * sy;
+   cobalt_input_handle_event(&g_in, &e);
+   frame(COBALT_BTN_COUNT);
+
+   e.type = SDL_FINGERUP;
+   cobalt_input_handle_event(&g_in, &e);
+   frame(COBALT_BTN_COUNT);
+}
+
 /* Home selection is linear and wraps; the app remembers it across screens.
  * Must match COBALT_HOME_MENU_COUNT in app/app_internal.h. */
 #define HOME_MENU_COUNT 12
@@ -784,7 +810,11 @@ main(int argc, char **argv)
    frame(COBALT_BTN_ALT_X);
    settle(5);
    shoot("messages-start");
-   tap(668, 372);
+   /* Cancel, on the keyboard's function row: the GamePad's keys are 44 tall
+    * with a 6-pixel gap, so that row runs 383..427 in a keyboard starting at
+    * 183. Leaving the keyboard is how the test gets back to the list it opens
+    * from — an empty target does not leave it, by design. */
+   tap(670, 405);
    settle(5);
    /* Opening the conversation fetches its messages and shows them as bubbles. */
    frame(COBALT_BTN_CONFIRM);
@@ -796,7 +826,9 @@ main(int argc, char **argv)
    frame(COBALT_BTN_CONFIRM);
    settle(5);
    shoot("chat-reply");
-   tap(694, 452);
+   /* Cancel on the reply keyboard, which sits against the bottom edge rather
+    * than under a text box: its function row runs 436..480. */
+   tap(696, 458);
    settle(5);
 
    frame(COBALT_BTN_BACK);
@@ -956,6 +988,27 @@ main(int argc, char **argv)
          settle(10);
          CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
       }
+   }
+
+   /* The GamePad's Home list is twelve rows at six visible, so the bottom half
+    * is only reachable by dragging: it moves a row per 44-pixel row of travel. */
+   {
+      go_home();
+      settle(4);
+      const int before = cobalt_app_home_selection(g_app);
+      int want = before + 2;
+      if (want > HOME_MENU_COUNT - 1) want = HOME_MENU_COUNT - 1;
+
+      drag_to(300, 320, 320 - 2 * 44);
+      settle(3);
+      if (cobalt_app_home_selection(g_app) != want) {
+         printf("home drag: wanted %d got %d\n", want, cobalt_app_home_selection(g_app));
+      }
+      CHECK(cobalt_app_home_selection(g_app) == want);
+
+      drag_to(300, 120, 120 + 44);
+      settle(3);
+      CHECK(cobalt_app_home_selection(g_app) == want - 1);
    }
 
    wf_mock_pds_free(pds);

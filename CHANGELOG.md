@@ -13,6 +13,9 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Changed
 
+- The GamePad's keyboard has 44-pixel keys, up from 36: about 7 mm on the 480-line panel, a jump of a fifth in the one control the on-screen keyboard is used through. The compose box gives up one line to pay for it, and now shows the last lines of the draft rather than the first, so the line being typed stays in view.
+- The GamePad's Home menu, saved-feeds list and message conversations scroll by dragging, a row per row of finger travel, instead of only by D-pad. Half the twelve Home entries sat below the fold with no way to reach them by touch.
+- The account screen's four action rows are 44 pixels tall on the GamePad instead of 34, the smallest touch targets in the app; its panel now carries two lines (handle, then the DID and server) rather than three, which is what pays for them.
 - The TV's Home menu is four columns of tiles in three rows rather than six and two. Six columns fitted the height but not the words: "Notifications" and "Queued posts" had to drop to the caption face while the rest stayed body-sized, so one row read at a different size from the other. Every label is now body-sized and centred in its tile, and a tile that cannot be opened is dimmed rather than captioned "Sign in first" seven times over — the strip below the grid already says why the focused tile is unavailable.
 - A profile's footer names what its buttons do on the row that is selected: follow or unfollow, mute and block on the account, like and repost on a post, and only the More menu on your own profile, where the other three are refused. The tab being shown (Posts, Replies) moved from a non-button pill in the footer to the header beside the handle.
 - A control prompt — the pills along the bottom of every screen — is one draw per shape instead of seven. Each pill's body and its accent key chip are kept as tinted masks at the size they are drawn, so a footer of five prompts asks the renderer for ten commands where it asked for seventy, and the pill's antialiased ends are drawn at their own radius rather than a stretched tile. A screen's prompts cost a few kilobytes of texture between them.
@@ -21,6 +24,9 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Fixed
 
+- A conversation's reply has a field. The draft was drawn straight onto the background, so an empty one was a lone caret under the last message; it now gets the same rounded box the compose screen gives its text.
+- The GamePad's conversation screen no longer stacks two B pills in its header. The footer's "B: back" duplicated the header's Back button and the hint splitter moved it into the band beside it; conversations now name only reply, older/newer and refresh.
+- Search and the new-conversation screen show their placeholders. Both chose between the typed text and "Search accounts..." / "Handle or DID..." by testing the display string, which always ends in a caret and so was never empty — an empty field showed a bare underscore instead.
 - The thread's text scrollbar sits inside the card's padding instead of on its edge, where it read as a second border beside the tile's own and a focused card's accent ring ran two pixels from it.
 - An unread notification or conversation is marked with the accent bar down the left of its row that the code always claimed to draw, rather than a single dot stranded in the row's bottom-right corner.
 - Messages and Queued posts no longer repeat "B: back" in the footer under the header's Back pill.

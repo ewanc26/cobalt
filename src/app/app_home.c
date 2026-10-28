@@ -47,6 +47,9 @@ _Static_assert((int) (sizeof(MENU) / sizeof(MENU[0])) == COBALT_HOME_MENU_COUNT,
  * drawn layout can never drift apart. */
 static SDL_Rect s_drc_hit[MENU_COUNT];
 static bool s_drc_hit_valid = false;
+/* The slice of the list the last GamePad draw put on screen, for dragging. */
+static int s_drc_first = 0;
+static int s_drc_visible = 0;
 
 /* Hit rectangles for the account screen's small menu. */
 typedef enum {
@@ -80,6 +83,9 @@ static const feed_entry FALLBACK_FEED = {
 
 static SDL_Rect s_feeds_hit[FEED_MAX];
 static bool s_feeds_hit_valid = false;
+/* The slice of the feed list the last GamePad draw put on screen. */
+static int s_feeds_first = 0;
+static int s_feeds_visible = 0;
 /* Rows the GamePad (the smaller surface) fitted on its last draw; the scroll
  * window follows it so the selection is never below the fold on either. */
 static int s_feeds_rows = 5;
@@ -316,6 +322,15 @@ cobalt_app_update_home(cobalt_app *app, const cobalt_input *in)
       app->selected = (app->selected + MENU_COUNT - vstep) % MENU_COUNT;
    }
 
+   /* Touch drag scrolls the list. Twelve rows at six visible would otherwise
+    * leave the bottom half of the menu unreachable by tapping, and a finger
+    * expects to drag a list. Only the rows on screen have hit rectangles; the
+    * average of those is the row pitch. */
+   if (s_drc_hit_valid && s_drc_visible > 0) {
+      cobalt_input_drag_list(in, &app->selected, MENU_COUNT,
+                              &s_drc_hit[s_drc_first], s_drc_visible);
+   }
+
    if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
       activate(app, app->selected);
    }
@@ -416,6 +431,13 @@ cobalt_app_update_feeds(cobalt_app *app, const cobalt_input *in)
    }
    if (cobalt_input_pressed(in, COBALT_BTN_UP)) {
       app->feeds_selected = (app->feeds_selected + feed_count() - 1) % feed_count();
+   }
+
+   /* Dragging moves the selection down a row per row of finger travel, the same
+    * as the D-pad; the window below then follows it. */
+   if (s_feeds_hit_valid && s_feeds_visible > 0) {
+      cobalt_input_drag_list(in, &app->feeds_selected, feed_count(),
+                              &s_feeds_hit[s_feeds_first], s_feeds_visible);
    }
 
    {
@@ -572,6 +594,8 @@ cobalt_app_draw_home_drc(cobalt_app *app, cobalt_render *r)
    if (app->selected >= first + visible) first = app->selected - visible + 1;
    if (first > MENU_COUNT - visible) first = MENU_COUNT - visible;
    if (first < 0) first = 0;
+   s_drc_first = first;
+   s_drc_visible = visible;
 
    for (int i = 0; i < MENU_COUNT; i++) {
       if (i < first || i >= first + visible) {
@@ -627,32 +651,41 @@ cobalt_app_draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id sur
    cobalt_app_draw_header(r, "Account");
 
    const int top = cobalt_content_top(r);
-   /* The GamePad's four rows and the notice must clear the hint strip, which is
-    * pinned to the bottom edge; on the TV there is room to spare. */
-   const int row_h = m->font_body * 2 - (surface == COBALT_SURFACE_DRC ? 8 : 0);
+   const int heading_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
+   const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+   /* 44 on the GamePad, the same as a Home row and about 7mm on its 480-line
+    * panel; these four were 34, the smallest touch targets in the app. Four of
+    * them plus the panel and the hint strip only just fit, so the panel below
+    * is sized to the lines it holds rather than to a guessed multiple. */
+   const int row_h = m->font_body * 2 + (surface == COBALT_SURFACE_DRC ? 2 : 0);
    const int width = m->width - 2 * m->pad_edge;
 
-   /* The profile panel holds three lines, so it keeps the full row height. */
-   SDL_Rect panel = { m->pad_edge, top, width, m->font_body * 2 * 3 };
+   /* Two lines: who you are, then the DID and the server it lives on. The PDS
+    * is the only detail that is not on the screen anywhere else and it fits
+    * beside the DID, which is what keeps the panel short enough for four
+    * fingertip-height rows above the hint strip. "A: view your profile" is
+    * gone from here: the footer already says the panel opens. */
+   SDL_Rect panel = { m->pad_edge, top, width,
+                      m->pad_tile + heading_h + caption_h + m->pad_tile / 2 };
    cobalt_draw_tile(r, &panel, app->account_selected == ACCOUNT_ROW_PROFILE ? 1.0f : 0.0f);
    if (surface == COBALT_SURFACE_DRC) {
       s_account_hit[ACCOUNT_ROW_PROFILE] = panel;
    }
 
-   char lines[3][COBALT_MESSAGE_MAX];
+   char lines[2][COBALT_MESSAGE_MAX];
    snprintf(lines[0], sizeof(lines[0]), "%s", cobalt_session_handle());
-   snprintf(lines[1], sizeof(lines[1]), "%s", cobalt_session_did());
-   snprintf(lines[2], sizeof(lines[2]), "%s  -  A: view your profile", cobalt_session_service());
+   if (cobalt_session_service()[0]) {
+      snprintf(lines[1], sizeof(lines[1]), "%s  %s", cobalt_session_did(),
+               cobalt_session_service());
+   } else {
+      snprintf(lines[1], sizeof(lines[1]), "%s", cobalt_session_did());
+   }
 
-   const cobalt_font_id fonts[3] = {
-      COBALT_FONT_HEADING, COBALT_FONT_CAPTION, COBALT_FONT_CAPTION
-   };
-   const SDL_Color colours[3] = {
-      COBALT_COLOUR_TEXT, COBALT_COLOUR_TEXT_DIM, COBALT_COLOUR_TEXT_DIM
-   };
+   const cobalt_font_id fonts[2] = { COBALT_FONT_HEADING, COBALT_FONT_CAPTION };
+   const SDL_Color colours[2] = { COBALT_COLOUR_TEXT, COBALT_COLOUR_TEXT_DIM };
 
    int y = panel.y + m->pad_tile;
-   for (int i = 0; i < 3; i++) {
+   for (int i = 0; i < 2; i++) {
       y += cobalt_draw_text_wrapped(r, fonts[i], lines[i], panel.x + m->pad_tile, y,
                                     panel.w - 2 * m->pad_tile, 1, colours[i]);
    }
@@ -699,7 +732,8 @@ cobalt_app_draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surfa
    cobalt_app_draw_header(r, "Feeds");
 
    const int top = cobalt_content_top(r);
-   const int row_h = m->font_body * 2;
+   /* 44 on the GamePad for the same reason as the account rows. */
+   const int row_h = m->font_body * 2 + (surface == COBALT_SURFACE_DRC ? 2 : 0);
    const int width = m->width - 2 * m->pad_edge;
    const int label_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
 
@@ -728,6 +762,8 @@ cobalt_app_draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surfa
    }
    if (surface == COBALT_SURFACE_DRC) {
       s_feeds_hit_valid = true;
+      s_feeds_first = app->feeds_scroll;
+      s_feeds_visible = drawn;
    }
 
    if (feed_count() > fit) {
