@@ -22,6 +22,8 @@ spec.loader.exec_module(hbas)
 FRAMES = {
     "home-signedin": "home-signedin-tv",
     "timeline": "timeline-2-tv",
+    "timeline-gallery": "timeline-gallery-tv",
+    "timeline-external": "timeline-external-tv",
     "thread": "thread-tv",
     # The TV half of the compose screen is the draft panel, so the shot with
     # text in it is the one worth showing.

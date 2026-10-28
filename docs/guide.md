@@ -66,6 +66,10 @@ The More menu lists, for the highlighted post: the author's profile, View image,
 
 A post can carry up to four pictures, a gallery row (the first four of a larger gallery), a link-card preview naming its publication or host, or a video's poster with its length and a note that it cannot play.
 
+![A gallery post](screenshots/timeline-gallery.png)
+
+![A link card naming its publication and reading time](screenshots/timeline-external.png)
+
 ## Thread
 
 ![Thread](screenshots/thread.png)
