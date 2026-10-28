@@ -722,6 +722,7 @@ test_feed_embeds(void)
 
    /* The wire carries view variants, so matching is on prefix. */
    CHECK_STR(cobalt_feed_embed_note("app.bsky.embed.images#view"), "[image]");
+   CHECK_STR(cobalt_feed_embed_note("app.bsky.embed.gallery#view"), "[gallery]");
    CHECK_STR(cobalt_feed_embed_note("app.bsky.embed.video#view"), "[video]");
    CHECK_STR(cobalt_feed_embed_note("app.bsky.embed.external#view"), "[link]");
    CHECK_STR(cobalt_feed_embed_note("app.bsky.embed.record#viewRecord"), "[quote]");
