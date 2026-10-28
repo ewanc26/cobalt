@@ -67,10 +67,13 @@ void cobalt_app_destroy(cobalt_app *app);
 /* Index of the highlighted home entry; lets tests navigate without guessing. */
 int cobalt_app_home_selection(const cobalt_app *app);
 cobalt_screen cobalt_app_screen(const cobalt_app *app);
-/* Timeline cursor and first drawn card, so tests can check they survive a detour. */
+/* List cursor and first drawn row, so tests can check they survive a detour. */
 void cobalt_app_view_position(const cobalt_app *app, cobalt_screen screen, int *selected,
                               int *scroll);
 void cobalt_app_timeline_position(const cobalt_app *app, int *selected, int *scroll);
+/* How far back a conversation's window is, in messages; its drag and Up/Down
+ * both move this one number. */
+int cobalt_app_chat_offset(const cobalt_app *app);
 
 /* The open menu, for tests that tap its rows. NULL when no menu is up. */
 const cobalt_popup *cobalt_app_popup(const cobalt_app *app);
