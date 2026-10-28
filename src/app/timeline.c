@@ -164,7 +164,7 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
 
    /* Header. */
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Timeline", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE);
+                    COBALT_COLOUR_HEADER_TEXT);
    {
       char subtitle[96];
       if (cobalt_session_busy()) {
@@ -246,7 +246,7 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
       const int avail = bottom - top;
       const int total = cobalt_postcard_text_total(r, sel, w, 0);
       /* One body line is kept free for the marker when the text overflows. */
-      const int more_h = cobalt_font_line_height(r, COBALT_FONT_BODY) + m->gap;
+      const int more_h = cobalt_font_line_height(r, COBALT_FONT_POST) + m->gap;
       int lines = total < 1 ? 1 : total;
 
       while (lines > 1 && cobalt_postcard_height(r, sel, lines, true) >

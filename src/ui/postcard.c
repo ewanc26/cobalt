@@ -175,6 +175,7 @@ cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
+   const int post_h = cobalt_font_line_height(r, COBALT_FONT_POST);
    const bool compact = remote_compact(r);
    if (compact && text_lines > 1) {
       text_lines = 1;
@@ -185,7 +186,7 @@ cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines
       h += caption_h;
    }
    h += body_h;                                     /* author row */
-   h += text_lines * (body_h + m->line_gap);
+   h += text_lines * (post_h + m->line_gap);
 
    const int embed_h = compact ? 0
                                : embed_block_height(m, caption_h, body_h, post, focused);
@@ -612,6 +613,7 @@ cobalt_postcard_draw_scrolled(cobalt_render *r, const cobalt_post *post,
 
    const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
+   const int post_h = cobalt_font_line_height(r, COBALT_FONT_POST);
 
    const int left = card.x + m->pad_tile;
    const int right = card.x + card.w - m->pad_tile;
@@ -677,11 +679,11 @@ cobalt_postcard_draw_scrolled(cobalt_render *r, const cobalt_post *post,
          spans[i].colour = COBALT_COLOUR_ACCENT;
          spans[i].underline = post->facets[i].kind == COBALT_FACET_LINK;
       }
-      cobalt_draw_text_wrapped_spans(r, COBALT_FONT_BODY, post->text, text_left, y,
+      cobalt_draw_text_wrapped_spans(r, COBALT_FONT_POST, post->text, text_left, y,
                                      text_width, first_line, text_lines,
                                      COBALT_COLOUR_TEXT, spans, post->facet_count);
    }
-   y += text_lines * (body_h + m->line_gap);
+   y += text_lines * (post_h + m->line_gap);
 
    if (!compact) {
       const int media_h = embed_media_height(m, caption_h, body_h, post);
@@ -730,7 +732,7 @@ cobalt_postcard_draw_scrolled(cobalt_render *r, const cobalt_post *post,
             break;
          }
          const SDL_Rect pill = { px, y, inner + 2 * padx, caption_h };
-         SDL_Color fill = { 0xEE, 0xF1, 0xF3, 0xFF };
+         const SDL_Color fill = COBALT_COLOUR_CHIP;
          cobalt_fill_rounded_rect(r, &pill, caption_h / 2, fill);
          int tx = px + padx;
          if (icon) {
@@ -777,7 +779,7 @@ cobalt_postcard_text_total(cobalt_render *r, const cobalt_post *post, int card_w
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int width = card_w - indent * INDENT_STEP(m) -
                      (AVATAR_SIDE(m) + AVATAR_GAP(m)) - 2 * m->pad_tile;
-   return width > 0 ? cobalt_text_wrapped_lines(r, COBALT_FONT_BODY, post->text, width)
+   return width > 0 ? cobalt_text_wrapped_lines(r, COBALT_FONT_POST, post->text, width)
                     : 0;
 }
 

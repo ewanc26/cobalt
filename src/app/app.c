@@ -1,4 +1,5 @@
 #include "app/app_internal.h"
+#include "app/settings_view.h"
 #include "app/queue_store.h"
 
 #include <stdio.h>
@@ -10,6 +11,31 @@ static bool
 queue_file(char *out, size_t size)
 {
    return cobalt_data_path(out, size, "queue.dat");
+}
+
+/* The preferences file in the app's data directory. */
+static bool
+settings_file(char *out, size_t size)
+{
+   return cobalt_data_path(out, size, "settings.dat");
+}
+
+/* Restore the theme before the first frame, so a dark-theme console never
+ * flashes the light palette on boot. A damaged file is refused and defaults
+ * are used; unlike the post queue, a setting is not worth stopping for. */
+static void
+load_settings(cobalt_app *app)
+{
+   char path[256];
+
+   cobalt_settings_defaults(&app->settings);
+   if (settings_file(path, sizeof(path)) &&
+       !cobalt_settings_load(path, &app->settings)) {
+      COBALT_LOGW("settings: could not read %s; using defaults", path);
+      cobalt_settings_defaults(&app->settings);
+   }
+   cobalt_theme_apply(app->settings.theme);
+   cobalt_theme_set_high_contrast(app->settings.high_contrast);
 }
 
 /* Restore the queue from the SD card at start. A damaged file is kept beside
@@ -46,6 +72,7 @@ cobalt_app_create(void)
    app->screen = COBALT_SCREEN_HOME;
    app->display = COBALT_DISPLAY_DUAL;
    app->selected = 1; /* Sign in — the one thing worth doing on run one. */
+   load_settings(app);
 
    cobalt_signin_init(&app->signin);
 
@@ -978,6 +1005,10 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
          cobalt_app_update_account(app, in);
          break;
 
+      case COBALT_SCREEN_SETTINGS:
+         cobalt_settings_view_update(app, in);
+         break;
+
       case COBALT_SCREEN_FEEDS:
          cobalt_app_update_feeds(app, in);
          break;
@@ -1124,7 +1155,7 @@ cobalt_app_draw_header(cobalt_render *r, const char *subtitle)
    const cobalt_metrics *m = cobalt_render_metrics(r);
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Cobalt", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE);
+                    COBALT_COLOUR_HEADER_TEXT);
 
    int title_h = cobalt_font_line_height(r, COBALT_FONT_TITLE);
    {
@@ -1182,6 +1213,9 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
                                 ? COBALT_ROLE_FULL
                                 : (surface == COBALT_SURFACE_DRC ? COBALT_ROLE_REMOTE
                                                                 : COBALT_ROLE_READER));
+   /* Cheap when unchanged. Both surfaces are drawn every frame, so this is
+    * how a scale chosen on the GamePad reaches the TV in the same frame. */
+   cobalt_render_set_text_scale(r, (int) app->settings.text_scale);
 
    if (surface == COBALT_SURFACE_TV && app->display == COBALT_DISPLAY_GAMEPAD) {
       cobalt_app_draw_tv_idle(r);
@@ -1246,6 +1280,10 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_ACCOUNT:
          cobalt_app_draw_account(app, r, surface);
+         break;
+
+      case COBALT_SCREEN_SETTINGS:
+         cobalt_settings_view_draw(app, r, surface);
          break;
 
       case COBALT_SCREEN_FEEDS:

@@ -10,6 +10,7 @@
 #include "app/compose.h"
 #include "app/post_queue.h"
 #include "app/queue_store.h"
+#include "app/settings_store.h"
 #include "app/graph.h"
 #include "app/search.h"
 #include "app/timeline.h"
@@ -36,6 +37,8 @@
 #include "util/entropy.h"
 #include "util/rng.h"
 #include "util/clock.h"
+
+#include <math.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -1369,6 +1372,224 @@ test_compose(void)
    CHECK_STR(compose.parent_cid, "cid-two");
    CHECK_STR(compose.root_uri, "at://did:plc:a/app.bsky.feed.post/1");
    CHECK_STR(compose.root_cid, "cid-one");
+}
+
+/* The three settings round-trip, a damaged file is refused whole, and both the
+ * theme and the accessibility override actually reach the palette. */
+static void
+test_settings_store(void)
+{
+   begin("the settings file round-trips, and its values reach the palette");
+   static cobalt_settings s, back;
+   static char buf[COBALT_SETTINGS_FILE_MAX];
+   const char *path = "settings-test.dat";
+
+   cobalt_theme_set_high_contrast(false);
+   cobalt_theme_apply(COBALT_THEME_LIGHT);
+   const SDL_Color light_tile = COBALT_COLOUR_TILE;
+   const SDL_Color light_bg = COBALT_COLOUR_BG_TOP;
+
+   cobalt_settings_defaults(&s);
+   CHECK(s.theme == COBALT_THEME_LIGHT);
+   CHECK(s.text_scale == COBALT_TEXT_SCALE_NORMAL);
+   CHECK(!s.high_contrast);
+   CHECK(cobalt_settings_encode(&s, buf, sizeof(buf)));
+   CHECK(cobalt_settings_decode(buf, strlen(buf), &back));
+   CHECK(back.theme == COBALT_THEME_LIGHT);
+   CHECK(back.text_scale == COBALT_TEXT_SCALE_NORMAL);
+   CHECK(!back.high_contrast);
+
+   s.theme = COBALT_THEME_DARK;
+   s.text_scale = COBALT_TEXT_SCALE_LARGE;
+   s.high_contrast = true;
+   CHECK(cobalt_settings_encode(&s, buf, sizeof(buf)));
+   CHECK(cobalt_settings_decode(buf, strlen(buf), &back));
+   CHECK(back.theme == COBALT_THEME_DARK);
+   CHECK(back.text_scale == COBALT_TEXT_SCALE_LARGE);
+   CHECK(back.high_contrast);
+
+   /* Every truncation is refused, and leaves all three at their defaults. */
+   for (size_t cut = 0; cut < strlen(buf); cut++) {
+      CHECK(!cobalt_settings_decode(buf, cut, &back));
+      CHECK(back.theme == COBALT_THEME_LIGHT);
+      CHECK(back.text_scale == COBALT_TEXT_SCALE_NORMAL);
+      CHECK(!back.high_contrast);
+   }
+   {
+      const char *wrong_version = "cobalt-settings 2\nend\n";
+      const char *trailing = "cobalt-settings 1\nend\nextra\n";
+
+      CHECK(!cobalt_settings_decode(wrong_version, strlen(wrong_version), &back));
+      CHECK(!cobalt_settings_decode(trailing, strlen(trailing), &back));
+   }
+
+   /* Unknown keys are skipped, so a newer Cobalt's file still loads. A file
+    * from before the two new rows existed keeps its theme and gains defaults
+    * for the keys it does not contain. */
+   {
+      const char *newer = "cobalt-settings 1\nfuture=1\ntheme=dark\n"
+                          "text_scale=130\nhigh_contrast=1\nend\n";
+      const char *older = "cobalt-settings 1\ntheme=dark\nend\n";
+
+      CHECK(cobalt_settings_decode(newer, strlen(newer), &back));
+      CHECK(back.theme == COBALT_THEME_DARK);
+      CHECK(back.text_scale == COBALT_TEXT_SCALE_LARGE);
+      CHECK(back.high_contrast);
+
+      CHECK(cobalt_settings_decode(older, strlen(older), &back));
+      CHECK(back.theme == COBALT_THEME_DARK);
+      CHECK(back.text_scale == COBALT_TEXT_SCALE_NORMAL);
+      CHECK(!back.high_contrast);
+   }
+
+   /* A value outside the three known scales is ignored rather than rounded:
+    * "101" is in range but is not a size the renderer knows how to apply. */
+   {
+      const char *mixed = "cobalt-settings 1\ntheme=light\ntext_scale=101\n"
+                          "high_contrast=yes\nend\n";
+      CHECK(cobalt_settings_decode(mixed, strlen(mixed), &back));
+      CHECK(back.text_scale == COBALT_TEXT_SCALE_NORMAL);
+      CHECK(!back.high_contrast);
+   }
+
+   CHECK(cobalt_settings_save(path, &s));
+   CHECK(cobalt_settings_load(path, &back));
+   CHECK(back.theme == COBALT_THEME_DARK);
+   CHECK(back.text_scale == COBALT_TEXT_SCALE_LARGE);
+   CHECK(back.high_contrast);
+   remove(path);
+   CHECK(cobalt_settings_load(path, &back));
+   CHECK(back.theme == COBALT_THEME_LIGHT);
+   CHECK(back.text_scale == COBALT_TEXT_SCALE_NORMAL);
+   CHECK(!back.high_contrast);
+
+   /* Encoding a struct with impossible values normalises it, so no caller can
+    * write a file this build would refuse to read back. */
+   {
+      cobalt_settings bad;
+
+      cobalt_settings_defaults(&bad);
+      bad.theme = (cobalt_theme) 9;
+      bad.text_scale = (cobalt_text_scale) 7;
+      bad.high_contrast = true;
+      CHECK(cobalt_settings_encode(&bad, buf, sizeof(buf)));
+      CHECK(cobalt_settings_decode(buf, strlen(buf), &back));
+      CHECK(back.theme == COBALT_THEME_LIGHT);
+      CHECK(back.text_scale == COBALT_TEXT_SCALE_NORMAL);
+      CHECK(back.high_contrast);
+   }
+
+   const unsigned generation = cobalt_theme_generation();
+   cobalt_theme_apply(COBALT_THEME_DARK);
+   CHECK(cobalt_theme_current() == COBALT_THEME_DARK);
+   CHECK(cobalt_theme_generation() != generation);
+   CHECK(COBALT_COLOUR_TILE.r != light_tile.r ||
+         COBALT_COLOUR_TILE.g != light_tile.g ||
+         COBALT_COLOUR_TILE.b != light_tile.b);
+   CHECK(COBALT_COLOUR_CHIP.r != 0xEE || COBALT_COLOUR_CHIP.g != 0xF1 ||
+         COBALT_COLOUR_CHIP.b != 0xF3);
+   /* Header titles sit on the band, so they stay light even though the card
+    * surface behind other text turned dark. */
+   CHECK(COBALT_COLOUR_HEADER_TEXT.r > 0xE0 &&
+         COBALT_COLOUR_HEADER_TEXT.g > 0xE0 &&
+         COBALT_COLOUR_HEADER_TEXT.b > 0xE0);
+   CHECK(COBALT_COLOUR_HEADER_TEXT.r != COBALT_COLOUR_TILE.r ||
+         COBALT_COLOUR_HEADER_TEXT.g != COBALT_COLOUR_TILE.g ||
+         COBALT_COLOUR_HEADER_TEXT.b != COBALT_COLOUR_TILE.b);
+
+   /* High contrast takes precedence over the theme but is not itself a third
+    * theme: switching it off returns to whichever theme is still selected. */
+   const unsigned contrast_gen = cobalt_theme_generation();
+   cobalt_theme_set_high_contrast(true);
+   CHECK(cobalt_theme_high_contrast());
+   CHECK(cobalt_theme_generation() != contrast_gen);
+   CHECK(cobalt_theme_current() == COBALT_THEME_DARK);
+   CHECK(COBALT_COLOUR_BG_TOP.r == 0x00 && COBALT_COLOUR_BG_TOP.g == 0x00 &&
+         COBALT_COLOUR_BG_TOP.b == 0x00);
+   CHECK(COBALT_COLOUR_HEADER_TEXT.r == 0xFF &&
+         COBALT_COLOUR_HEADER_TEXT.g == 0xFF &&
+         COBALT_COLOUR_HEADER_TEXT.b == 0xFF);
+   cobalt_theme_apply(COBALT_THEME_LIGHT);
+   CHECK(cobalt_theme_current() == COBALT_THEME_LIGHT);
+   CHECK(COBALT_COLOUR_BG_TOP.r == 0x00 && COBALT_COLOUR_BG_TOP.g == 0x00 &&
+         COBALT_COLOUR_BG_TOP.b == 0x00);
+   cobalt_theme_set_high_contrast(false);
+   CHECK(!cobalt_theme_high_contrast());
+   CHECK(COBALT_COLOUR_BG_TOP.r == light_bg.r &&
+         COBALT_COLOUR_BG_TOP.g == light_bg.g &&
+         COBALT_COLOUR_BG_TOP.b == light_bg.b);
+   CHECK(COBALT_COLOUR_TILE.r == light_tile.r &&
+         COBALT_COLOUR_TILE.g == light_tile.g &&
+         COBALT_COLOUR_TILE.b == light_tile.b);
+}
+
+/* WCAG 2.x relative luminance and contrast ratio. sRGB values are linearised
+ * before weighting, which is what makes 0x80 grey read as roughly half the
+ * light of white rather than 128/255 of it. */
+static double
+linear_channel(Uint8 v)
+{
+   const double c = (double) v / 255.0;
+   return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
+}
+
+static double
+relative_luminance(SDL_Color c)
+{
+   return 0.2126 * linear_channel(c.r) +
+          0.7152 * linear_channel(c.g) +
+          0.0722 * linear_channel(c.b);
+}
+
+static double
+contrast_ratio(SDL_Color a, SDL_Color b)
+{
+   const double la = relative_luminance(a);
+   const double lb = relative_luminance(b);
+   const double hi = la > lb ? la : lb;
+   const double lo = la > lb ? lb : la;
+   return (hi + 0.05) / (lo + 0.05);
+}
+
+/* Accessibility is a property of the palette, not of a screenshot. Every role
+ * that carries words is checked against the surface it is actually drawn on,
+ * in all three palettes. Normal text gets 4.5:1 (WCAG AA), the large title
+ * gets 3:1, and high contrast is held to AA for normal text everywhere. */
+static void
+test_palette_contrast(void)
+{
+   begin("every palette keeps text above the WCAG AA contrast floor");
+
+   cobalt_theme_set_high_contrast(false);
+   cobalt_theme_apply(COBALT_THEME_LIGHT);
+   CHECK(contrast_ratio(COBALT_COLOUR_TEXT, COBALT_COLOUR_BG_TOP) >= 4.5);
+   CHECK(contrast_ratio(COBALT_COLOUR_TEXT, COBALT_COLOUR_TILE) >= 4.5);
+   CHECK(contrast_ratio(COBALT_COLOUR_TEXT_DIM, COBALT_COLOUR_TILE) >= 4.5);
+   CHECK(contrast_ratio(COBALT_COLOUR_TEXT_DIM, COBALT_COLOUR_CHIP) >= 4.5);
+   CHECK(contrast_ratio(COBALT_COLOUR_ACCENT_TEXT, COBALT_COLOUR_TILE) >= 4.5);
+   CHECK(contrast_ratio(COBALT_COLOUR_ON_ACCENT, COBALT_COLOUR_ACCENT) >= 4.5);
+   CHECK(contrast_ratio(COBALT_COLOUR_HEADER_TEXT, COBALT_COLOUR_BAND_TOP) >= 3.0);
+
+   cobalt_theme_apply(COBALT_THEME_DARK);
+   CHECK(contrast_ratio(COBALT_COLOUR_TEXT, COBALT_COLOUR_BG_TOP) >= 4.5);
+   CHECK(contrast_ratio(COBALT_COLOUR_TEXT, COBALT_COLOUR_TILE) >= 4.5);
+   CHECK(contrast_ratio(COBALT_COLOUR_TEXT_DIM, COBALT_COLOUR_TILE) >= 4.5);
+   CHECK(contrast_ratio(COBALT_COLOUR_TEXT_DIM, COBALT_COLOUR_CHIP) >= 4.5);
+   CHECK(contrast_ratio(COBALT_COLOUR_ACCENT_TEXT, COBALT_COLOUR_TILE) >= 4.5);
+   CHECK(contrast_ratio(COBALT_COLOUR_ON_ACCENT, COBALT_COLOUR_ACCENT) >= 4.5);
+   CHECK(contrast_ratio(COBALT_COLOUR_HEADER_TEXT, COBALT_COLOUR_BAND_TOP) >= 3.0);
+
+   cobalt_theme_set_high_contrast(true);
+   CHECK(contrast_ratio(COBALT_COLOUR_TEXT, COBALT_COLOUR_BG_TOP) >= 7.0);
+   CHECK(contrast_ratio(COBALT_COLOUR_TEXT, COBALT_COLOUR_TILE) >= 7.0);
+   CHECK(contrast_ratio(COBALT_COLOUR_TEXT_DIM, COBALT_COLOUR_TILE) >= 7.0);
+   CHECK(contrast_ratio(COBALT_COLOUR_TEXT_DIM, COBALT_COLOUR_CHIP) >= 7.0);
+   CHECK(contrast_ratio(COBALT_COLOUR_ACCENT_TEXT, COBALT_COLOUR_TILE) >= 7.0);
+   CHECK(contrast_ratio(COBALT_COLOUR_ON_ACCENT, COBALT_COLOUR_ACCENT) >= 7.0);
+   CHECK(contrast_ratio(COBALT_COLOUR_HEADER_TEXT, COBALT_COLOUR_BAND_TOP) >= 7.0);
+
+   cobalt_theme_set_high_contrast(false);
+   cobalt_theme_apply(COBALT_THEME_LIGHT);
 }
 
 static void
@@ -3426,6 +3647,8 @@ main(int argc, char **argv)
    test_listnav_restore();
    test_post_queue();
    test_queue_store();
+   test_settings_store();
+   test_palette_contrast();
    test_post_refuses_partial_refs();
    test_notification_wording();
    test_chat_inbox_counterpart();

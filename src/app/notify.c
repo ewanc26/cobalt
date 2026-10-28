@@ -192,7 +192,7 @@ cobalt_notify_view_draw(cobalt_notify_view *view, cobalt_render *r,
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Notifications", m->pad_edge,
-                    m->pad_edge, COBALT_COLOUR_TILE);
+                    m->pad_edge, COBALT_COLOUR_HEADER_TEXT);
    {
       char subtitle[96];
       if (cobalt_session_busy()) {

@@ -14,6 +14,7 @@ typedef enum {
    ACTION_ACCOUNT,
    ACTION_DIAGNOSTICS,
    ACTION_TOGGLE_DISPLAY,
+   ACTION_SETTINGS,
    ACTION_QUIT,
 } menu_action;
 
@@ -35,6 +36,7 @@ static const menu_action MENU[] = {
    ACTION_ACCOUNT,
    ACTION_DIAGNOSTICS,
    ACTION_TOGGLE_DISPLAY,
+   ACTION_SETTINGS,
    ACTION_QUIT,
 };
 
@@ -141,6 +143,7 @@ menu_label(int index)
       case ACTION_ACCOUNT:        return signed_in() ? "Account" : "Sign in";
       case ACTION_DIAGNOSTICS:    return "Diagnostics";
       case ACTION_TOGGLE_DISPLAY: return "TV display";
+      case ACTION_SETTINGS:       return "Settings";
       case ACTION_QUIT:           return "Quit";
       default:                    return "";
    }
@@ -179,6 +182,8 @@ menu_hint(int index)
          return "Paths, network and library status";
       case ACTION_TOGGLE_DISPLAY:
          return "Switch between TV+GamePad and Off-TV";
+      case ACTION_SETTINGS:
+         return "Theme, post text size and contrast";
       case ACTION_QUIT:
          return "Return to the Wii U Menu";
       default:
@@ -303,6 +308,12 @@ activate(cobalt_app *app, int index)
                      app->display == COBALT_DISPLAY_DUAL ? "TV + GamePad" : "GamePad only");
          break;
 
+      case ACTION_SETTINGS:
+         app->settings_selected = 0;
+         app->screen = COBALT_SCREEN_SETTINGS;
+         COBALT_LOGI("menu: opened settings");
+         break;
+
       case ACTION_QUIT:
          COBALT_LOGI("menu: quit requested");
          app->quit = true;
@@ -334,7 +345,7 @@ cobalt_app_update_home(cobalt_app *app, const cobalt_input *in)
       app->selected = (app->selected + MENU_COUNT - vstep) % MENU_COUNT;
    }
 
-   /* Touch drag scrolls the list. Twelve rows at six visible would otherwise
+   /* Touch drag scrolls the list. Thirteen rows at six visible would otherwise
     * leave the bottom half of the menu unreachable by tapping, and a finger
     * expects to drag a list. Only the rows on screen have hit rectangles; the
     * average of those is the row pitch. */
@@ -540,8 +551,22 @@ cobalt_app_draw_home_tv(cobalt_app *app, cobalt_render *r)
    const int cols = 4;
    const int rows = (MENU_COUNT + cols - 1) / cols;
    const int top = cobalt_content_top(r);
-   const int tile_h = 110;
    const int tile_w = (m->width - 2 * m->pad_edge - m->gap * (cols - 1)) / cols;
+   /* 13 entries need a fourth row. Keep the tiles inside the content area by
+    * shrinking them to the room that is actually left, rather than letting the
+    * detail strip and footer run off the screen. Three rows still get the full
+    * 110, so the signed-out menu looks exactly as it did. */
+   int tile_h = 110;
+   {
+      const int avail = cobalt_content_bottom(r) - top;
+      /* The focused tile's hint, then a notice that may wrap to two lines. */
+      const int detail_room =
+         m->font_body + 2 * cobalt_font_line_height(r, COBALT_FONT_CAPTION) +
+         3 * m->gap;
+      const int fit = (avail - detail_room - (rows - 1) * m->gap) / rows;
+      if (fit < 70) tile_h = 70;
+      else if (fit < tile_h) tile_h = fit;
+   }
    const int label_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
 
    for (int i = 0; i < MENU_COUNT; i++) {
@@ -650,7 +675,7 @@ cobalt_app_draw_home_drc(cobalt_app *app, cobalt_render *r)
    const int list_bottom = top + visible * pitch;
    cobalt_app_draw_notice(app, r, list_bottom + 4, list_w);
 
-   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
+   const SDL_Color hint = COBALT_COLOUR_TEXT_DIM;
    cobalt_draw_hints(r, app->display == COBALT_DISPLAY_DUAL ? "TV + GamePad" : "GamePad only");
    if (more[0]) {
       int w = 0;
