@@ -611,6 +611,21 @@ is the same shape one level down. The parser needs JSON text, so `fill_embed`
 serialises the open cJSON subtree once per post — a fetch-time cost, not a
 frame-loop one — and only for a gallery or external media type.
 
+A link whose `external#view` carries `associatedRefs` gets a richer card from
+`app.bsky.embed.getEmbedExternalView`: `viewArticle` (publication and reading
+time), `viewGallery` (up to four pictures) or `viewLivestream` (live or ended).
+The first ref is kept as `link.canonical_uri`; the card's height is reserved
+from that field before any fetch so the list does not jump when the answer
+arrives. `atproto/external_card.c` asks the public AppView directly — the PDS
+proxy requires auth, and the image HTTP client deliberately has no token —
+with a loader thread shaped like `ui/videoduration.c`: one request per
+(url, canonical uri), started only by a draw, with both a card and a failed
+answer cached for the life of the process. The plain link card is what shows
+until it resolves, and stays if the record is unsupported. Wolfram's
+external-view wrapper only models the legacy `view`, not this `data` union, so
+the response's small display struct is parsed here with cJSON; feed embed
+shapes still go through Wolfram above.
+
 The pure geometry — contain-fit sizing, and the link card's host fallback
 (`cobalt_feed_link_domain`, "bsky.app" rather than the full URI) — is
 exposed and unit tested (`tests/test_main.c`), per §10's carve-out for

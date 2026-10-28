@@ -70,6 +70,14 @@ A post can carry up to four pictures, a gallery row (the first four of a larger 
 
 ![A link card naming its publication and reading time](screenshots/timeline-external.png)
 
+When a link points at an Atmosphere record, Cobalt asks the AppView for the richer card and keeps the answer for the session: an article names its publication and reading time, a gallery shows up to four pictures, and a livestream says whether it is live or has ended. A link without such a record stays the plain card above.
+
+![A hydrated article card](screenshots/timeline-hydrated-article.png)
+
+![A hydrated gallery card](screenshots/timeline-hydrated-gallery.png)
+
+![A hydrated livestream card](screenshots/timeline-hydrated-livestream.png)
+
 ## Thread
 
 ![Thread](screenshots/thread.png)
