@@ -113,10 +113,16 @@ struct cobalt_render {
    TTF_Font *fonts[COBALT_FONT_COUNT];
    /* Same sizes, from a wider-coverage face; NULL when none is available. */
    TTF_Font *fallbacks[COBALT_FONT_COUNT];
+   /* Kept so the post face can be reopened when the scale changes. */
+   char font_path[512];
+   char fallback_path[512];
+   int text_scale;
 
    SDL_Texture *gradient;
    SDL_Texture *band;
    int band_h;
+   /* The theme generation the baked textures were built from. */
+   unsigned theme_generation;
    SDL_Texture *corner;
    int corner_radius;
 
@@ -149,6 +155,7 @@ struct cobalt_render {
 /* --- helpers --- */
 static void open_fallback_fonts(cobalt_render *r, const char *font_path);
 static TTF_Font *open_font_cached(const char *path, int pt);
+static void flush_wrap_cache(cobalt_render *r);
 
 static uint32_t
 pack_colour(SDL_Color c)
@@ -184,9 +191,20 @@ font_size_for(const cobalt_metrics *m, cobalt_font_id id)
       case COBALT_FONT_CAPTION: return m->font_caption;
       case COBALT_FONT_ICON:
       case COBALT_FONT_ICON_FILL: return m->font_caption + 2;
+      case COBALT_FONT_POST:
       case COBALT_FONT_BODY:
       default:                  return m->font_body;
    }
+}
+
+/* NORMAL is the size cards already used, so an untouched setting leaves the
+ * layout exactly as it was. Round to the nearest point. */
+static int
+post_font_size(const cobalt_metrics *m, int percent)
+{
+   const int n = m->font_body * percent + (int) COBALT_TEXT_SCALE_NORMAL / 2;
+   const int pt = n / (int) COBALT_TEXT_SCALE_NORMAL;
+   return pt > 0 ? pt : m->font_body;
 }
 
 /* --- baked textures --- */
@@ -333,6 +351,8 @@ cobalt_render_create(cobalt_surface_id surface, const char *font_path, bool prev
 
    r->surface = surface;
    r->m = cobalt_metrics_for(surface);
+   r->text_scale = (int) COBALT_TEXT_SCALE_NORMAL;
+   snprintf(r->font_path, sizeof r->font_path, "%s", font_path ? font_path : "");
 
    uint32_t flags = (surface == COBALT_SURFACE_DRC) ? SDL_WINDOW_WIIU_GAMEPAD_ONLY
                                                     : SDL_WINDOW_WIIU_TV_ONLY;
@@ -377,17 +397,22 @@ cobalt_render_create(cobalt_surface_id surface, const char *font_path, bool prev
          snprintf(path, sizeof path, "%.*s%s", slash ? (int) (slash - font_path + 1) : 0,
                   font_path, i == COBALT_FONT_ICON ? "icons.ttf" : "icons-fill.ttf");
       }
-      r->fonts[i] = open_font_cached(path, font_size_for(r->m, (cobalt_font_id) i));
-      if (!r->fonts[i]) {
-         /* Not fatal — see the header. Shapes still draw, text is skipped. */
-         COBALT_LOGE("font %s @%dpt failed to open: %s", path,
-                     font_size_for(r->m, (cobalt_font_id) i), TTF_GetError());
+      {
+         const int pt = (i == COBALT_FONT_POST)
+                           ? post_font_size(r->m, r->text_scale)
+                           : font_size_for(r->m, (cobalt_font_id) i);
+         r->fonts[i] = open_font_cached(path, pt);
+         if (!r->fonts[i]) {
+            /* Not fatal — see the header. Shapes still draw, text is skipped. */
+            COBALT_LOGE("font %s @%dpt failed to open: %s", path, pt, TTF_GetError());
+         }
       }
    }
 
    open_fallback_fonts(r, font_path);
 
    r->gradient = build_gradient(r->renderer);
+   r->theme_generation = cobalt_theme_generation();
    r->corner_radius = r->m->tile_radius;
    r->corner = build_corner(r->renderer, r->corner_radius);
 
@@ -440,6 +465,58 @@ bool
 cobalt_render_has_font(const cobalt_render *r)
 {
    return r && r->fonts[COBALT_FONT_BODY] != NULL;
+}
+
+void
+cobalt_render_set_text_scale(cobalt_render *r, int percent)
+{
+   if (!r) {
+      return;
+   }
+   if (percent < (int) COBALT_TEXT_SCALE_SMALL) {
+      percent = (int) COBALT_TEXT_SCALE_SMALL;
+   }
+   if (percent > (int) COBALT_TEXT_SCALE_LARGE) {
+      percent = (int) COBALT_TEXT_SCALE_LARGE;
+   }
+   if (percent == r->text_scale) {
+      return;
+   }
+
+   /* Open the new face before closing the old one: if the font cannot be
+    * reopened, the cards keep drawing at the size they already had rather
+    * than going blank. */
+   const int pt = post_font_size(r->m, percent);
+   TTF_Font *font = open_font_cached(r->font_path, pt);
+   if (!font) {
+      COBALT_LOGE("post font could not be reopened at %dpt: %s", pt, TTF_GetError());
+      return;
+   }
+   TTF_Font *fallback = r->fallback_path[0]
+                           ? open_font_cached(r->fallback_path, pt)
+                           : NULL;
+
+   if (r->fonts[COBALT_FONT_POST]) {
+      TTF_CloseFont(r->fonts[COBALT_FONT_POST]);
+   }
+   if (r->fallbacks[COBALT_FONT_POST]) {
+      TTF_CloseFont(r->fallbacks[COBALT_FONT_POST]);
+   }
+   r->fonts[COBALT_FONT_POST] = font;
+   r->fallbacks[COBALT_FONT_POST] = fallback;
+   r->text_scale = percent;
+
+   /* Both caches are keyed by font id and width, not by the face's current
+    * size, so every cached post card would otherwise keep the old glyphs and
+    * line breaks. */
+   cobalt_render_flush_text_cache(r);
+   flush_wrap_cache(r);
+}
+
+int
+cobalt_render_text_scale(const cobalt_render *r)
+{
+   return r ? r->text_scale : (int) COBALT_TEXT_SCALE_NORMAL;
 }
 
 void
@@ -552,6 +629,23 @@ cobalt_render_begin(cobalt_render *r)
    }
 
    r->clock++;
+
+   /* A theme switch can happen while the app is running. The background
+    * gradient and header band are baked from the palette, so rebuild them
+    * before the next frame instead of showing the old colours underneath the
+    * newly themed text and tiles. */
+   if (r->theme_generation != cobalt_theme_generation()) {
+      if (r->gradient) {
+         SDL_DestroyTexture(r->gradient);
+      }
+      r->gradient = build_gradient(r->renderer);
+      if (r->band) {
+         SDL_DestroyTexture(r->band);
+         r->band = NULL;
+         r->band_h = 0;
+      }
+      r->theme_generation = cobalt_theme_generation();
+   }
 
    if (r->gradient) {
       SDL_Rect dst = { 0, 0, r->m->width, r->m->height };
@@ -739,20 +833,18 @@ cobalt_draw_pill(cobalt_render *r, const char *key, const char *label, int x, in
    const int line = cobalt_font_line_height(r, font);
    const int pill_h = cobalt_pill_height(r);
    const int padx = pill_h / 3 + 2;
-   const SDL_Color white = { 0xFF, 0xFF, 0xFF, 0xFF };
-   const SDL_Color body = { 0xFF, 0xFF, 0xFF, 0xE6 };
    const bool has_key = key && key[0];
    int kw = 0;
    if (has_key) cobalt_text_size(r, font, key, &kw, NULL);
    const int chip_w = has_key ? kw + pill_h / 3 + 4 : 0;
    SDL_Rect pill = { x, y, cobalt_pill_width(r, key, label), pill_h };
-   draw_rounded_shape(r, &pill, pill_h / 2, body);
+   draw_rounded_shape(r, &pill, pill_h / 2, COBALT_COLOUR_PILL);
    int tx = x + padx;
    if (has_key) {
       SDL_Rect chip = { x + 4, y + 4, chip_w, pill_h - 8 };
       draw_rounded_shape(r, &chip, chip.h / 2, COBALT_COLOUR_ACCENT);
       cobalt_draw_text(r, font, key, chip.x + (chip.w - kw) / 2,
-                       y + (pill_h - line) / 2, white);
+                       y + (pill_h - line) / 2, COBALT_COLOUR_ON_ACCENT);
       tx = chip.x + chip.w + 6;
    }
    cobalt_draw_text(r, font, label, tx, y + (pill_h - line) / 2,
@@ -1408,11 +1500,16 @@ open_fallback_fonts(cobalt_render *r, const char *font_path)
    }
    FILE *f = fopen(path, "rb");
    if (!f) {
+      r->fallback_path[0] = '\0';
       return;
    }
    fclose(f);
+   snprintf(r->fallback_path, sizeof r->fallback_path, "%s", path);
    for (int i = 0; i < COBALT_FONT_ICON; i++) {
-      r->fallbacks[i] = open_font_cached(path, font_size_for(r->m, (cobalt_font_id) i));
+      const int pt = (i == COBALT_FONT_POST)
+                        ? post_font_size(r->m, r->text_scale)
+                        : font_size_for(r->m, (cobalt_font_id) i);
+      r->fallbacks[i] = open_font_cached(path, pt);
    }
 }
 
@@ -2217,6 +2314,14 @@ cobalt_render_flush_text_cache(cobalt_render *r)
          r->cache[i].tex = NULL;
       }
       r->cache[i].in_use = false;
+   }
+}
+
+static void
+flush_wrap_cache(cobalt_render *r)
+{
+   for (int i = 0; i < WRAP_CACHE_SIZE; i++) {
+      r->wraps[i].used = false;
    }
 }
 

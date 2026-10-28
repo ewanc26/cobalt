@@ -438,7 +438,7 @@ draw_header(cobalt_compose *compose, cobalt_render *r)
       title = title_buf;
    }
    cobalt_draw_text(r, COBALT_FONT_TITLE, title, m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE);
+                    COBALT_COLOUR_HEADER_TEXT);
 
    char subtitle[COBALT_POST_NAME_MAX + 40];
    const int remaining = cobalt_compose_remaining(compose);
@@ -563,7 +563,7 @@ draw_confirming(cobalt_compose *compose, cobalt_render *r,
       s_confirm_hit_valid = true;
    }
 
-   SDL_Color hint = { 0x4F, 0x5C, 0x66, 0xFF };
+   const SDL_Color hint = COBALT_COLOUR_TEXT_DIM;
 
    if (!cobalt_compose_is_reply(compose)) {
       char gate_line[64];

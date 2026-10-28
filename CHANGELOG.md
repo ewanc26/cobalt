@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Added
+
+- A Settings screen, reached from the home menu, with a Light/Dark theme switch, three post-text sizes (100%, 115% and 130%), a high-contrast palette and a Reset to defaults row. Theme and contrast apply immediately on both screens -- including the baked background gradient and header band, which are rebuilt when the palette changes -- and text scale reopens the post face and drops the renderer's text and wrap caches, so long posts re-wrap at the new size on the next frame. All three are saved in `settings.dat`, so they survive closing Cobalt; reset restores and saves the defaults in one action. The screen moved to `src/app/settings_view.c` rather than growing `app_home.c`. The audit behind it also fixed the surfaces that had been hard-coded white: control-prompt pills and popups now follow the theme, prompt key chips choose a readable ink over the accent, page titles use a header colour that stays white rather than the card surface (which turns dark), and the TV home grid shrinks its fourth row to fit the thirteenth entry. Host tests enforce WCAG AA contrast for the palette roles in all three modes, and snapshot cases cover high contrast on the popup, image viewer and chat screen. ([compare](https://github.com/ewanc26/cobalt/compare/v0.13.0...main))
+
 ## [0.13.0] - 2026-10-28
 
 ### Added

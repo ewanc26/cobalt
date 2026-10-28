@@ -51,7 +51,7 @@ cobalt_queue_view_draw(const cobalt_queue_view *view, const cobalt_post_queue *q
    const int width = m->width - 2 * m->pad_edge;
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Queued posts", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE);
+                    COBALT_COLOUR_HEADER_TEXT);
 
    if (queue->count == 0) {
       cobalt_draw_text_wrapped(r, COBALT_FONT_BODY,

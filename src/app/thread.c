@@ -225,7 +225,7 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
    const int detail_w = m->width - m->pad_edge - detail_x;
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Thread", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE);
+                    COBALT_COLOUR_HEADER_TEXT);
    {
       char subtitle[96];
       if (cobalt_session_busy()) {
@@ -278,7 +278,7 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
       const int full_w = split ? detail_w : m->width - 2 * m->pad_edge;
       const int total = cobalt_postcard_text_total(r, sp, full_w,
                                                    thread->depth[view->nav.selected]);
-      const int line_h = cobalt_font_line_height(r, COBALT_FONT_BODY) + m->line_gap;
+      const int line_h = cobalt_font_line_height(r, COBALT_FONT_POST) + m->line_gap;
       const int base = cobalt_postcard_height(r, sp, 0, true);
       int fit = line_h > 0 ? (bottom - top - base) / line_h : TEXT_LINES;
       /* A column whose text overflows keeps one line free for the "more" mark. */

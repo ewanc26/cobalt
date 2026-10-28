@@ -246,6 +246,22 @@ shoot(const char *scene)
    }
 }
 
+/* One pixel from the last presented frame, for checks that a palette change
+ * actually reached the baked background rather than only the new text. */
+static uint32_t
+read_pixel(cobalt_render *r, int x, int y)
+{
+   SDL_Renderer *rd = cobalt_render_sdl_renderer(r);
+   const SDL_Rect one = { x, y, 1, 1 };
+   uint32_t pixel = 0;
+
+   CHECK(rd != NULL);
+   if (!rd) return 0;
+   CHECK(SDL_RenderReadPixels(rd, &one, SDL_PIXELFORMAT_ARGB8888, &pixel,
+                              (int) sizeof(pixel)) == 0);
+   return pixel;
+}
+
 /* Back is a no-op on home, so spamming it reaches home from anywhere. */
 static void
 go_home(void)
@@ -309,7 +325,7 @@ drag_to(int x, int from, int to)
 
 /* Home selection is linear and wraps; the app remembers it across screens.
  * Must match COBALT_HOME_MENU_COUNT in app/app_internal.h. */
-#define HOME_MENU_COUNT 12
+#define HOME_MENU_COUNT 13
 
 static void
 open_home_item(int idx)
@@ -397,6 +413,16 @@ open_post_menu(int idx)
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
 }
 
+/* Centre of a Settings row on the GamePad, matching app_home.c's draw: a
+ * fingertip-height row (body * 2 + 2) with half a gap between rows. */
+static int
+settings_row_y(int row)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(g_drc);
+   const int row_h = m->font_body * 2 + 2;
+   return cobalt_content_top(g_drc) + row * (row_h + m->gap / 2) + row_h / 2;
+}
+
 /* A checksum of the TV frame inside `rect`, and how many of its pixels are
  * dark enough to be text. Reads the frame the last update drew. */
 static void
@@ -463,6 +489,50 @@ main(int argc, char **argv)
     * long one, and a blank line still counts as a line of its own. */
    CHECK(cobalt_text_wrapped_lines(g_tv, COBALT_FONT_BODY, "one\ntwo\nthree", 400) == 3);
    CHECK(cobalt_text_wrapped_lines(g_tv, COBALT_FONT_BODY, "one\n\ntwo", 400) == 3);
+
+   /* The post face is a real separate font: changing the scale reopens it and
+    * drops the wrap cache, so both the glyph height and the line breaks move
+    * on the very next measurement. */
+   {
+      static const char *const long_text =
+         "word word word word word word word word word word word word "
+         "word word word word word word word word word word word word "
+         "word word word word word word word word word word word word";
+      cobalt_post sample;
+
+      memset(&sample, 0, sizeof sample);
+      snprintf(sample.author, sizeof sample.author, "Author");
+      snprintf(sample.handle, sizeof sample.handle, "@author.test");
+      snprintf(sample.text, sizeof sample.text, "%s", long_text);
+
+      CHECK(cobalt_render_text_scale(g_drc) == (int) COBALT_TEXT_SCALE_NORMAL);
+      const int normal_h = cobalt_font_line_height(g_drc, COBALT_FONT_POST);
+
+      cobalt_render_set_text_scale(g_drc, COBALT_TEXT_SCALE_SMALL);
+      const int small_h = cobalt_font_line_height(g_drc, COBALT_FONT_POST);
+      const int small_lines = cobalt_text_wrapped_lines(g_drc, COBALT_FONT_POST,
+                                                        long_text, 260);
+      const int small_card = cobalt_postcard_height(g_drc, &sample, 3, false);
+
+      cobalt_render_set_text_scale(g_drc, COBALT_TEXT_SCALE_LARGE);
+      const int large_h = cobalt_font_line_height(g_drc, COBALT_FONT_POST);
+      const int large_lines = cobalt_text_wrapped_lines(g_drc, COBALT_FONT_POST,
+                                                        long_text, 260);
+      const int large_card = cobalt_postcard_height(g_drc, &sample, 3, false);
+
+      CHECK(small_h > 0 && normal_h > 0 && large_h > 0);
+      CHECK(small_h < normal_h && normal_h < large_h);
+      CHECK(large_lines > small_lines);
+      CHECK(large_card > small_card);
+      CHECK(cobalt_render_text_scale(g_drc) == (int) COBALT_TEXT_SCALE_LARGE);
+
+      /* Out-of-range callers are clamped to the menu's own values. */
+      cobalt_render_set_text_scale(g_drc, 1);
+      CHECK(cobalt_render_text_scale(g_drc) == (int) COBALT_TEXT_SCALE_SMALL);
+      cobalt_render_set_text_scale(g_drc, 400);
+      CHECK(cobalt_render_text_scale(g_drc) == (int) COBALT_TEXT_SCALE_LARGE);
+      cobalt_render_set_text_scale(g_drc, COBALT_TEXT_SCALE_NORMAL);
+   }
 
    settle(5);
    shoot("home-signedout");
@@ -1067,8 +1137,9 @@ main(int argc, char **argv)
       }
    }
 
-   /* The GamePad's Home list is twelve rows at six visible, so the bottom half
-    * is only reachable by dragging: it moves a row per 44-pixel row of travel. */
+   /* The GamePad's Home list is thirteen rows at six visible, so the bottom
+    * half is only reachable by dragging: it moves a row per 44-pixel row of
+    * travel. */
    {
       go_home();
       settle(4);
@@ -1131,6 +1202,199 @@ main(int argc, char **argv)
       settle(4);
       CHECK(cobalt_app_display(g_app) == COBALT_DISPLAY_DUAL);
       CHECK(cobalt_render_role(g_drc) == COBALT_ROLE_REMOTE);
+   }
+
+   /* Settings: each row changes its setting in place, the post face follows
+    * the text scale on both surfaces, and every change is written to the SD
+    * card. The D-pad walks the rows first, then each row is tapped on the
+    * GamePad; Reset puts all three back and is checked from both paths. */
+   {
+      /* Start from known values so the pictures are comparable even if an
+       * earlier run left a settings file in the working directory. */
+      g_app->settings.theme = COBALT_THEME_LIGHT;
+      g_app->settings.text_scale = COBALT_TEXT_SCALE_NORMAL;
+      g_app->settings.high_contrast = false;
+      cobalt_theme_apply(COBALT_THEME_LIGHT);
+      cobalt_theme_set_high_contrast(false);
+      open_home_item(11); /* settings */
+      settle(4);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_SETTINGS);
+      shoot("settings-light");
+
+      /* Theme. */
+      const uint32_t light_bg = read_pixel(g_tv, 2, 200);
+      const cobalt_theme before = cobalt_theme_current();
+      frame(COBALT_BTN_CONFIRM);
+      settle(4);
+      CHECK(cobalt_theme_current() != before);
+      CHECK(cobalt_theme_current() == COBALT_THEME_DARK);
+      CHECK(read_pixel(g_tv, 2, 200) != light_bg);
+      shoot("settings-dark");
+
+      /* Text scale. Both renderers must have reopened their post face by the
+       * time the frame is on screen, not only on the next restart. */
+      frame(COBALT_BTN_DOWN);
+      settle(2);
+      frame(COBALT_BTN_CONFIRM);
+      settle(4);
+      CHECK(g_app->settings.text_scale == COBALT_TEXT_SCALE_LARGE);
+      CHECK(cobalt_render_text_scale(g_tv) == (int) COBALT_TEXT_SCALE_LARGE);
+      CHECK(cobalt_render_text_scale(g_drc) == (int) COBALT_TEXT_SCALE_LARGE);
+      shoot("settings-text-large");
+
+      /* All three values are on disk together, not one setting per file. */
+      {
+         cobalt_settings saved;
+         CHECK(cobalt_settings_load("settings.dat", &saved));
+         CHECK(saved.theme == COBALT_THEME_DARK);
+         CHECK(saved.text_scale == COBALT_TEXT_SCALE_LARGE);
+         CHECK(!saved.high_contrast);
+      }
+
+      /* The scale cycles through all three values. */
+      frame(COBALT_BTN_CONFIRM);
+      settle(4);
+      CHECK(g_app->settings.text_scale == COBALT_TEXT_SCALE_SMALL);
+      CHECK(cobalt_render_text_scale(g_drc) == (int) COBALT_TEXT_SCALE_SMALL);
+
+      /* High contrast, over the dark theme. */
+      frame(COBALT_BTN_DOWN);
+      settle(2);
+      frame(COBALT_BTN_CONFIRM);
+      settle(4);
+      CHECK(g_app->settings.high_contrast);
+      CHECK(cobalt_theme_high_contrast());
+      CHECK((read_pixel(g_tv, 2, 200) & 0x00FFFFFFu) == 0);
+      shoot("settings-high-contrast");
+      {
+         cobalt_settings saved;
+         CHECK(cobalt_settings_load("settings.dat", &saved));
+         CHECK(saved.theme == COBALT_THEME_DARK);
+         CHECK(saved.text_scale == COBALT_TEXT_SCALE_SMALL);
+         CHECK(saved.high_contrast);
+      }
+
+      /* Reset from a non-default state. It restores all three, including the
+       * light palette and the normal post size, and saves that. */
+      frame(COBALT_BTN_DOWN);
+      settle(2);
+      frame(COBALT_BTN_CONFIRM);
+      settle(4);
+      CHECK(g_app->settings.theme == COBALT_THEME_LIGHT);
+      CHECK(g_app->settings.text_scale == COBALT_TEXT_SCALE_NORMAL);
+      CHECK(!g_app->settings.high_contrast);
+      CHECK(cobalt_theme_current() == COBALT_THEME_LIGHT);
+      CHECK(!cobalt_theme_high_contrast());
+      CHECK(cobalt_render_text_scale(g_drc) == (int) COBALT_TEXT_SCALE_NORMAL);
+      CHECK(read_pixel(g_tv, 2, 200) == light_bg);
+      shoot("settings-reset");
+      {
+         cobalt_settings saved;
+         CHECK(cobalt_settings_load("settings.dat", &saved));
+         CHECK(saved.theme == COBALT_THEME_LIGHT);
+         CHECK(saved.text_scale == COBALT_TEXT_SCALE_NORMAL);
+         CHECK(!saved.high_contrast);
+      }
+
+      /* Every row is a touch target on the GamePad, not only a D-pad item. */
+      tap(100, settings_row_y(1));
+      settle(4);
+      CHECK(g_app->settings.text_scale == COBALT_TEXT_SCALE_LARGE);
+      CHECK(cobalt_render_text_scale(g_drc) == (int) COBALT_TEXT_SCALE_LARGE);
+
+      tap(100, settings_row_y(2));
+      settle(4);
+      CHECK(g_app->settings.high_contrast);
+      CHECK((read_pixel(g_tv, 2, 200) & 0x00FFFFFFu) == 0);
+
+      tap(100, settings_row_y(0));
+      settle(4);
+      CHECK(cobalt_theme_current() == COBALT_THEME_DARK);
+
+      tap(100, settings_row_y(3));
+      settle(4);
+      CHECK(g_app->settings.theme == COBALT_THEME_LIGHT);
+      CHECK(g_app->settings.text_scale == COBALT_TEXT_SCALE_NORMAL);
+      CHECK(!g_app->settings.high_contrast);
+      CHECK(cobalt_render_text_scale(g_drc) == (int) COBALT_TEXT_SCALE_NORMAL);
+      CHECK(read_pixel(g_tv, 2, 200) == light_bg);
+
+      {
+         cobalt_settings saved;
+         CHECK(cobalt_settings_load("settings.dat", &saved));
+         CHECK(saved.theme == COBALT_THEME_LIGHT);
+         CHECK(saved.text_scale == COBALT_TEXT_SCALE_NORMAL);
+         CHECK(!saved.high_contrast);
+      }
+
+      frame(COBALT_BTN_BACK);
+      settle(4);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
+
+      /* The toggles save to the working directory under the host stub; do not
+       * leave that file behind for the next snapshot run. */
+      remove("settings.dat");
+   }
+
+   /* High contrast is a whole-palette state, so it is checked on the surfaces
+    * that are painted rather than laid out: the popup, the image viewer and a
+    * conversation. Each frame also has to stay black behind its text. */
+   {
+      g_app->settings.high_contrast = true;
+      cobalt_theme_set_high_contrast(true);
+
+      open_post_menu(1);
+      {
+         const cobalt_popup *p = popup();
+         CHECK(p != NULL && p->open);
+         const uint32_t paper = read_pixel(g_tv, p->panel.x + 8,
+                                          p->panel.y + p->panel.h / 2);
+         CHECK(((paper >> 16) & 0xFF) < 0x40);
+         CHECK(((paper >> 8) & 0xFF) < 0x40);
+         CHECK((paper & 0xFF) < 0x40);
+         shoot("high-contrast-popup");
+      }
+      frame(COBALT_BTN_BACK);
+      settle(3);
+      CHECK(popup() == NULL);
+
+      open_timeline();
+      select_timeline(4); /* the image post */
+      frame(COBALT_BTN_ALT_Y);
+      settle(5);
+      {
+         const int image = popup_index(COBALT_POPUP_IMAGE);
+         CHECK(image >= 0);
+         if (image >= 0) {
+            popup_select(image);
+            frame(COBALT_BTN_CONFIRM);
+            settle(5);
+         }
+      }
+      CHECK(g_app->imageview.open);
+      /* The placeholder frame fills the picture box until the texture arrives,
+       * so the corner outside that box is the part that must stay black. */
+      CHECK((read_pixel(g_tv, COBALT_TV_WIDTH - 1, COBALT_TV_HEIGHT - 1) &
+             0x00FFFFFFu) == 0);
+      shoot("high-contrast-image-viewer");
+      frame(COBALT_BTN_BACK);
+      settle(3);
+      CHECK(!g_app->imageview.open);
+
+      open_home_item(6);
+      settle(40);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_MESSAGES);
+      frame(COBALT_BTN_CONFIRM);
+      settle(40);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_CHAT_THREAD);
+      CHECK((read_pixel(g_tv, 2, 200) & 0x00FFFFFFu) == 0);
+      shoot("high-contrast-chat");
+
+      frame(COBALT_BTN_BACK);
+      settle(10);
+      g_app->settings.high_contrast = false;
+      cobalt_theme_set_high_contrast(false);
+      go_home();
    }
 
    wf_mock_pds_free(pds);

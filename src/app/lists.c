@@ -203,7 +203,7 @@ draw_list_of_lists(cobalt_lists_view *view, cobalt_render *r,
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Your lists", m->pad_edge,
-                    m->pad_edge, COBALT_COLOUR_TILE);
+                    m->pad_edge, COBALT_COLOUR_HEADER_TEXT);
 
    const int top = cobalt_content_top(r);
    const int bottom = cobalt_content_bottom(r);
@@ -257,7 +257,7 @@ draw_members(cobalt_lists_view *view, cobalt_render *r,
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, view->open_name, m->pad_edge,
-                    m->pad_edge, COBALT_COLOUR_TILE);
+                    m->pad_edge, COBALT_COLOUR_HEADER_TEXT);
 
    const int top = cobalt_content_top(r);
    const int bottom = cobalt_content_bottom(r);
