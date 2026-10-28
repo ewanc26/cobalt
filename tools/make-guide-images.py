@@ -24,6 +24,9 @@ FRAMES = {
     "timeline": "timeline-2-tv",
     "timeline-gallery": "timeline-gallery-tv",
     "timeline-external": "timeline-external-tv",
+    "timeline-hydrated-article": "timeline-external-article-tv",
+    "timeline-hydrated-gallery": "timeline-external-gallery-tv",
+    "timeline-hydrated-livestream": "timeline-external-livestream-tv",
     "thread": "thread-tv",
     # The TV half of the compose screen is the draft panel, so the shot with
     # text in it is the one worth showing.
