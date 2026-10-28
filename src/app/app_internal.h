@@ -16,6 +16,7 @@
 #include "app/queue_view.h"
 #include "app/app.h"
 #include "app/compose.h"
+#include "app/credits_view.h"
 #include "app/entropyview.h"
 #include "app/graph.h"
 #include "app/lists.h"
@@ -46,7 +47,7 @@
 #include <string.h>
 
 /* Entries on the home menu; app_home.c checks its table against this. */
-#define COBALT_HOME_MENU_COUNT 13
+#define COBALT_HOME_MENU_COUNT 14
 /* How deep a chain of thread and profile screens can nest before the oldest
  * return is dropped. */
 #define COBALT_RETURN_DEPTH 16

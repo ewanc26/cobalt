@@ -9,6 +9,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Added
 
+- A Credits screen, reached from the home menu, lists the repositories behind the stack: Cobalt, Indigo, Wolfram, Platinum and Channel Blue. Each `https://github.com/ewanc26/...` address is printed in full and the screen is passive, because the console cannot open a browser; B or the Back pill leaves it. The home menu gained a fourteenth entry.
 - A link whose external view carries `associatedRefs` is hydrated through the public AppView into the card its record describes: an article with its publication and reading time, a gallery with up to four pictures, or a livestream marked live or ended. The request runs once, only when the card is first drawn, and is cached for the session; a link without a usable record, or a failed request, keeps the plain card. ([#102](https://github.com/ewanc26/cobalt/issues/102))
 
 ## [0.14.0] - 2026-10-28

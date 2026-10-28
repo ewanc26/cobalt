@@ -15,6 +15,7 @@ typedef enum {
    ACTION_DIAGNOSTICS,
    ACTION_TOGGLE_DISPLAY,
    ACTION_SETTINGS,
+   ACTION_CREDITS,
    ACTION_QUIT,
 } menu_action;
 
@@ -37,6 +38,7 @@ static const menu_action MENU[] = {
    ACTION_DIAGNOSTICS,
    ACTION_TOGGLE_DISPLAY,
    ACTION_SETTINGS,
+   ACTION_CREDITS,
    ACTION_QUIT,
 };
 
@@ -132,6 +134,7 @@ menu_label(int index)
       case ACTION_DIAGNOSTICS:    return "Diagnostics";
       case ACTION_TOGGLE_DISPLAY: return "TV display";
       case ACTION_SETTINGS:       return "Settings";
+      case ACTION_CREDITS:        return "Credits";
       case ACTION_QUIT:           return "Quit";
       default:                    return "";
    }
@@ -172,6 +175,8 @@ menu_hint(int index)
          return "Switch between TV+GamePad and Off-TV";
       case ACTION_SETTINGS:
          return "Theme, post text size and contrast";
+      case ACTION_CREDITS:
+         return "The repositories behind the stack";
       case ACTION_QUIT:
          return "Return to the Wii U Menu";
       default:
@@ -300,6 +305,11 @@ activate(cobalt_app *app, int index)
          app->settings_selected = 0;
          app->screen = COBALT_SCREEN_SETTINGS;
          COBALT_LOGI("menu: opened settings");
+         break;
+
+      case ACTION_CREDITS:
+         app->screen = COBALT_SCREEN_CREDITS;
+         COBALT_LOGI("menu: opened credits");
          break;
 
       case ACTION_QUIT:
@@ -473,7 +483,7 @@ cobalt_app_draw_home_tv(cobalt_app *app, cobalt_render *r)
    const int rows = (MENU_COUNT + cols - 1) / cols;
    const int top = cobalt_content_top(r);
    const int tile_w = (m->width - 2 * m->pad_edge - m->gap * (cols - 1)) / cols;
-   /* 13 entries need a fourth row. Keep the tiles inside the content area by
+   /* 14 entries need a fourth row. Keep the tiles inside the content area by
     * shrinking them to the room that is actually left, rather than letting the
     * detail strip and footer run off the screen. Three rows still get the full
     * 110, so the signed-out menu looks exactly as it did. */
