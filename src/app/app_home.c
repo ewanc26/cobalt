@@ -114,6 +114,18 @@ signed_in(void)
    return cobalt_session_state() == COBALT_AUTH_SIGNED_IN;
 }
 
+/* A right-aligned count in the footer strip ("11 of 12"), centred against the
+ * prompt row beside it so the two sit on one line rather than one over the
+ * other when the pills are fingertip sized. */
+static int
+footer_label_y(cobalt_render *r)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const int pill_h = cobalt_pill_height(r);
+   const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+   return m->height - m->pad_edge / 2 - pill_h + (pill_h - caption_h) / 2;
+}
+
 static const char *
 menu_label(int index)
 {
@@ -575,7 +587,11 @@ void
 cobalt_app_draw_home_drc(cobalt_app *app, cobalt_render *r)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   cobalt_app_draw_header(r, "Off-TV ready");
+   /* What the pad is doing, which depends on the mode it is in: the TV's remote
+    * while both are on, the whole app with the TV off. The footer names the
+    * mode; this line names the job. */
+   cobalt_app_draw_header(r, cobalt_render_remote(r) ? "Remote for the TV"
+                                                     : "Off-TV play");
 
    /* A vertical list: denser than the TV row, and every row is a touch target
     * comfortably larger than a fingertip. */
@@ -640,7 +656,7 @@ cobalt_app_draw_home_drc(cobalt_app *app, cobalt_render *r)
       int w = 0;
       cobalt_text_size(r, COBALT_FONT_CAPTION, more, &w, NULL);
       cobalt_draw_text(r, COBALT_FONT_CAPTION, more, m->width - m->pad_edge - w,
-                       m->height - m->pad_edge - 20, hint);
+                       footer_label_y(r), hint);
    }
 }
 
@@ -738,7 +754,7 @@ cobalt_app_draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surfa
    const int label_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
 
    const int step = row_h + m->gap / 2;
-   const int bottom = m->height - m->pad_edge - 28;
+   const int bottom = cobalt_content_bottom(r);
    int fit = (bottom - top + m->gap / 2) / step;
    if (fit < 1) fit = 1;
    if (surface == COBALT_SURFACE_DRC) {
@@ -770,7 +786,7 @@ cobalt_app_draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surfa
       char pos[32];
       snprintf(pos, sizeof(pos), "%d of %d", app->feeds_selected + 1, feed_count());
       cobalt_draw_text(r, COBALT_FONT_CAPTION, pos, m->width - m->pad_edge - 90,
-                       m->height - m->pad_edge - 20, COBALT_COLOUR_TEXT_DIM);
+                       footer_label_y(r), COBALT_COLOUR_TEXT_DIM);
    }
 
    cobalt_app_draw_notice(app, r, row_y - m->gap / 2 + m->gap / 2, width);
