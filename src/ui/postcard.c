@@ -1,5 +1,6 @@
 #include "ui/postcard.h"
 
+#include "atproto/external_card.h"
 #include "ui/imagecache.h"
 #include "ui/videoduration.h"
 
@@ -78,6 +79,13 @@ embed_media_height(const cobalt_metrics *m, int caption_h, int body_h,
       return EMBED_IMAGE_GRID_H(body_h);
    }
    if (cobalt_post_has_card(post)) {
+      /* A link with an associated record gets the taller hydrated layout: a
+       * label line, a larger picture, and room for a publication or photo
+       * count. The height is keyed off the record's presence, not the fetch
+       * result, so the card does not jump when the AppView answers. */
+      if (post->link.canonical_uri[0]) {
+         return EMBED_SINGLE_IMAGE_H(body_h);
+      }
       /* Padding top and bottom, one title line, two description lines, one
        * domain line. */
       return m->pad_tile + body_h + 3 * caption_h;
@@ -476,10 +484,98 @@ draw_image_row(cobalt_render *r, const cobalt_post *post, int x, int y,
 }
 
 /*
- * A link card: an optional square thumbnail, then title, description and the
- * link's host stacked beside it — the same information Bluesky's own link
- * card shows, laid out for a fixed-height row rather than a variable one for
- * the same reason the rest of this file is width- but not content-driven.
+ * The hydrated card for a post, if one has arrived. A plain link has no
+ * canonical record to ask about, and leaves this NULL. The lookup is what
+ * queues the fetch, so it is deliberately only called while drawing.
+ */
+static const cobalt_external_card *
+hydrated_card(const cobalt_post *post)
+{
+   if (!post->link.canonical_uri[0]) {
+      return NULL;
+   }
+   return cobalt_external_card_lookup(post->link.uri,
+                                      post->link.canonical_uri);
+}
+
+/* Up to four hydrated gallery pictures, two by two, in the square a single
+ * thumbnail would otherwise occupy. */
+static void
+draw_gallery_grid(cobalt_render *r, const cobalt_external_card *card,
+                  int x, int y, int side)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const int gap = EMBED_CELL_GAP(m);
+   const int cell = (side - gap) / 2;
+   if (cell <= 0) {
+      return;
+   }
+
+   for (int i = 0; i < card->image_count && i < COBALT_POST_IMAGES_MAX; i++) {
+      const cobalt_post_image *img = &card->images[i];
+      const SDL_Rect rect = { x + (i % 2) * (cell + gap),
+                              y + (i / 2) * (cell + gap), cell, cell };
+      draw_thumb_cell(r, img->thumb, img->alt, img->aspect_w, img->aspect_h,
+                      &rect);
+   }
+}
+
+static const char *
+kind_label(const cobalt_external_card *card, const cobalt_post *post)
+{
+   if (!post->link.canonical_uri[0]) {
+      return "";
+   }
+   if (!card) {
+      return "Link";
+   }
+   switch (card->kind) {
+      case COBALT_EXTERNAL_CARD_ARTICLE:    return "Article";
+      case COBALT_EXTERNAL_CARD_GALLERY:    return "Gallery";
+      case COBALT_EXTERNAL_CARD_LIVESTREAM:
+         return card->live ? "LIVE" : "Livestream ended";
+   }
+   return "Link";
+}
+
+static void
+link_card_footer(const cobalt_post *post, const cobalt_external_card *card,
+                 char *out, size_t out_size)
+{
+   char domain[64];
+   cobalt_feed_link_domain(post->link.uri, domain, sizeof(domain));
+
+   if (card && card->kind == COBALT_EXTERNAL_CARD_GALLERY) {
+      if (card->photo_count > 0) {
+         snprintf(out, out_size, "%d photo%s", card->photo_count,
+                  card->photo_count == 1 ? "" : "s");
+      } else {
+         snprintf(out, out_size, "%s", domain);
+      }
+      return;
+   }
+
+   const char *source = card && card->source_title[0]
+                           ? card->source_title : post->link.source_title;
+   const int reading = card && card->reading_time > 0
+                          ? card->reading_time : post->link.reading_time;
+
+   if (source[0] && reading > 0) {
+      snprintf(out, out_size, "%d min \xC2\xB7 %s", reading, source);
+   } else if (source[0]) {
+      snprintf(out, out_size, "%s", source);
+   } else if (reading > 0) {
+      snprintf(out, out_size, "%d min read", reading);
+   } else {
+      snprintf(out, out_size, "%s", domain);
+   }
+}
+
+/*
+ * A link card: an optional picture, then a label and the title, description
+ * and footer stacked beside it. The plain card is the same information
+ * Bluesky's own link card shows; an associated record upgrades it to the
+ * article, gallery or livestream variant without changing the layout budget.
  */
 static void
 draw_link_card(cobalt_render *r, const cobalt_post *post, int x, int y,
@@ -489,14 +585,22 @@ draw_link_card(cobalt_render *r, const cobalt_post *post, int x, int y,
    const SDL_Rect box = { x, y, width, height };
    cobalt_draw_tile(r, &box, 0.0f);
 
+   const cobalt_external_card *card = hydrated_card(post);
    const int pad = EMBED_GAP(m);
    const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
 
    int text_x = x + pad;
-   if (post->link.thumb[0]) {
+   const bool gallery_grid = card &&
+      card->kind == COBALT_EXTERNAL_CARD_GALLERY && card->image_count > 1;
+   const char *image = card && card->image[0] ? card->image : post->link.thumb;
+   if (gallery_grid) {
+      const int side = height - 2 * pad;
+      draw_gallery_grid(r, card, x + pad, y + pad, side);
+      text_x = x + pad + side + pad;
+   } else if (image[0]) {
       const int side = height - 2 * pad;
       const SDL_Rect cell = { x + pad, y + pad, side, side };
-      draw_thumb_cell(r, post->link.thumb, NULL, 1, 1, &cell);
+      draw_thumb_cell(r, image, NULL, 1, 1, &cell);
       text_x = cell.x + cell.w + pad;
    }
 
@@ -507,8 +611,19 @@ draw_link_card(cobalt_render *r, const cobalt_post *post, int x, int y,
    }
 
    int ty = y + pad;
-   if (post->link.title[0]) {
-      ty += cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, post->link.title,
+   const char *label = kind_label(card, post);
+   if (label[0]) {
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, label, text_x, ty,
+                       card && card->kind == COBALT_EXTERNAL_CARD_LIVESTREAM &&
+                          card->live
+                          ? COBALT_COLOUR_ACCENT_TEXT
+                          : COBALT_COLOUR_TEXT_DIM);
+      ty += caption_h;
+   }
+
+   const char *title = card && card->title[0] ? card->title : post->link.title;
+   if (title[0]) {
+      ty += cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, title,
                                      text_x, ty, text_width, 1,
                                      COBALT_COLOUR_TEXT);
    }
@@ -523,29 +638,20 @@ draw_link_card(cobalt_render *r, const cobalt_post *post, int x, int y,
                        text_x, ty, COBALT_COLOUR_TEXT_DIM);
       ty += caption_h;
    }
-   if (post->link.description[0]) {
-      ty += cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION,
-                                     post->link.description, text_x, ty,
-                                     text_width, 2, COBALT_COLOUR_TEXT_DIM);
+   const char *description = card && card->description[0]
+                                ? card->description : post->link.description;
+   if (description[0]) {
+      ty += cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, description,
+                                     text_x, ty, text_width, 2,
+                                     COBALT_COLOUR_TEXT_DIM);
    }
 
    /* The bottom line names the publication when the view supplied one, with
-    * the reading time beside it; otherwise it falls back to the host, which is
-    * all a plain link card has. Wrapped to one line so a long publication name
-    * cannot run out of the card. */
-   char domain[64];
+    * the reading time beside it; a gallery names its photo count, a livestream
+    * its host, and a plain card the bare host. Wrapped to one line so a long
+    * publication name cannot run out of the card. */
    char footer[128];
-   cobalt_feed_link_domain(post->link.uri, domain, sizeof(domain));
-   if (post->link.source_title[0] && post->link.reading_time > 0) {
-      snprintf(footer, sizeof(footer), "%d min \xC2\xB7 %s",
-               post->link.reading_time, post->link.source_title);
-   } else if (post->link.source_title[0]) {
-      snprintf(footer, sizeof(footer), "%s", post->link.source_title);
-   } else if (post->link.reading_time > 0) {
-      snprintf(footer, sizeof(footer), "%d min read", post->link.reading_time);
-   } else {
-      snprintf(footer, sizeof(footer), "%s", domain);
-   }
+   link_card_footer(post, card, footer, sizeof(footer));
    if (footer[0]) {
       cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, footer, text_x,
                                y + height - pad - caption_h, text_width, 1,

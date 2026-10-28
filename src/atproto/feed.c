@@ -568,6 +568,22 @@ apply_external_meta(cobalt_post *post, const wf_embed_view_external *ext)
                                title->valuestring);
       }
    }
+
+   /* The first associated record is the canonical one; the query takes one
+    * canonicalUri, and the AppView ignores the rest for this purpose. */
+   if (ext->associated_refs &&
+       cJSON_GetArraySize(ext->associated_refs) > 0) {
+      const cJSON *ref = cJSON_GetArrayItem(ext->associated_refs, 0);
+      const cJSON *uri = cJSON_IsObject(ref)
+                            ? cJSON_GetObjectItemCaseSensitive(ref, "uri")
+                            : NULL;
+      if (cJSON_IsString(uri) && uri->valuestring &&
+          strlen(uri->valuestring) < sizeof(post->link.canonical_uri)) {
+         snprintf(post->link.canonical_uri,
+                  sizeof(post->link.canonical_uri), "%s",
+                  uri->valuestring);
+      }
+   }
 }
 
 /*
