@@ -22,6 +22,7 @@
 
 #include "app/app.h"
 #include "atproto/atproto.h"
+#include "atproto/external_card.h"
 #include "audio/sound.h"
 #include "atproto/session.h"
 #include "input/input.h"
@@ -127,6 +128,7 @@ shutdown_all(cobalt_context *ctx)
       cobalt_imagecache_destroy(ctx->tv_images);
       ctx->tv_images = NULL;
    }
+   cobalt_external_card_shutdown();
    cobalt_video_duration_shutdown();
    if (ctx->images_up) {
       cobalt_images_shutdown();
@@ -234,6 +236,9 @@ startup(cobalt_context *ctx)
     * only once it is up. A failed start leaves posters without a duration. */
    if (ctx->images_up) {
       cobalt_video_duration_init();
+      /* Hydrated article/gallery/livestream cards use the same HTTP client. A
+       * failed start leaves every external card in its plain-link form. */
+      cobalt_external_card_init();
    }
    if (ctx->images_up) {
       ctx->tv_images = cobalt_imagecache_create(COBALT_AVATAR_TEXTURE_MAX,

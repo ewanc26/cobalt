@@ -20,6 +20,7 @@
 #include "atproto/actors.h"
 #include "atproto/session.h"
 #include "atproto/feed.h"
+#include "atproto/external_card.h"
 #include "atproto/notifications.h"
 #include "atproto/chat.h"
 #include "app/chat_thread.h"
@@ -735,6 +736,131 @@ test_feed_embeds(void)
    CHECK_STR(cobalt_feed_embed_note("app.bsky.embed.somethingNew#view"), "");
    CHECK_STR(cobalt_feed_embed_note(""), "");
    CHECK_STR(cobalt_feed_embed_note(NULL), "");
+}
+
+/* --- hydrated external cards --- */
+
+static const char *const CARD_ARTICLE =
+   "{\"data\":{\"$type\":\"app.bsky.embed.external#viewArticle\","
+   "\"uri\":\"https://example.com/article\",\"title\":\"A hydrated article\","
+   "\"description\":\"The article description.\","
+   "\"image\":\"https://cdn.test/article.jpg\","
+   "\"publisher\":{\"title\":\"Example Press\"},\"readingTime\":6}}";
+
+static const char *const CARD_GALLERY =
+   "{\"data\":{\"$type\":\"app.bsky.embed.external#viewGallery\","
+   "\"title\":\"A hydrated gallery\",\"description\":\"Four pictures.\","
+   "\"items\":["
+   "{\"thumbnail\":\"https://cdn.test/g1.jpg\",\"alt\":\"one\",\"aspectRatio\":{\"width\":4,\"height\":3}},"
+   "{\"thumbnail\":\"https://cdn.test/g2.jpg\",\"alt\":\"two\"},"
+   "{\"thumbnail\":\"https://cdn.test/g3.jpg\"},"
+   "{\"thumbnail\":\"https://cdn.test/g4.jpg\"}]}}";
+
+static const char *const CARD_LIVESTREAM =
+   "{\"data\":{\"$type\":\"app.bsky.embed.external#viewLivestream\","
+   "\"title\":\"A hydrated livestream\",\"description\":\"Live from the studio.\","
+   "\"image\":\"https://cdn.test/live.jpg\",\"active\":true}}";
+
+static const char *const CARD_PUBLICATION =
+   "{\"data\":{\"$type\":\"app.bsky.embed.external#viewArticlePublication\","
+   "\"title\":\"Example Press\",\"description\":\"A publication.\"}}";
+
+static const char *s_card_body;
+static int s_card_calls;
+
+static bool
+card_fetch(const char *url, cobalt_http_response *out)
+{
+   (void) url;
+   s_card_calls++;
+   if (!s_card_body) {
+      return false;
+   }
+   const size_t n = strlen(s_card_body);
+   out->data = (unsigned char *) malloc(n + 1);
+   if (!out->data) {
+      return false;
+   }
+   memcpy(out->data, s_card_body, n + 1);
+   out->size = n;
+   out->status = 200;
+   return true;
+}
+
+static void
+test_external_cards(void)
+{
+   begin("hydrated external cards");
+
+   cobalt_external_card card;
+   CHECK(cobalt_external_card_parse(CARD_ARTICLE, strlen(CARD_ARTICLE), &card));
+   CHECK(card.kind == COBALT_EXTERNAL_CARD_ARTICLE);
+   CHECK_STR(card.title, "A hydrated article");
+   CHECK_STR(card.source_title, "Example Press");
+   CHECK(card.reading_time == 6);
+   CHECK_STR(card.image, "https://cdn.test/article.jpg");
+
+   CHECK(cobalt_external_card_parse(CARD_GALLERY, strlen(CARD_GALLERY), &card));
+   CHECK(card.kind == COBALT_EXTERNAL_CARD_GALLERY);
+   CHECK(card.image_count == 4);
+   CHECK(card.photo_count == 4);
+   CHECK_STR(card.images[0].alt, "one");
+   CHECK(card.images[0].aspect_w == 4 && card.images[0].aspect_h == 3);
+   CHECK_STR(card.image, "https://cdn.test/g1.jpg");
+
+   CHECK(cobalt_external_card_parse(CARD_LIVESTREAM, strlen(CARD_LIVESTREAM), &card));
+   CHECK(card.kind == COBALT_EXTERNAL_CARD_LIVESTREAM);
+   CHECK(card.live);
+
+   /* A publication has no body of its own; the legacy link card already drew
+    * it, so it stays a plain card rather than becoming an empty article. */
+   CHECK(!cobalt_external_card_parse(CARD_PUBLICATION,
+                                     strlen(CARD_PUBLICATION), &card));
+   CHECK(!cobalt_external_card_parse("{}", 2, &card));
+   CHECK(!cobalt_external_card_parse("not json", 8, &card));
+
+   char request[1600];
+   CHECK(cobalt_external_card_url("https://example.com/a?b=1",
+      "at://did:plc:abc/site.standard.document/x", request, sizeof(request)));
+   CHECK(strstr(request, "https://public.api.bsky.app/xrpc/"
+                         "app.bsky.embed.getEmbedExternalView?url=") != NULL);
+   CHECK(strstr(request, "https%3A%2F%2Fexample.com%2Fa%3Fb%3D1") != NULL);
+   CHECK(strstr(request, "canonicalUri=at%3A%2F%2Fdid%3Aplc%3Aabc") != NULL);
+
+   /* The lookup queues one request, never repeats it, and remembers a failed
+    * answer so scrolling does not retry it every frame. */
+   cobalt_external_card_set_fetcher(card_fetch);
+   cobalt_external_card_reset_for_test();
+   s_card_calls = 0;
+   s_card_body = CARD_ARTICLE;
+   CHECK(cobalt_external_card_lookup("https://example.com/article",
+                                     "at://did:plc:abc/site.standard.document/x")
+         == NULL);
+   CHECK(s_card_calls == 0);
+   CHECK(cobalt_external_card_drain() == 1);
+   CHECK(s_card_calls == 1);
+   const cobalt_external_card *ready = cobalt_external_card_lookup(
+      "https://example.com/article",
+      "at://did:plc:abc/site.standard.document/x");
+   CHECK(ready != NULL && ready->kind == COBALT_EXTERNAL_CARD_ARTICLE);
+   CHECK(cobalt_external_card_lookup(
+            "https://example.com/article",
+            "at://did:plc:abc/site.standard.document/x") == ready);
+   CHECK(cobalt_external_card_drain() == 0);
+   CHECK(s_card_calls == 1);
+
+   s_card_body = NULL;
+   CHECK(cobalt_external_card_lookup("https://example.com/missing",
+                                     "at://did:plc:abc/site.standard.document/m")
+         == NULL);
+   CHECK(cobalt_external_card_drain() == 1);
+   CHECK(cobalt_external_card_lookup("https://example.com/missing",
+                                     "at://did:plc:abc/site.standard.document/m")
+         == NULL);
+   CHECK(cobalt_external_card_drain() == 0);
+
+   cobalt_external_card_set_fetcher(NULL);
+   cobalt_external_card_reset_for_test();
 }
 
 static void
@@ -3619,6 +3745,7 @@ main(int argc, char **argv)
    test_feed_counts();
    test_feed_embeds();
    test_feed_link_domain();
+   test_external_cards();
    test_video_duration_format();
    test_video_master_variant();
    test_video_master_fetch_count();
