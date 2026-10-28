@@ -179,8 +179,7 @@ draw_editing(cobalt_search_view *view, cobalt_render *r,
          x -= 8;
          const bool on = (view->posts == (i == 1));
          cobalt_fill_rounded_rect(r, &seg, seg_h / 2,
-                                  on ? COBALT_COLOUR_ACCENT
-                                     : (SDL_Color){ 0xFF, 0xFF, 0xFF, 0xE6 });
+                                  on ? COBALT_COLOUR_ACCENT : COBALT_COLOUR_PILL);
          cobalt_draw_text_centred(r, COBALT_FONT_CAPTION, labels[i], seg.x,
                                   seg.y + (seg_h - cobalt_font_line_height(r, COBALT_FONT_CAPTION)) / 2,
                                   seg.w,
@@ -284,7 +283,7 @@ cobalt_search_view_draw(cobalt_search_view *view, cobalt_render *r,
 
    const cobalt_metrics *m = cobalt_render_metrics(r);
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Search", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE);
+                    COBALT_COLOUR_HEADER_TEXT);
 
    if (view->browsing) {
       draw_browsing(view, r, surface);

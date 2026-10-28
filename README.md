@@ -45,6 +45,7 @@ replace testing on the console.
 ### Implemented
 
 - TV + GamePad and Off-TV Play
+- Light and dark themes, three post-text sizes and a high-contrast mode, set in Settings and saved on the SD card, with one row to reset all of them
 - Diagnostics covering paths, networking, TLS, Wolfram and session state
 - App-password sign-in with an on-screen keyboard
 - Browser-based OAuth sign-in through a hosted Wolfram OAuth node: Cobalt shows a pairing link, you open it on a phone or computer, and the PDS handles your password and MFA

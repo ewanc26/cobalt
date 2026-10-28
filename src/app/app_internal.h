@@ -7,8 +7,8 @@
  *
  * app.c owns the lifecycle, the job results and the per-frame dispatch;
  * app_home.c the home menu and the small menu screens (account, feeds, sign
- * in); app_menus.c the More menus and what choosing from them does;
- * app_diag.c the diagnostics screen.
+ * in); settings_view.c the Settings screen; app_menus.c the More menus and
+ * what choosing from them does; app_diag.c the diagnostics screen.
  */
 
 #include "app/post_queue.h"
@@ -23,6 +23,7 @@
 #include "app/chat_thread.h"
 #include "app/profile.h"
 #include "app/search.h"
+#include "app/settings_store.h"
 #include "app/signin.h"
 #include "app/thread.h"
 #include "audio/sound.h"
@@ -44,7 +45,7 @@
 #include <string.h>
 
 /* Entries on the home menu; app_home.c checks its table against this. */
-#define COBALT_HOME_MENU_COUNT 12
+#define COBALT_HOME_MENU_COUNT 13
 /* How deep a chain of thread and profile screens can nest before the oldest
  * return is dropped. */
 #define COBALT_RETURN_DEPTH 16
@@ -90,6 +91,9 @@ struct cobalt_app {
    int account_selected;
    /* Which row is highlighted on the feed-picker screen's small menu. */
    int feeds_selected;
+   /* Persisted preferences, and the row highlighted on the Settings screen. */
+   cobalt_settings settings;
+   int settings_selected;
    int feeds_scroll;
    /* The shared feed window holds a custom feed, not the home timeline. */
    bool viewing_custom_feed;

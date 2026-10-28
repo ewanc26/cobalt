@@ -193,7 +193,7 @@ draw_header(cobalt_render *r, const char *title, const char *subtitle)
    const cobalt_metrics *m = cobalt_render_metrics(r);
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, title, m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_TILE);
+                    COBALT_COLOUR_HEADER_TEXT);
 
    const int title_h = cobalt_font_line_height(r, COBALT_FONT_TITLE);
    SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
@@ -258,7 +258,7 @@ draw_status(const cobalt_signin *s, cobalt_render *r, int y)
       return;
    }
 
-   SDL_Color colour = s->status_is_error ? COBALT_COLOUR_ERROR : COBALT_COLOUR_TILE;
+   SDL_Color colour = s->status_is_error ? COBALT_COLOUR_ERROR : COBALT_COLOUR_TEXT;
    cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, s->status,
                             m->pad_edge, y, m->width - 2 * m->pad_edge, 2, colour);
 }

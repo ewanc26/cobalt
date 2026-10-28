@@ -29,6 +29,9 @@ typedef enum {
    COBALT_FONT_TITLE = 0,
    COBALT_FONT_HEADING,
    COBALT_FONT_BODY,
+   /* Post text has its own face so the Settings screen can scale what people
+    * read without changing labels, headers or control prompts. */
+   COBALT_FONT_POST,
    COBALT_FONT_CAPTION,
    COBALT_FONT_ICON,       /* Phosphor Regular subset (icons.ttf) */
    COBALT_FONT_ICON_FILL,  /* Phosphor Fill subset (icons-fill.ttf) */
@@ -262,6 +265,16 @@ void cobalt_text_size(cobalt_render *r, cobalt_font_id font, const char *utf8,
                       int *out_w, int *out_h);
 
 int cobalt_font_line_height(cobalt_render *r, cobalt_font_id font);
+
+/*
+ * Set the post-text scale as a percentage of the body face (100..130). The
+ * renderer reopens only the post face and drops its text and wrap caches, so
+ * the change is visible on the next frame without touching the other fonts.
+ * Callers should pass a value from cobalt_text_scale; anything outside the
+ * range is clamped.
+ */
+void cobalt_render_set_text_scale(cobalt_render *r, int percent);
+int cobalt_render_text_scale(const cobalt_render *r);
 
 /* Drop cached text textures. Call when switching screens to bound memory. */
 void cobalt_render_flush_text_cache(cobalt_render *r);
