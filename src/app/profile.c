@@ -211,6 +211,19 @@ draw_header(cobalt_render *r, const cobalt_profile *profile,
    char line[COBALT_POST_META_MAX + 48];
    snprintf(line, sizeof(line), "%s \xC2\xB7 %s", profile->counts,
             profile->post_count);
+   /* A remote has no separate status line, so mute and block ride along with
+    * the counts: otherwise pressing Left or Right on the pad changes nothing
+    * the person holding it can see. */
+   const bool muted = profile->viewer_muted;
+   const bool blocking = profile->viewer_blocking[0] != '\0';
+   if (compact && !profile->is_self && (muted || blocking)) {
+      const size_t used = strlen(line);
+      if (used + 24 < sizeof(line)) {
+         snprintf(line + used, sizeof(line) - used, " \xC2\xB7 %s%s%s",
+                  muted ? "Muted" : "", (muted && blocking) ? " / " : "",
+                  blocking ? "Blocked" : "");
+      }
+   }
    cobalt_draw_text(r, COBALT_FONT_CAPTION, line, left, y, COBALT_COLOUR_TEXT_DIM);
    y += caption_h;
 
@@ -231,14 +244,12 @@ draw_header(cobalt_render *r, const cobalt_profile *profile,
        * exactly like a post row's like/repost — so the only thing drawn here
        * is the current state, and only when it says something (an unmuted,
        * unblocked account, the common case, gets nothing to read). */
-      const bool blocking = profile->viewer_blocking[0] != '\0';
-      if (profile->viewer_muted || blocking) {
+      if (muted || blocking) {
          char status[48];
-         if (profile->viewer_muted && blocking) {
+         if (muted && blocking) {
             snprintf(status, sizeof(status), "Muted \xC2\xB7 Blocked");
          } else {
-            snprintf(status, sizeof(status), "%s",
-                     profile->viewer_muted ? "Muted" : "Blocked");
+            snprintf(status, sizeof(status), "%s", muted ? "Muted" : "Blocked");
          }
          cobalt_draw_text(r, COBALT_FONT_CAPTION, status, left, y,
                           COBALT_COLOUR_ACCENT_TEXT);
