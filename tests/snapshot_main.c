@@ -580,6 +580,7 @@ main(int argc, char **argv)
    }
    /* The source/reading-time footer and the gallery row are drawn shapes, so
     * keep a frame of each beside the other timeline cases. */
+   select_timeline(5);
    settle(8);
    shoot("timeline-external");
    select_timeline(6);
