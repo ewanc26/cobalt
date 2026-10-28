@@ -64,6 +64,8 @@ The first time Cobalt runs without a seed file it asks you to scribble on the Ga
 
 The More menu lists, for the highlighted post: the author's profile, View image, every link, mention and hashtag in the text (a link only shows its address, since Cobalt cannot open a browser), New post, Refresh, Liked by and Reposted by.
 
+A post can carry up to four pictures, a gallery row (the first four of a larger gallery), a link-card preview naming its publication or host, or a video's poster with its length and a note that it cannot play.
+
 ## Thread
 
 ![Thread](screenshots/thread.png)

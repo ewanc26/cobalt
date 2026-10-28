@@ -559,11 +559,34 @@ main(int argc, char **argv)
    CHECK(cobalt_session_state() == COBALT_AUTH_SIGNED_IN);
    settle(30);
    shoot("timeline");
+   /* The gallery and enhanced external views are separate embed shapes, not
+    * extra fields on the images/link shapes the older parser reads. */
+   {
+      const cobalt_feed *feed = cobalt_session_feed();
+      CHECK(feed->count >= 7);
+      const cobalt_post *link = &feed->posts[5];
+      CHECK(link->link.reading_time == 4);
+      CHECK_STR(link->link.source_title, "Example Press");
+      const cobalt_post *gallery = &feed->posts[6];
+      CHECK(gallery->image_count == 3);
+      CHECK_STR(gallery->images[0].alt, "Gallery one");
+      CHECK(gallery->images[0].aspect_w == 4 && gallery->images[0].aspect_h == 3);
+      CHECK(gallery->embed_note[0] == '\0');
+   }
    for (int k = 2; k <= 5; k++) {
       frame(COBALT_BTN_DOWN); settle(25);
       char nm[24]; snprintf(nm, sizeof nm, "timeline-%d", k);
       shoot(nm);
    }
+   /* The source/reading-time footer and the gallery row are drawn shapes, so
+    * keep a frame of each beside the other timeline cases. */
+   settle(8);
+   shoot("timeline-external");
+   select_timeline(6);
+   settle(8);
+   shoot("timeline-gallery");
+   select_timeline(5);
+   settle(8);
    /* Backing out of a thread must return to the same card, not the top. */
    {
       int sel0, scr0, sel1, scr1;
