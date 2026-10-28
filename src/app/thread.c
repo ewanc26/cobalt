@@ -246,7 +246,7 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
    }
 
    const int top = cobalt_content_top(r);
-   const int bottom = m->height - m->pad_edge - 28;
+   const int bottom = cobalt_content_bottom(r);
 
    cobalt_listnav_draw_begin(&view->nav, touchable);
 

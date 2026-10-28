@@ -532,6 +532,24 @@ at least once:
   overlay; pressing the button as well would dismiss the popup and act on
   whatever was underneath it.
 
+A pill is sized by the surface it is drawn for (`pill_font()`): the GamePad's
+are body type and at least 44 px tall, because they are touched, and the TV's
+are a caption, because nothing on it is. Screens lay their content out against
+`cobalt_content_bottom()` — the footer's own top edge — rather than a literal
+`height - pad_edge - 28`, which is what keeps the last row out from under a
+pill that grew. The header band only takes half the prompts when a row of them
+fits there; with finger-sized pills it does not, so the whole row goes along
+the bottom instead.
+
+A pill is sized by the surface it is drawn for (`pill_font()`): the GamePad's
+are body type and at least 44 px tall, because they are touched, and the TV's
+are a caption, because nothing on it is. Screens lay their content out against
+`cobalt_content_bottom()` — the footer's own top edge — rather than a literal
+`height - pad_edge - 28`, which is what keeps the last row out from under a
+pill that grew. The header band only takes half the prompts when a row of them
+fits there; with finger-sized pills it does not, so the whole row goes along
+the bottom instead.
+
 ### Post images and link cards reuse the avatar pipeline, through a second cache
 
 Images embedded in a post (`app.bsky.embed.images`) and link-card previews

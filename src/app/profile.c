@@ -119,12 +119,38 @@ cobalt_profile_view_update(cobalt_profile_view *view, const cobalt_input *in)
  */
 #define PROFILE_AVATAR_SIDE(m) ((m)->font_heading * 3)
 
+/*
+ * Split play: the pad's copy of a profile is the handle, the counts and then
+ * the posts. The bio, the big avatar and the follow button are all reading —
+ * the TV has them, at a size they can be read at — and on a 480-line screen
+ * they cost the posts the room they need to be a list. The follow action is
+ * still on the footer, where every other action on this screen is.
+ */
+static bool
+compact_header(cobalt_render *r)
+{
+   return cobalt_render_remote(r);
+}
+
+static int
+header_avatar_side(cobalt_render *r, const cobalt_metrics *m)
+{
+   if (!compact_header(r)) {
+      return PROFILE_AVATAR_SIDE(m);
+   }
+   /* Exactly the two lines beside it, so a remote row is as tall as its
+    * words and no taller. */
+   return cobalt_font_line_height(r, COBALT_FONT_HEADING) +
+          cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+}
+
 static int
 header_height(cobalt_render *r, const cobalt_profile *profile,
               const cobalt_metrics *m)
 {
    const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
    const int heading_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
+   const bool compact = compact_header(r);
 
    int h = m->pad_tile + heading_h + caption_h;   /* name, handle */
 
@@ -132,16 +158,16 @@ header_height(cobalt_render *r, const cobalt_profile *profile,
     * whole column, so the header grows when the avatar is the taller of the
     * two rather than letting the circle overrun the bio. */
    const int beside = heading_h + caption_h;
-   const int avatar = PROFILE_AVATAR_SIDE(m);
+   const int avatar = header_avatar_side(r, m);
    if (avatar > beside) {
       h += avatar - beside;
    }
 
-   if (profile->description[0]) {
+   if (profile->description[0] && !compact) {
       h += 2 * (caption_h + m->line_gap);
    }
    h += caption_h;                                /* counts */
-   if (!profile->is_self) {
+   if (!profile->is_self && !compact) {
       h += m->font_body * 2 + m->gap;             /* follow button */
       h += caption_h + m->gap / 2;                /* mute/block status line */
    }
@@ -161,7 +187,7 @@ draw_header(cobalt_render *r, const cobalt_profile *profile,
    const int width = rect->w - 2 * m->pad_tile;
    int y = rect->y + m->pad_tile;
 
-   const int avatar = PROFILE_AVATAR_SIDE(m);
+   const int avatar = header_avatar_side(r, m);
    cobalt_avatar_draw(r, profile->avatar, profile->display_name,
                       profile->handle, left, y, avatar);
 
@@ -175,7 +201,8 @@ draw_header(cobalt_render *r, const cobalt_profile *profile,
    const int beside = heading_h + caption_h;
    y += (avatar > beside) ? avatar : beside;
 
-   if (profile->description[0]) {
+   const bool compact = compact_header(r);
+   if (profile->description[0] && !compact) {
       cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, profile->description,
                                left, y, width, 2, COBALT_COLOUR_TEXT);
       y += 2 * (caption_h + m->line_gap);
@@ -187,7 +214,7 @@ draw_header(cobalt_render *r, const cobalt_profile *profile,
    cobalt_draw_text(r, COBALT_FONT_CAPTION, line, left, y, COBALT_COLOUR_TEXT_DIM);
    y += caption_h;
 
-   if (!profile->is_self) {
+   if (!profile->is_self && !compact) {
       const bool following = profile->viewer_following[0] != '\0';
       SDL_Rect button = { left, y + m->gap / 2, width / 2, m->font_body * 2 };
       cobalt_draw_tile(r, &button, focused ? 1.0f : 0.0f);
@@ -255,7 +282,7 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
    }
 
    const int top = cobalt_content_top(r);
-   const int bottom = m->height - m->pad_edge - 28;
+   const int bottom = cobalt_content_bottom(r);
 
    cobalt_listnav_draw_begin(&view->nav, touchable);
 
