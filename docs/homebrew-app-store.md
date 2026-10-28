@@ -22,7 +22,7 @@ One thing I had recorded here as unverifiable — whether the store rebuilds or 
 
 `tools/check-hbas-listing.py` validates it and `tools/check-hbas-listing-selftest.sh` breaks each rule on purpose. CI runs all three on every push and uploads the folder as the `hbas-listing` artifact.
 
-The screenshots are rendered on a PC from fixture data (the "Alice Example" account in the mock server), not captured on a console. The pull request says so.
+The screenshots are rendered on a PC from fixture data (the "Ewan Croft" account in the mock server), not captured on a console. The pull request says so.
 
 ## How a new release reaches the store
 
