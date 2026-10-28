@@ -468,16 +468,25 @@ draw_editing(cobalt_compose *compose, cobalt_render *r, cobalt_surface_id surfac
    const int top = cobalt_content_top(r);
 
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
-   const int lines = 3;
+   /* One line fewer on the GamePad: its keyboard now takes 44-pixel keys, and
+    * on a 480-line screen that has to come from somewhere. The box shows the
+    * last lines of the draft rather than the first, so the line being typed is
+    * always the one on screen. */
+   const int lines = (surface == COBALT_SURFACE_DRC) ? 2 : 3;
    const int box_h = m->pad_tile * 2 + lines * (body_h + m->line_gap);
 
    SDL_Rect box = { m->pad_edge, top, m->width - 2 * m->pad_edge, box_h };
    cobalt_draw_tile(r, &box, 1.0f);
 
    if (compose->text[0]) {
-      cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, compose->text,
-                               box.x + m->pad_tile, box.y + m->pad_tile,
-                               box.w - 2 * m->pad_tile, lines, COBALT_COLOUR_TEXT);
+      const int text_w = box.w - 2 * m->pad_tile;
+      const int total = cobalt_text_wrapped_lines(r, COBALT_FONT_BODY, compose->text,
+                                                  text_w);
+      const int first = total > lines ? total - lines : 0;
+      cobalt_draw_text_wrapped_spans(r, COBALT_FONT_BODY, compose->text,
+                                     box.x + m->pad_tile, box.y + m->pad_tile,
+                                     text_w, first, lines, COBALT_COLOUR_TEXT,
+                                     NULL, 0);
    } else {
       cobalt_draw_text(r, COBALT_FONT_BODY,
                        cobalt_compose_is_reply(compose) ? "Write a reply..."

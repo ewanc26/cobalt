@@ -133,9 +133,10 @@ row_span_total(int layer, int row)
 static int
 key_height(const cobalt_metrics *m)
 {
-   /* Two lines of body text tall: comfortably above a fingertip on the
-    * GamePad's 854x480 panel, and still readable across a room on the TV. */
-   return m->font_body * 2 - (m->height < 600 ? 6 : 0);
+   /* Two lines of body text tall, plus two pixels on the GamePad: that is 44
+    * on the 480-line panel, about 7mm, where 36 was under 6mm — small for a
+    * finger on the most-used control in the app. The TV keeps its 56. */
+   return m->font_body * 2 + (m->height < 600 ? 2 : 0);
 }
 
 static int
