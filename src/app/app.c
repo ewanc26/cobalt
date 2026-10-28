@@ -145,6 +145,12 @@ cobalt_app_pop_return(cobalt_app *app)
    return entry->screen;
 }
 
+cobalt_display_mode
+cobalt_app_display(const cobalt_app *app)
+{
+   return app ? app->display : COBALT_DISPLAY_DUAL;
+}
+
 cobalt_screen
 cobalt_app_screen(const cobalt_app *app)
 {
@@ -1165,6 +1171,17 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
    if (!app || !r) {
       return;
    }
+
+   /*
+    * Split play gives each screen a job: the TV reads, the GamePad picks and
+    * acts on what the TV is showing. Off-TV play sets FULL, which is what
+    * makes the GamePad alone the complete app — no screen has a second code
+    * path for it, they only ask whether this surface is the remote.
+    */
+   cobalt_render_set_role(r, app->display == COBALT_DISPLAY_GAMEPAD
+                                ? COBALT_ROLE_FULL
+                                : (surface == COBALT_SURFACE_DRC ? COBALT_ROLE_REMOTE
+                                                                : COBALT_ROLE_READER));
 
    if (surface == COBALT_SURFACE_TV && app->display == COBALT_DISPLAY_GAMEPAD) {
       cobalt_app_draw_tv_idle(r);

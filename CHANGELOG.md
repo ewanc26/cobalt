@@ -9,10 +9,12 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Added
 
+- A post's draft can hold line breaks. The keyboard a post is typed on now has a **Ret** key, which it did not before — the only way to start a new line was missing, so every draft came out as one paragraph. Ret is paid for out of the space bar rather than out of every key, so the rest of the grid is the size it was and a handle, password or search box (one-line fields) is unchanged. Cards, the compose box, the TV's draft panel and the confirm preview already broke on `\n`; only getting one into the buffer was missing.
 - A group conversation has its join requests. On the conversation, X opens the group's pending requests; A approves the highlighted one, which lets that person in, and X rejects it. B returns to the conversation. Only a group's owner can list them, nothing is approved or rejected until a button is pressed, and a failure is shown and not retried. (#107)
 
 ### Changed
 
+- With both screens on, the TV and the GamePad now divide the work instead of showing the same picture twice. The TV keeps the full reading layout — every line of a post, its pictures and its quoted post — and the GamePad is the remote: the same items as a compact touch list, one line of text and no media each, with the actions on its footer. While a keyboard is up the TV shows the draft at reading size rather than a second copy of the keys, passwords still masked. Off-TV Play is unchanged and still gives the GamePad every line and every picture, because the split is a display mode and not a cut-down view: one role flag decides which of the two a surface is drawing, and `FULL` is the same screens with nothing trimmed.
 - The GamePad's keyboard has 44-pixel keys, up from 36: about 7 mm on the 480-line panel, a jump of a fifth in the one control the on-screen keyboard is used through. The compose box gives up one line to pay for it, and now shows the last lines of the draft rather than the first, so the line being typed stays in view.
 - The GamePad's Home menu, saved-feeds list and message conversations scroll by dragging, a row per row of finger travel, instead of only by D-pad. Half the twelve Home entries sat below the fold with no way to reach them by touch.
 - The account screen's four action rows are 44 pixels tall on the GamePad instead of 34, the smallest touch targets in the app; its panel now carries two lines (handle, then the DID and server) rather than three, which is what pays for them.

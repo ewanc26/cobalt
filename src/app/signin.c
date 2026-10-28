@@ -96,7 +96,7 @@ begin_edit(cobalt_signin *s, int field)
    s->editing = field;
    /* The editor masks the app password unless the user has asked to see it. */
    const bool masked = FIELDS[field].masked && !s->show_password;
-   cobalt_keyboard_open(&s->kb, buffer, capacity, masked);
+   cobalt_keyboard_open(&s->kb, buffer, capacity, masked, false);
    COBALT_LOGD("signin: editing field %d", field);
 }
 
@@ -274,6 +274,19 @@ draw_editing(cobalt_signin *s, cobalt_render *r, cobalt_surface_id surface)
                field == FIELD_PASSWORD
                   ? "App password, not your account password"
                   : "A / touch: type     B: backspace");
+
+   /* Split play: the keys are on the GamePad, so the TV mirrors what is being
+    * entered. The password is masked for the same reason it is on the pad —
+    * display text is already the masked form. */
+   if (cobalt_render_reader(r)) {
+      char shown[128];
+      char caption[96];
+      cobalt_keyboard_display_text(&s->kb, shown, sizeof(shown));
+      snprintf(caption, sizeof(caption), "%s, on the GamePad", FIELDS[field].label);
+      const SDL_Rect panel = cobalt_typing_area(r);
+      cobalt_draw_typing_panel(r, &panel, caption, shown);
+      return;
+   }
 
    const int top = cobalt_content_top(r);
    const int value_h = m->font_body * 2;
