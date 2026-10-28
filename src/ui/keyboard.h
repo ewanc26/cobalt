@@ -49,6 +49,11 @@ typedef struct {
    /* Draw the contents as dots. Set for password fields. */
    bool masked;
 
+   /* The buffer takes line breaks, so the function row carries a Ret key. Set
+    * for a post's text; a handle, a password or a search query is one line and
+    * gets the wider space bar instead. */
+   bool multiline;
+
    int layer;   /* 0 lower, 1 upper, 2 symbols */
    int row;
    int col;
@@ -64,10 +69,11 @@ typedef struct {
 
 /*
  * Point the keyboard at a buffer. `buffer` must already hold a NUL-terminated
- * string (possibly empty) and stays owned by the caller.
+ * string (possibly empty) and stays owned by the caller. `multiline` adds the
+ * Ret key, which appends '\n' — the text renderer already breaks on one.
  */
 void cobalt_keyboard_open(cobalt_keyboard *kb, char *buffer, size_t capacity,
-                          bool masked);
+                          bool masked, bool multiline);
 
 /* Handle one frame of input. Returns IDLE until the user commits or backs out. */
 cobalt_kb_result cobalt_keyboard_update(cobalt_keyboard *kb, const cobalt_input *in);

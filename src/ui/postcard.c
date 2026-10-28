@@ -155,6 +155,19 @@ draw_quote_card(cobalt_render *r, const cobalt_post *post, int x, int y,
    }
 }
 
+/*
+ * Split play: the GamePad is the remote, so a post is one line of text and no
+ * media — the TV is what shows the pictures and the quote, at a distance where
+ * they can be seen. Everything that says which post this is stays: who wrote
+ * it, the first line, the counts, and the note that there is media at all.
+ * Callers still pass the line count they laid out; this is the cap.
+ */
+static bool
+remote_compact(cobalt_render *r)
+{
+   return cobalt_render_remote(r);
+}
+
 int
 cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines,
                        bool focused)
@@ -162,6 +175,10 @@ cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
+   const bool compact = remote_compact(r);
+   if (compact && text_lines > 1) {
+      text_lines = 1;
+   }
 
    int h = m->pad_tile;
    if (post->reposted_by[0] || post->pinned) {
@@ -170,11 +187,12 @@ cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines
    h += body_h;                                     /* author row */
    h += text_lines * (body_h + m->line_gap);
 
-   const int embed_h = embed_block_height(m, caption_h, body_h, post, focused);
+   const int embed_h = compact ? 0
+                               : embed_block_height(m, caption_h, body_h, post, focused);
    if (embed_h > 0) {
       h += embed_h + EMBED_GAP(m);
    }
-   const int quote_h = quote_block_height(m, caption_h, post);
+   const int quote_h = compact ? 0 : quote_block_height(m, caption_h, post);
    if (quote_h > 0) {
       h += quote_h + EMBED_GAP(m);
    }
@@ -561,6 +579,13 @@ cobalt_postcard_draw_scrolled(cobalt_render *r, const cobalt_post *post,
    }
 
    const cobalt_metrics *m = cobalt_render_metrics(r);
+   const bool compact = remote_compact(r);
+   if (compact && text_lines > 1) {
+      text_lines = 1;
+   }
+   if (compact) {
+      first_line = 0;
+   }
 
    /* As on Miiverse, the avatar stands outside the card on its left and the
     * card holds only the words. The text column is the same width as when the
@@ -658,16 +683,18 @@ cobalt_postcard_draw_scrolled(cobalt_render *r, const cobalt_post *post,
    }
    y += text_lines * (body_h + m->line_gap);
 
-   const int media_h = embed_media_height(m, caption_h, body_h, post);
-   const int embed_h = embed_block_height(m, caption_h, body_h, post, focused);
-   if (embed_h > 0) {
-      draw_embed_media(r, post, text_left, y, text_width, media_h, focused);
-      y += embed_h + EMBED_GAP(m);
-   }
-   const int quote_h = quote_block_height(m, caption_h, post);
-   if (quote_h > 0) {
-      draw_quote_card(r, post, text_left, y, text_width, quote_h);
-      y += quote_h + EMBED_GAP(m);
+   if (!compact) {
+      const int media_h = embed_media_height(m, caption_h, body_h, post);
+      const int embed_h = embed_block_height(m, caption_h, body_h, post, focused);
+      if (embed_h > 0) {
+         draw_embed_media(r, post, text_left, y, text_width, media_h, focused);
+         y += embed_h + EMBED_GAP(m);
+      }
+      const int quote_h = quote_block_height(m, caption_h, post);
+      if (quote_h > 0) {
+         draw_quote_card(r, post, text_left, y, text_width, quote_h);
+         y += quote_h + EMBED_GAP(m);
+      }
    }
 
    char marker[48];

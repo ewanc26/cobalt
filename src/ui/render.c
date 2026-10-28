@@ -105,6 +105,8 @@ typedef struct {
 struct cobalt_render {
    cobalt_surface_id surface;
    const cobalt_metrics *m;
+   /* See cobalt_render_set_role(). */
+   cobalt_surface_role role;
 
    SDL_Window *window;
    SDL_Renderer *renderer;
@@ -438,6 +440,32 @@ bool
 cobalt_render_has_font(const cobalt_render *r)
 {
    return r && r->fonts[COBALT_FONT_BODY] != NULL;
+}
+
+void
+cobalt_render_set_role(cobalt_render *r, cobalt_surface_role role)
+{
+   if (r) {
+      r->role = role;
+   }
+}
+
+cobalt_surface_role
+cobalt_render_role(const cobalt_render *r)
+{
+   return r ? r->role : COBALT_ROLE_FULL;
+}
+
+bool
+cobalt_render_remote(const cobalt_render *r)
+{
+   return cobalt_render_role(r) == COBALT_ROLE_REMOTE;
+}
+
+bool
+cobalt_render_reader(const cobalt_render *r)
+{
+   return cobalt_render_role(r) == COBALT_ROLE_READER;
 }
 
 #ifdef COBALT_E2E_HOST
@@ -1121,6 +1149,66 @@ cobalt_draw_tile(cobalt_render *r, const SDL_Rect *rect, float focus)
       }
    }
 
+}
+
+SDL_Rect
+cobalt_typing_area(cobalt_render *r)
+{
+   SDL_Rect area = { 0, 0, 0, 0 };
+   if (!r) {
+      return area;
+   }
+   const cobalt_metrics *m = r->m;
+   const int top = cobalt_content_top(r);
+   /* Down to the footer's top edge, which is one pill plus the half margin
+    * cobalt_draw_hints() puts under it. */
+   const int bottom = m->height - m->pad_edge / 2 - cobalt_pill_height(r) - m->gap;
+   area.x = m->pad_edge;
+   area.y = top;
+   area.w = m->width - 2 * m->pad_edge;
+   area.h = bottom - top;
+   return area;
+}
+
+void
+cobalt_draw_typing_panel(cobalt_render *r, const SDL_Rect *area,
+                         const char *caption, const char *text)
+{
+   if (!r || !area || area->w <= 0 || area->h <= 0) {
+      return;
+   }
+
+   const cobalt_metrics *m = r->m;
+   cobalt_draw_tile(r, area, 0.0f);
+
+   const int left = area->x + m->pad_tile;
+   const int width = area->w - 2 * m->pad_tile;
+   int y = area->y + m->pad_tile;
+   if (width <= 0) {
+      return;
+   }
+
+   if (caption && caption[0]) {
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, caption, left, y,
+                       COBALT_COLOUR_TEXT_DIM);
+      y += cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+   }
+
+   const int line = cobalt_font_line_height(r, COBALT_FONT_BODY) + m->line_gap;
+   /* Lines that fit under the caption, counted from the body's own metrics so
+    * a panel with no room draws nothing rather than spilling off its tile. */
+   const int lines = line > 0 ? (area->y + area->h - m->pad_tile - y) / line : 0;
+   if (lines < 1) {
+      return;
+   }
+
+   if (text && text[0]) {
+      cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, text, left, y, width, lines,
+                               COBALT_COLOUR_TEXT);
+   } else {
+      cobalt_draw_text(r, COBALT_FONT_BODY, "Nothing typed yet", left, y,
+                       COBALT_COLOUR_TEXT_DIM);
+   }
 }
 
 void

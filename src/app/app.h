@@ -48,14 +48,16 @@ typedef enum {
  * Off-TV Play, v1 shape.
  *
  * The GamePad always carries a complete, self-sufficient UI, so "GamePad only"
- * is not a separate code path — it is what the GamePad surface already does.
- * The toggle controls whether the TV mirrors a paired view or drops to an idle
- * card, which is the user-visible half of the feature and avoids tearing down
- * and rebuilding a window at runtime. Autodetection (AGENTS.md §5) can layer
- * on top of this later without restructuring the render code.
+ * is not a separate code path — it is what the GamePad surface already does
+ * when nothing pairs with it. The toggle decides which of the two a surface is
+ * drawing: in DUAL the TV reads and the GamePad is the remote
+ * (cobalt_surface_role in ui/render.h), and in GAMEPAD the pad is the whole app
+ * while the TV drops to an idle card. That avoids tearing down and rebuilding a
+ * window at runtime, and it means autodetection (AGENTS.md §5) can layer on top
+ * later without restructuring the render code: it would only pick the mode.
  */
 typedef enum {
-   COBALT_DISPLAY_DUAL = 0,   /* TV shows the paired view */
+   COBALT_DISPLAY_DUAL = 0,   /* TV reads, GamePad acts */
    COBALT_DISPLAY_GAMEPAD,    /* TV idles; everything happens on the GamePad */
 } cobalt_display_mode;
 
@@ -67,6 +69,8 @@ void cobalt_app_destroy(cobalt_app *app);
 /* Index of the highlighted home entry; lets tests navigate without guessing. */
 int cobalt_app_home_selection(const cobalt_app *app);
 cobalt_screen cobalt_app_screen(const cobalt_app *app);
+/* TV+GamePad, or GamePad only. */
+cobalt_display_mode cobalt_app_display(const cobalt_app *app);
 /* List cursor and first drawn row, so tests can check they survive a detour. */
 void cobalt_app_view_position(const cobalt_app *app, cobalt_screen screen, int *selected,
                               int *scroll);

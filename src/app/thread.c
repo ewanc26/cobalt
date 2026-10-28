@@ -345,7 +345,9 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
       cobalt_postcard_draw_scrolled(r, post, &rect, i == view->nav.selected, lines,
                                     thread->depth[i], in_full ? first : 0);
 
-      if (in_full && tot > win && win > 0) {
+      /* As a remote the pad shows one line of each post, so there is no
+       * window of text left to point at — the TV has the whole thing. */
+      if (in_full && !cobalt_render_remote(r) && tot > win && win > 0) {
          draw_text_scrollbar(r, m, &rect, first, win, tot);
       }
 

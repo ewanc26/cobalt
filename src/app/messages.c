@@ -129,7 +129,7 @@ cobalt_messages_start_open(cobalt_messages_start *s)
    }
    s->editing = true;
    s->pending = false;
-   cobalt_keyboard_open(&s->kb, s->target, sizeof(s->target), false);
+   cobalt_keyboard_open(&s->kb, s->target, sizeof(s->target), false, false);
 }
 
 void
@@ -319,6 +319,14 @@ draw_start(cobalt_messages_view *view, cobalt_render *r, cobalt_surface_id surfa
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int top = cobalt_content_top(r);
+
+   /* Split play: the keys are on the GamePad; the TV shows who is being typed. */
+   if (cobalt_render_reader(r)) {
+      const SDL_Rect panel = cobalt_typing_area(r);
+      cobalt_draw_typing_panel(r, &panel, "Typing a handle on the GamePad",
+                               view->start.kb.buffer ? view->start.kb.buffer : "");
+      return;
+   }
 
    SDL_Rect box = { m->pad_edge, top, m->width - 2 * m->pad_edge,
                     m->pad_tile * 2 + cobalt_font_line_height(r, COBALT_FONT_BODY) };

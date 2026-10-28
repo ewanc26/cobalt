@@ -23,7 +23,9 @@ FRAMES = {
     "home-signedin": "home-signedin-tv",
     "timeline": "timeline-2-tv",
     "thread": "thread-tv",
-    "compose": "compose-tv",
+    # The TV half of the compose screen is the draft panel, so the shot with
+    # text in it is the one worth showing.
+    "compose": "compose-newline-tv",
     "notifications": "notifications-tv",
     "more-menu": "timeline-menu-tv",
     "feeds": "feeds-tv",
