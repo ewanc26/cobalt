@@ -30,6 +30,7 @@ FRAMES = {
     "more-menu": "timeline-menu-tv",
     "feeds": "feeds-tv",
     "profile": "profile-tv",
+    "settings": "settings-light-tv",
     # GamePad frames (854x480), for the guide's explanation of the split.
     "gamepad-home": "home-signedin-drc",
     "gamepad-compose": "compose-newline-drc",
