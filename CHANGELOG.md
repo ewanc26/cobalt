@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-28
+
 ### Added
 
 - Gallery posts draw their first four pictures in the same row as an image post, and a link card names the publication and reading time when the external view supplies them (`source.title`/`readingTime`), falling back to the bare host otherwise. Both are read through Wolfram's embed-view parser, including the media half of a quote post; video posters and their duration are unchanged. ([#102](https://github.com/ewanc26/cobalt/issues/102))
@@ -292,7 +294,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/ewanc26/cobalt/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/ewanc26/cobalt/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/ewanc26/cobalt/compare/v0.11.1...v0.12.0
 [0.10.0]: https://github.com/ewanc26/cobalt/compare/v0.9.1...v0.10.0
