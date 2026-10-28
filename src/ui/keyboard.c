@@ -41,6 +41,7 @@ typedef enum {
    K_SHIFT,
    K_LAYER,
    K_SPACE,
+   K_NEWLINE,
    K_BACKSPACE,
    K_OK,
    K_CANCEL,
@@ -72,21 +73,53 @@ static const key_def FUNCTION_ROW[] = {
    { "Emoji",  K_EMOJI,     2, { 0 } },
 };
 
+/*
+ * The same row for a field that takes line breaks. Ret pays for itself out of
+ * the space bar rather than out of every key on the grid: both rows span 19
+ * units, so a post body's keys are the size a handle's keys are.
+ */
+static const key_def FUNCTION_ROW_MULTILINE[] = {
+   { "Shift",  K_SHIFT,     2, { 0 } },
+   { "#+=",    K_LAYER,     2, { 0 } },
+   { "Space",  K_SPACE,     4, { 0 } },
+   { "Del",    K_BACKSPACE, 2, { 0 } },
+   { "Ret",    K_NEWLINE,   2, { 0 } },
+   { "OK",     K_OK,        2, { 0 } },
+   { "Cancel", K_CANCEL,    3, { 0 } },
+   { "Emoji",  K_EMOJI,     2, { 0 } },
+};
+
 #define FUNCTION_KEYS ((int) (sizeof(FUNCTION_ROW) / sizeof(FUNCTION_ROW[0])))
+#define FUNCTION_KEYS_MULTILINE \
+   ((int) (sizeof(FUNCTION_ROW_MULTILINE) / sizeof(FUNCTION_ROW_MULTILINE[0])))
+
+static const key_def *
+function_row(const cobalt_keyboard *kb)
+{
+   return kb->multiline ? FUNCTION_ROW_MULTILINE : FUNCTION_ROW;
+}
 
 static int
-row_length(int layer, int row)
+function_count(const cobalt_keyboard *kb)
+{
+   return kb->multiline ? FUNCTION_KEYS_MULTILINE : FUNCTION_KEYS;
+}
+
+static int
+row_length(const cobalt_keyboard *kb, int row)
 {
    if (row < CHAR_ROWS) {
-      return (layer == LAYER_EMOJI) ? EMOJI_PER_ROW : (int) strlen(LAYERS[layer][row]);
+      return (kb->layer == LAYER_EMOJI) ? EMOJI_PER_ROW
+                                        : (int) strlen(LAYERS[kb->layer][row]);
    }
-   return FUNCTION_KEYS;
+   return function_count(kb);
 }
 
 /* Row `row`, column `col` of the current layer, resolved into a key. */
 static key_def
-key_at(int layer, int row, int col)
+key_at(const cobalt_keyboard *kb, int row, int col)
 {
+   const int layer = kb->layer;
    if (row < CHAR_ROWS) {
       key_def k;
       memset(&k, 0, sizeof(k));
@@ -101,7 +134,7 @@ key_at(int layer, int row, int col)
       return k;
    }
 
-   key_def k = FUNCTION_ROW[col];
+   key_def k = function_row(kb)[col];
    /* The two mode keys name where they will take you, not where you are. */
    if (k.kind == K_LAYER) {
       snprintf(k.label, sizeof(k.label), "%s",
@@ -116,14 +149,15 @@ key_at(int layer, int row, int col)
 }
 
 static int
-row_span_total(int layer, int row)
+row_span_total(const cobalt_keyboard *kb, int row)
 {
    if (row < CHAR_ROWS) {
-      return row_length(layer, row);
+      return row_length(kb, row);
    }
+   const key_def *keys = function_row(kb);
    int total = 0;
-   for (int i = 0; i < FUNCTION_KEYS; i++) {
-      total += FUNCTION_ROW[i].span;
+   for (int i = 0; i < function_count(kb); i++) {
+      total += keys[i].span;
    }
    return total;
 }
@@ -193,7 +227,8 @@ backspace(cobalt_keyboard *kb)
 /* --- lifecycle --- */
 
 void
-cobalt_keyboard_open(cobalt_keyboard *kb, char *buffer, size_t capacity, bool masked)
+cobalt_keyboard_open(cobalt_keyboard *kb, char *buffer, size_t capacity,
+                       bool masked, bool multiline)
 {
    if (!kb) {
       return;
@@ -203,6 +238,7 @@ cobalt_keyboard_open(cobalt_keyboard *kb, char *buffer, size_t capacity, bool ma
    kb->buffer = buffer;
    kb->capacity = capacity;
    kb->masked = masked;
+   kb->multiline = multiline;
    kb->layer = LAYER_LOWER;
    /* Open on the home row rather than a corner: fewer presses to anywhere. */
    kb->row = 2;
@@ -242,6 +278,10 @@ press(cobalt_keyboard *kb, key_def key)
          append_str(kb, " ");
          break;
 
+      case K_NEWLINE:
+         append_str(kb, "\n");
+         break;
+
       case K_BACKSPACE:
          backspace(kb);
          break;
@@ -254,7 +294,7 @@ press(cobalt_keyboard *kb, key_def key)
    }
 
    /* Switching layer can leave the cursor past the end of the new row. */
-   int len = row_length(kb->layer, kb->row);
+   int len = row_length(kb, kb->row);
    if (kb->col >= len) {
       kb->col = len - 1;
    }
@@ -269,11 +309,11 @@ cobalt_keyboard_update(cobalt_keyboard *kb, const cobalt_input *in)
    }
 
    if (cobalt_input_pressed(in, COBALT_BTN_LEFT)) {
-      int len = row_length(kb->layer, kb->row);
+      int len = row_length(kb, kb->row);
       kb->col = (kb->col + len - 1) % len;
    }
    if (cobalt_input_pressed(in, COBALT_BTN_RIGHT)) {
-      int len = row_length(kb->layer, kb->row);
+      int len = row_length(kb, kb->row);
       kb->col = (kb->col + 1) % len;
    }
    if (cobalt_input_pressed(in, COBALT_BTN_UP)) {
@@ -284,7 +324,7 @@ cobalt_keyboard_update(cobalt_keyboard *kb, const cobalt_input *in)
    }
 
    /* Rows are not all the same length, so clamp after any vertical move. */
-   int len = row_length(kb->layer, kb->row);
+   int len = row_length(kb, kb->row);
    if (kb->col >= len) {
       kb->col = len - 1;
    }
@@ -300,7 +340,7 @@ cobalt_keyboard_update(cobalt_keyboard *kb, const cobalt_input *in)
    }
 
    if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
-      return press(kb, key_at(kb->layer, kb->row, kb->col));
+      return press(kb, key_at(kb, kb->row, kb->col));
    }
 
    if (kb->hit_valid && in->touch_ended) {
@@ -308,7 +348,7 @@ cobalt_keyboard_update(cobalt_keyboard *kb, const cobalt_input *in)
          if (cobalt_input_tapped(in, &kb->hit[i])) {
             kb->row = kb->hit_row[i];
             kb->col = kb->hit_col[i];
-            return press(kb, key_at(kb->layer, kb->row, kb->col));
+            return press(kb, key_at(kb, kb->row, kb->col));
          }
       }
    }
@@ -336,8 +376,8 @@ cobalt_keyboard_draw(cobalt_keyboard *kb, cobalt_render *r,
    }
 
    for (int row = 0; row < KB_ROWS; row++) {
-      const int count = row_length(kb->layer, row);
-      const int units = row_span_total(kb->layer, row);
+      const int count = row_length(kb, row);
+      const int units = row_span_total(kb, row);
       const int y = area->y + row * (kh + gap);
 
       /* Unit width is derived from this row's own span total, so the function
@@ -350,7 +390,7 @@ cobalt_keyboard_draw(cobalt_keyboard *kb, cobalt_render *r,
 
       int x = area->x;
       for (int col = 0; col < count; col++) {
-         const key_def key = key_at(kb->layer, row, col);
+         const key_def key = key_at(kb, row, col);
          const int kw = unit_w * key.span;
          SDL_Rect rect = { x, y, kw, kh };
 

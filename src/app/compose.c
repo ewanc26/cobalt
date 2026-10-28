@@ -148,7 +148,7 @@ cobalt_compose_init(cobalt_compose *compose)
       return;
    }
    memset(compose, 0, sizeof(*compose));
-   cobalt_keyboard_open(&compose->kb, compose->text, sizeof(compose->text), false);
+   cobalt_keyboard_open(&compose->kb, compose->text, sizeof(compose->text), false, true);
 }
 
 void
@@ -225,7 +225,7 @@ cobalt_compose_extend(cobalt_compose *compose)
    compose->thread_count++;
    compose->text[0] = '\0';
    compose->confirming = false;
-   cobalt_keyboard_open(&compose->kb, compose->text, sizeof(compose->text), false);
+   cobalt_keyboard_open(&compose->kb, compose->text, sizeof(compose->text), false, true);
    return true;
 }
 
@@ -326,7 +326,7 @@ cobalt_compose_update(cobalt_compose *compose, const cobalt_input *in)
          compose->picking = false;
          compose->attach_alt[0] = '\0';
          cobalt_keyboard_open(&compose->alt_kb, compose->attach_alt,
-                              sizeof(compose->attach_alt), false);
+                              sizeof(compose->attach_alt), false, false);
          compose->alt_editing = true;
       }
       return COBALT_COMPOSE_STAY;
@@ -467,6 +467,14 @@ draw_editing(cobalt_compose *compose, cobalt_render *r, cobalt_surface_id surfac
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int top = cobalt_content_top(r);
 
+   /* Split play: the keys are on the GamePad, so the TV gives its whole body
+    * to the draft, at a size that reads from across the room. */
+   if (cobalt_render_reader(r)) {
+      const SDL_Rect panel = cobalt_typing_area(r);
+      cobalt_draw_typing_panel(r, &panel, "Writing on the GamePad", compose->text);
+      return;
+   }
+
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
    /* One line fewer on the GamePad: its keyboard now takes 44-pixel keys, and
     * on a 480-line screen that has to come from somewhere. The box shows the
@@ -584,6 +592,14 @@ draw_alt_editing(cobalt_compose *compose, cobalt_render *r,
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int top = cobalt_content_top(r);
+
+   if (cobalt_render_reader(r)) {
+      const SDL_Rect panel = cobalt_typing_area(r);
+      cobalt_draw_typing_panel(r, &panel, "Describing the image on the GamePad",
+                               compose->attach_alt);
+      return;
+   }
+
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
    const int lines = 2;
    const int box_h = m->pad_tile * 2 + lines * (body_h + m->line_gap);

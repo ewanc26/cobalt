@@ -208,6 +208,8 @@ Treat steps 1–2 as blocking for everything else — if networking doesn't reli
 
 Step 4 (the GamePad/Off-TV split) was satisfied structurally from the start rather than as a later step: every screen lays itself out per surface.
 
+The two-screen *division of work* is one flag, not a second set of screens. `cobalt_render_set_role()` marks the surface it is drawing for — `READER` on the TV, `REMOTE` on the GamePad in TV + GamePad play, `FULL` on a GamePad that is the whole app — and screens ask `cobalt_render_reader()` / `cobalt_render_remote()`. In split play the TV keeps the full reading layout and the GamePad is the remote: postcards lose their media and keep one line (`src/ui/postcard.c`), conversation bubbles are one line, and a screen with a keyboard shows its draft on the TV at reading size (`cobalt_draw_typing_panel()`) since the keys are on the pad. Off-TV play sets `FULL`, which is the same code with nothing trimmed — that is why there is no cut-down GamePad mode to keep in step.
+
 ### What the toolchain actually offers
 
 Checked against the `wut-packages` and `pacman-packages` PKGBUILDs rather than assumed. Anything outside `wiiu-*` ∪ `ppc-*` has to be vendored as source that builds for `-mcpu=750` newlib with no dynamic loader.
@@ -426,6 +428,8 @@ Do not oversell it in the README or anywhere else. The key lives beside the file
 `src/ui/keyboard.c` draws a QWERTY grid rather than calling the system software keyboard. swkbd is a C++ `nn::` API that composites itself into the app's GX2 render passes, and Cobalt only reaches GX2 through SDL2 — driving it would mean punching through the abstraction everything else is built on. §11 already flagged the swkbd overlay as slow and a GamePad touch keyboard as the faster option, so this is that.
 
 It obeys §5's two-input rule by construction: touch on the GamePad, and a focus moved by D-pad or stick for someone on a Pro Controller. B is backspace; leaving a field is the Cancel key.
+
+A field that takes line breaks passes `multiline` to `cobalt_keyboard_open()`: the function row then carries **Ret**, paid for by a narrower space bar so both rows span the same 19 grid units and no other key changes size. Only a post's text is multiline — a handle, password, search query, chat message and image description are one line. The text renderer breaks on `\n` everywhere (cards, compose box, confirm preview, TV draft panel), so a break needs no other support once it is in the buffer; `cobalt_text_wrapped_lines()` counts a blank line as a line, which is what keeps card heights right.
 
 ### Interactions are applied locally, then reconciled
 

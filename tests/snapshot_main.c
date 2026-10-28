@@ -12,6 +12,7 @@
 #include <wolfram/feed_typed.h>
 #include "input/input.h"
 #include "ui/render.h"
+#include "ui/postcard.h"
 #include "fixtures.h"
 #include <SDL_ttf.h>
 
@@ -458,6 +459,11 @@ main(int argc, char **argv)
    CHECK(g_app != NULL);
    cobalt_input_init(&g_in);
 
+   /* A line break in a post is a break, not a space: three lines, not one
+    * long one, and a blank line still counts as a line of its own. */
+   CHECK(cobalt_text_wrapped_lines(g_tv, COBALT_FONT_BODY, "one\ntwo\nthree", 400) == 3);
+   CHECK(cobalt_text_wrapped_lines(g_tv, COBALT_FONT_BODY, "one\n\ntwo", 400) == 3);
+
    settle(5);
    shoot("home-signedout");
 
@@ -857,8 +863,38 @@ main(int argc, char **argv)
    settle(10);
    shoot("compose");
 
+   /* A draft can hold a paragraph break: a post's keyboard has a Ret key, and
+    * the break has to show in the box on the pad and in the draft on the TV.
+    * The function row is Shift, #+=, Space, Del, Ret, OK, Cancel, Emoji, so
+    * Ret is the fifth key. */
+   frame(COBALT_BTN_CONFIRM);          /* 'a', the focused key on the home row */
+   settle(2);
+   for (int k = 0; k < 2; k++) {
+      frame(COBALT_BTN_DOWN);          /* down to the function row */
+      settle(2);
+   }
+   for (int k = 0; k < 4; k++) {
+      frame(COBALT_BTN_RIGHT);         /* across to Ret */
+      settle(2);
+   }
+   frame(COBALT_BTN_CONFIRM);
+   settle(2);
+   frame(COBALT_BTN_UP);               /* the row beneath holds 'b' */
+   settle(2);
+   frame(COBALT_BTN_CONFIRM);
+   settle(4);
+   shoot("compose-newline");
+
+   /* Back to the home row's first key for the walk out below. */
+   frame(COBALT_BTN_UP);
+   settle(2);
+   for (int k = 0; k < 4; k++) {
+      frame(COBALT_BTN_LEFT);
+      settle(2);
+   }
+
    /* B is backspace on the keyboard, so leave through its Cancel key: the
-    * focus starts on row 2, so two Downs reach the function row and Left
+    * focus is on row 2, so two Downs reach the function row and Left
     * wraps from column 0 to Cancel. */
    for (int k = 0; k < 2; k++) {
       frame(COBALT_BTN_DOWN);
@@ -1042,6 +1078,51 @@ main(int argc, char **argv)
       drag_to(300, 120, 120 + 44);
       settle(3);
       CHECK(cobalt_app_home_selection(g_app) == want - 1);
+   }
+
+   /* Split play gives each screen a job, and the roles follow the display
+    * mode: the TV reads, the GamePad is the remote. The same screen compacts
+    * itself for the pad, without changing what the TV shows. */
+   {
+      open_home_item(0); /* timeline */
+      settle(40);
+      CHECK(cobalt_app_display(g_app) == COBALT_DISPLAY_DUAL);
+      CHECK(cobalt_render_role(g_tv) == COBALT_ROLE_READER);
+      CHECK(cobalt_render_role(g_drc) == COBALT_ROLE_REMOTE);
+
+      const cobalt_post *post = &cobalt_session_feed()->posts[0];
+      cobalt_render_set_role(g_drc, COBALT_ROLE_FULL);
+      const int full_h = cobalt_postcard_height(g_drc, post, 3, false);
+      cobalt_render_set_role(g_drc, COBALT_ROLE_REMOTE);
+      const int remote_h = cobalt_postcard_height(g_drc, post, 3, false);
+      /* One line of text and no media, so a remote row is a pick target where
+       * the full card is a read target. */
+      if (!(remote_h > 0 && remote_h < full_h)) {
+         printf("remote card: %d vs full %d\n", remote_h, full_h);
+      }
+      CHECK(remote_h > 0 && remote_h < full_h);
+   }
+
+   /* Off-TV play: the GamePad alone must still draw the whole app. The home
+    * menu's "TV display" entry is the toggle; the TV drops to its idle card. */
+   {
+      open_home_item(10);
+      settle(4);
+      CHECK(cobalt_app_display(g_app) == COBALT_DISPLAY_GAMEPAD);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
+      CHECK(cobalt_render_role(g_drc) == COBALT_ROLE_FULL);
+      shoot("offtv-home");
+
+      open_home_item(0); /* timeline */
+      settle(40);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
+      CHECK(cobalt_render_role(g_drc) == COBALT_ROLE_FULL);
+      shoot("offtv-timeline");
+
+      open_home_item(10); /* back to TV + GamePad */
+      settle(4);
+      CHECK(cobalt_app_display(g_app) == COBALT_DISPLAY_DUAL);
+      CHECK(cobalt_render_role(g_drc) == COBALT_ROLE_REMOTE);
    }
 
    wf_mock_pds_free(pds);

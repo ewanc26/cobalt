@@ -170,7 +170,7 @@ cobalt_chat_thread_view_update(cobalt_chat_thread_view *view, const cobalt_input
 
    if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM) && !busy) {
       view->replying = true;
-      cobalt_keyboard_open(&view->kb, view->reply, sizeof(view->reply), false);
+      cobalt_keyboard_open(&view->kb, view->reply, sizeof(view->reply), false, false);
       return COBALT_CHAT_THREAD_STAY;
    }
 
@@ -234,6 +234,11 @@ bubble_lines(cobalt_render *r, const cobalt_chat_message *msg, int inner_w)
    if (lines < 1) {
       lines = 1;
    }
+   /* As a remote, the GamePad is the index of the conversation the TV is
+    * showing, so each message is one line here. */
+   if (cobalt_render_remote(r)) {
+      return 1;
+   }
    return lines > BUBBLE_LINES_MAX ? BUBBLE_LINES_MAX : lines;
 }
 
@@ -261,13 +266,18 @@ draw_bubbles(cobalt_chat_thread_view *view, cobalt_render *r, const cobalt_metri
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
    const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
 
+   const bool reader = cobalt_render_reader(r);
    /* The draft field and keyboard take the bottom while the person is writing;
-    * otherwise the footer hints do. */
+    * otherwise the footer hints do. A reader-mode TV has no draft field — the
+    * reply panel takes the keyboard's place, and the bubbles run to it. */
    const SDL_Rect draft = draft_field(m, surface, body_h);
+   const SDL_Rect keys = { 0, m->height - cobalt_keyboard_height(surface), m->width,
+                           cobalt_keyboard_height(surface) };
    /* The bubbles stop a gap above the footer's top edge, which is drawn at
     * height - pad_edge/2 - one pill tall (render.c). */
    const int footer_top = m->height - m->pad_edge / 2 - cobalt_pill_height(r);
-   const int bottom = view->replying ? draft.y - m->gap : footer_top - m->gap;
+   const int typing_top = reader ? keys.y : draft.y;
+   const int bottom = view->replying ? typing_top - m->gap : footer_top - m->gap;
 
    if (thread->count == 0) {
       SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge, m->font_body * 4 };
@@ -287,7 +297,7 @@ draw_bubbles(cobalt_chat_thread_view *view, cobalt_render *r, const cobalt_metri
     * room for one line of the conversation at most; the bubbles give up their
     * padding and their age so that line stays on screen instead of an empty
     * panel behind the field. */
-   const bool compact = view->replying;
+   const bool compact = view->replying && !cobalt_render_reader(r);
    const int pad = compact ? m->pad_tile / 2 : m->pad_tile;
    const int age_h = compact ? 0 : caption_h;
    const int inner_w = bubble_w - 2 * pad;
@@ -472,16 +482,24 @@ cobalt_chat_thread_view_draw(cobalt_chat_thread_view *view, cobalt_render *r,
    draw_bubbles(view, r, m, surface);
 
    if (view->replying) {
-      const SDL_Rect draft = draft_field(m, surface, body_h);
-      cobalt_draw_tile(r, &draft, 1.0f);
-
       char shown[COBALT_CHAT_REPLY_MAX];
       cobalt_keyboard_display_text(&view->kb, shown, sizeof(shown));
+
+      const SDL_Rect keys = { 0, m->height - kb_h, m->width, kb_h };
+      if (cobalt_render_reader(r)) {
+         /* Split play: the keys and the draft field are on the GamePad, so the
+          * TV shows the reply being written in the space they would take. Two
+          * copies of the same draft on one screen would only be noise. */
+         cobalt_draw_typing_panel(r, &keys, "Replying on the GamePad", shown);
+         return;
+      }
+
+      const SDL_Rect draft = draft_field(m, surface, body_h);
+      cobalt_draw_tile(r, &draft, 1.0f);
       cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, shown, draft.x + m->pad_tile,
                                draft.y + (draft.h - body_h) / 2,
                                draft.w - 2 * m->pad_tile, 1, COBALT_COLOUR_TEXT);
 
-      const SDL_Rect keys = { 0, m->height - kb_h, m->width, kb_h };
       cobalt_keyboard_draw(&view->kb, r, surface, &keys);
       return;
    }

@@ -457,7 +457,7 @@ test_keyboard_typing(void)
 
    char buffer[16] = "";
    cobalt_keyboard kb;
-   cobalt_keyboard_open(&kb, buffer, sizeof(buffer), false);
+   cobalt_keyboard_open(&kb, buffer, sizeof(buffer), false, false);
 
    /* Row 1 is "qwertyuiop". */
    type_key(&kb, 1, 0);
@@ -509,6 +509,41 @@ test_keyboard_typing(void)
    CHECK_STR(buffer, "");
 }
 
+/*
+ * A post's draft needs paragraph breaks, so the keyboard it is typed on has a
+ * Ret key; a handle, a password or a query is one line and keeps the wider
+ * space bar. The text renderer already breaks on '\n', so nothing else has to
+ * change for the break to survive into the card.
+ */
+static void
+test_keyboard_multiline(void)
+{
+   begin("a post's keyboard types line breaks; a one-line field has no Ret");
+
+   char buffer[32] = "";
+   cobalt_keyboard kb;
+   cobalt_keyboard_open(&kb, buffer, sizeof(buffer), false, true);
+
+   /* Row 1 is "qwertyuiop"; the function row is Shift, #+=, Space, Del, Ret,
+    * OK, Cancel, Emoji. */
+   type_key(&kb, 1, 0);
+   type_key(&kb, 4, 4);
+   type_key(&kb, 1, 1);
+   CHECK_STR(buffer, "q\nw");
+
+   /* B steps over a break like any other byte. */
+   cobalt_input back = tap(COBALT_BTN_BACK);
+   cobalt_keyboard_update(&kb, &back);
+   CHECK_STR(buffer, "q\n");
+
+   /* The same key on a single-line field is OK, which reports to the caller
+    * and leaves the buffer alone. */
+   char single[8] = "";
+   cobalt_keyboard_open(&kb, single, sizeof(single), false, false);
+   type_key(&kb, 4, 4);
+   CHECK_STR(single, "");
+}
+
 static void
 test_keyboard_bounds(void)
 {
@@ -516,7 +551,7 @@ test_keyboard_bounds(void)
 
    char buffer[4] = "";
    cobalt_keyboard kb;
-   cobalt_keyboard_open(&kb, buffer, sizeof(buffer), false);
+   cobalt_keyboard_open(&kb, buffer, sizeof(buffer), false, false);
 
    for (int i = 0; i < 10; i++) {
       type_key(&kb, 1, 0);
@@ -526,7 +561,7 @@ test_keyboard_bounds(void)
 
    /* Backspacing an empty buffer must not walk backwards out of it. */
    char empty[8] = "";
-   cobalt_keyboard_open(&kb, empty, sizeof(empty), false);
+   cobalt_keyboard_open(&kb, empty, sizeof(empty), false, false);
    cobalt_input back = tap(COBALT_BTN_BACK);
    cobalt_keyboard_update(&kb, &back);
    cobalt_keyboard_update(&kb, &back);
@@ -543,7 +578,7 @@ test_keyboard_multibyte(void)
     * dangling continuation byte that renders as tofu. */
    char buffer[32] = "caf\xc3\xa9";   /* "café" */
    cobalt_keyboard kb;
-   cobalt_keyboard_open(&kb, buffer, sizeof(buffer), false);
+   cobalt_keyboard_open(&kb, buffer, sizeof(buffer), false, false);
 
    cobalt_input back = tap(COBALT_BTN_BACK);
    cobalt_keyboard_update(&kb, &back);
@@ -560,32 +595,32 @@ test_keyboard_display(void)
    char shown[32];
 
    /* Plain text, with a caret so an empty field still reads as focused. */
-   cobalt_keyboard_open(&kb, buffer, sizeof(buffer), false);
+   cobalt_keyboard_open(&kb, buffer, sizeof(buffer), false, false);
    cobalt_keyboard_display_text(&kb, shown, sizeof(shown));
    CHECK_STR(shown, "hello_");
 
    /* Masked: one dot per character, never the characters themselves. */
-   cobalt_keyboard_open(&kb, buffer, sizeof(buffer), true);
+   cobalt_keyboard_open(&kb, buffer, sizeof(buffer), true, false);
    cobalt_keyboard_display_text(&kb, shown, sizeof(shown));
    CHECK_STR(shown, "*****_");
 
    /* A masked multi-byte string is masked per character, not per byte. */
    char accented[32] = "caf\xc3\xa9";
-   cobalt_keyboard_open(&kb, accented, sizeof(accented), true);
+   cobalt_keyboard_open(&kb, accented, sizeof(accented), true, false);
    cobalt_keyboard_display_text(&kb, shown, sizeof(shown));
    CHECK_STR(shown, "****_");
 
    /* Longer than the field: the tail is kept, because that is where the caret
     * is, and the window never opens mid-codepoint. */
    char lengthy[64] = "abcdefghijklmnopqrstuvwxyz";
-   cobalt_keyboard_open(&kb, lengthy, sizeof(lengthy), false);
+   cobalt_keyboard_open(&kb, lengthy, sizeof(lengthy), false, false);
    char narrow[8];
    cobalt_keyboard_display_text(&kb, narrow, sizeof(narrow));
    CHECK_STR(narrow, "uvwxyz_");
 
    /* An empty buffer is just the caret. */
    char blank[8] = "";
-   cobalt_keyboard_open(&kb, blank, sizeof(blank), false);
+   cobalt_keyboard_open(&kb, blank, sizeof(blank), false, false);
    cobalt_keyboard_display_text(&kb, shown, sizeof(shown));
    CHECK_STR(shown, "_");
 }
@@ -3354,6 +3389,7 @@ main(int argc, char **argv)
    test_session_store_rejects_damage(root);
    test_session_store_needs_entropy();
    test_keyboard_typing();
+   test_keyboard_multiline();
    test_keyboard_bounds();
    test_keyboard_multibyte();
    test_keyboard_display();

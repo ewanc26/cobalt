@@ -28,7 +28,7 @@ cobalt_search_view_open(cobalt_search_view *view)
    view->posts = false;
    view->mode_hit_valid = false;
    cobalt_listnav_rewind(&view->nav);
-   cobalt_keyboard_open(&view->kb, view->query, sizeof(view->query), false);
+   cobalt_keyboard_open(&view->kb, view->query, sizeof(view->query), false, false);
 }
 
 cobalt_search_view_action
@@ -191,6 +191,17 @@ draw_editing(cobalt_search_view *view, cobalt_render *r,
             view->mode_hit_valid = true;
          }
       }
+   }
+
+   /* Split play: the keys are on the GamePad; the TV shows the query being
+    * typed and which list it will search, at reading size. */
+   if (cobalt_render_reader(r)) {
+      const SDL_Rect panel = cobalt_typing_area(r);
+      cobalt_draw_typing_panel(r, &panel,
+                               view->posts ? "Searching posts on the GamePad"
+                                           : "Searching accounts on the GamePad",
+                               view->kb.buffer ? view->kb.buffer : "");
+      return;
    }
 
    SDL_Rect box = { m->pad_edge, top, m->width - 2 * m->pad_edge,

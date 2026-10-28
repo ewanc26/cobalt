@@ -77,6 +77,28 @@ void cobalt_render_destroy(cobalt_render *r);
 const cobalt_metrics *cobalt_render_metrics(const cobalt_render *r);
 bool cobalt_render_has_font(const cobalt_render *r);
 
+/*
+ * What this surface is for, in the current display mode.
+ *
+ * In split play the two screens divide the work: the TV reads and the GamePad
+ * acts. That is a property of the frame rather than of the app, so it lives on
+ * the context the screen is drawing into — the same draw code runs for a
+ * GamePad that is part of a pair and for one that is the whole app, and asks
+ * the role which it is. Off-TV play sets FULL on the GamePad, so nothing has
+ * to be special-cased for the lone surface: it draws the complete UI.
+ */
+typedef enum {
+   COBALT_ROLE_FULL = 0,  /* this surface is the whole app */
+   COBALT_ROLE_READER,    /* split play, TV: full reading layout */
+   COBALT_ROLE_REMOTE,    /* split play, GamePad: pick and act */
+} cobalt_surface_role;
+
+void cobalt_render_set_role(cobalt_render *r, cobalt_surface_role role);
+cobalt_surface_role cobalt_render_role(const cobalt_render *r);
+/* Shorthand for the two questions screens actually ask. */
+bool cobalt_render_remote(const cobalt_render *r);
+bool cobalt_render_reader(const cobalt_render *r);
+
 #ifdef COBALT_E2E_HOST
 SDL_Renderer *cobalt_render_sdl_renderer(cobalt_render *r);
 #endif
@@ -121,6 +143,16 @@ void cobalt_draw_pill(cobalt_render *r, const char *key, const char *label, int 
  * for tiles that respond to focus rather than static flat cards).
  */
 void cobalt_draw_tile(cobalt_render *r, const SDL_Rect *rect, float focus);
+
+/*
+ * The TV half of a screen whose keyboard is on the GamePad: a panel saying
+ * where the typing is happening, with the text being entered shown at reading
+ * size. `area` is the region the keys would have taken; cobalt_typing_area()
+ * is the whole body, for screens that hand all of it over.
+ */
+void cobalt_draw_typing_panel(cobalt_render *r, const SDL_Rect *area,
+                              const char *caption, const char *text);
+SDL_Rect cobalt_typing_area(cobalt_render *r);
 
 /*
  * Draw a texture this context owns into `dst`.
