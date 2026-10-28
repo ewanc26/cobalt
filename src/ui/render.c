@@ -195,6 +195,9 @@ build_gradient(SDL_Renderer *renderer)
    SDL_UpdateTexture(tex, NULL, pixels, (int) sizeof(uint32_t));
    /* Linear filtering is what turns 64 steps into a smooth ramp. */
    SDL_SetTextureScaleMode(tex, SDL_ScaleModeLinear);
+   /* Every texel is opaque and it is the first thing drawn each frame, so it
+    * can be copied rather than blended — the widest copy of the frame. */
+   SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_NONE);
    return tex;
 }
 
@@ -471,6 +474,27 @@ cobalt_render_end(cobalt_render *r)
 
 /* --- primitives --- */
 
+/*
+ * Fill a rectangle that the colour makes opaque.
+ *
+ * The renderer blends every fill by default, which is a per-pixel read and mix
+ * even where there is nothing underneath to mix with — a card's body, a band
+ * under the header. An opaque fill has nothing to blend, and SDL has a straight
+ * fill for it, so ask for that and put the renderer back afterwards. A
+ * translucent colour takes the blended path as before.
+ */
+static void
+fill_opaque(cobalt_render *r, const SDL_Rect *rect, SDL_Color colour)
+{
+   if (colour.a == 0xFF) {
+      SDL_SetRenderDrawBlendMode(r->renderer, SDL_BLENDMODE_NONE);
+      SDL_RenderFillRect(r->renderer, rect);
+      SDL_SetRenderDrawBlendMode(r->renderer, SDL_BLENDMODE_BLEND);
+      return;
+   }
+   SDL_RenderFillRect(r->renderer, rect);
+}
+
 void
 cobalt_fill_rect(cobalt_render *r, const SDL_Rect *rect, SDL_Color colour)
 {
@@ -478,7 +502,7 @@ cobalt_fill_rect(cobalt_render *r, const SDL_Rect *rect, SDL_Color colour)
       return;
    }
    set_draw_colour(r, colour);
-   SDL_RenderFillRect(r->renderer, rect);
+   fill_opaque(r, rect, colour);
 }
 
 int
@@ -735,9 +759,9 @@ cobalt_fill_rounded_rect(cobalt_render *r, const SDL_Rect *rect, int radius,
    SDL_Rect top    = { rect->x + radius, rect->y, rect->w - 2 * radius, radius };
    SDL_Rect bottom = { rect->x + radius, rect->y + rect->h - radius,
                        rect->w - 2 * radius, radius };
-   if (middle.h > 0) SDL_RenderFillRect(r->renderer, &middle);
-   if (top.w > 0)    SDL_RenderFillRect(r->renderer, &top);
-   if (bottom.w > 0) SDL_RenderFillRect(r->renderer, &bottom);
+   if (middle.h > 0) fill_opaque(r, &middle, colour);
+   if (top.w > 0)    fill_opaque(r, &top, colour);
+   if (bottom.w > 0) fill_opaque(r, &bottom, colour);
 
    SDL_SetTextureColorMod(r->corner, colour.r, colour.g, colour.b);
    SDL_SetTextureAlphaMod(r->corner, colour.a);
@@ -747,6 +771,137 @@ cobalt_fill_rounded_rect(cobalt_render *r, const SDL_Rect *rect, int radius,
       { rect->x + rect->w - radius,  rect->y,                     SDL_FLIP_HORIZONTAL },
       { rect->x,                     rect->y + rect->h - radius,  SDL_FLIP_VERTICAL },
       { rect->x + rect->w - radius,  rect->y + rect->h - radius,
+        (SDL_RendererFlip) (SDL_FLIP_HORIZONTAL | SDL_FLIP_VERTICAL) },
+   };
+
+   for (int i = 0; i < 4; i++) {
+      SDL_Rect dst = { corners[i].x, corners[i].y, radius, radius };
+      SDL_RenderCopyEx(r->renderer, r->corner, NULL, &dst, 0.0, NULL, corners[i].flip);
+   }
+}
+
+/* `top` composited over `bottom` when `bottom` is opaque, so a translucent
+ * overlay on a known solid can be drawn as a solid of its own. */
+static SDL_Color
+blend_over(SDL_Color top, SDL_Color bottom)
+{
+   const int a = top.a;
+   const int ia = 255 - a;
+   SDL_Color out = {
+      (Uint8) ((top.r * a + bottom.r * ia + 127) / 255),
+      (Uint8) ((top.g * a + bottom.g * ia + 127) / 255),
+      (Uint8) ((top.b * a + bottom.b * ia + 127) / 255),
+      0xFF,
+   };
+   return out;
+}
+
+/*
+ * The border of a rounded rect: the bands and corner tiles a fill would draw,
+ * with the middle left out. `rect` is the outside edge and `thickness` how far
+ * the border reaches in. The interior is assumed to be painted over afterwards
+ * by something opaque — a tile body, in the one place this is used.
+ */
+static void
+fill_rounded_ring(cobalt_render *r, const SDL_Rect *rect, int radius, int thickness,
+                  SDL_Color colour)
+{
+   if (!r || !rect || rect->w <= 0 || rect->h <= 0) {
+      return;
+   }
+
+   const int max_radius = ((rect->w < rect->h) ? rect->w : rect->h) / 2;
+   if (radius > max_radius) radius = max_radius;
+   if (radius <= 0 || thickness <= 0 || !r->corner) {
+      cobalt_fill_rounded_rect(r, rect, radius, colour);
+      return;
+   }
+   if (thickness > max_radius) thickness = max_radius;
+
+   set_draw_colour(r, colour);
+
+   SDL_Rect top    = { rect->x + radius, rect->y, rect->w - 2 * radius, thickness };
+   SDL_Rect bottom = { rect->x + radius, rect->y + rect->h - thickness,
+                       rect->w - 2 * radius, thickness };
+   SDL_Rect left   = { rect->x, rect->y + radius, thickness, rect->h - 2 * radius };
+   SDL_Rect right  = { rect->x + rect->w - thickness, rect->y + radius, thickness,
+                       rect->h - 2 * radius };
+   if (top.w > 0)    fill_opaque(r, &top, colour);
+   if (bottom.w > 0) fill_opaque(r, &bottom, colour);
+   if (left.h > 0)   fill_opaque(r, &left, colour);
+   if (right.h > 0)  fill_opaque(r, &right, colour);
+
+   SDL_SetTextureColorMod(r->corner, colour.r, colour.g, colour.b);
+   SDL_SetTextureAlphaMod(r->corner, colour.a);
+
+   const struct { int x, y; SDL_RendererFlip flip; } corners[] = {
+      { rect->x,                    rect->y,                    SDL_FLIP_NONE },
+      { rect->x + rect->w - radius, rect->y,                    SDL_FLIP_HORIZONTAL },
+      { rect->x,                    rect->y + rect->h - radius, SDL_FLIP_VERTICAL },
+      { rect->x + rect->w - radius, rect->y + rect->h - radius,
+        (SDL_RendererFlip) (SDL_FLIP_HORIZONTAL | SDL_FLIP_VERTICAL) },
+   };
+
+   for (int i = 0; i < 4; i++) {
+      SDL_Rect dst = { corners[i].x, corners[i].y, radius, radius };
+      SDL_RenderCopyEx(r->renderer, r->corner, NULL, &dst, 0.0, NULL, corners[i].flip);
+   }
+}
+
+/*
+ * A tile's drop shadow, drawn only where the tile does not cover it.
+ *
+ * The body is opaque and sits over the shadow (the shadow is offset down and to
+ * the right of it), so all that can be seen of it is a column down the right, a
+ * band along the bottom, and whatever the body's rounded corners cut away. The
+ * whole offset rect is no longer filled: on a card the size of a timeline post
+ * that blended a card's area of pixels per frame to paint an edge a few pixels
+ * wide. The corner tiles still go down in full — under an opaque body they cost
+ * only their radius squared, and they are what rounds the shadow itself.
+ */
+static void
+fill_tile_shadow(cobalt_render *r, const SDL_Rect *shadow, const SDL_Rect *body,
+                 int radius, SDL_Color colour)
+{
+   if (!r || !shadow || !body || shadow->w <= 0 || shadow->h <= 0) {
+      return;
+   }
+
+   const int right  = shadow->x + shadow->w - (body->x + body->w);
+   const int bottom = shadow->y + shadow->h - (body->y + body->h);
+   if (right <= 0 && bottom <= 0) {
+      return; /* The body hides every pixel of it. */
+   }
+
+   const int max_radius = ((shadow->w < shadow->h) ? shadow->w : shadow->h) / 2;
+   if (radius > max_radius) radius = max_radius;
+   if (radius <= 0 || !r->corner) {
+      cobalt_fill_rounded_rect(r, shadow, radius, colour);
+      return;
+   }
+
+   set_draw_colour(r, colour);
+
+   /* The straight parts of the shadow's edges the body does not reach. */
+   if (right > 0) {
+      SDL_Rect band = { shadow->x + shadow->w - right, shadow->y + radius, right,
+                        shadow->h - 2 * radius };
+      if (band.h > 0) SDL_RenderFillRect(r->renderer, &band);
+   }
+   if (bottom > 0) {
+      SDL_Rect band = { shadow->x + radius, shadow->y + shadow->h - bottom,
+                        shadow->w - 2 * radius, bottom };
+      if (band.w > 0) SDL_RenderFillRect(r->renderer, &band);
+   }
+
+   SDL_SetTextureColorMod(r->corner, colour.r, colour.g, colour.b);
+   SDL_SetTextureAlphaMod(r->corner, colour.a);
+
+   const struct { int x, y; SDL_RendererFlip flip; } corners[] = {
+      { shadow->x,                    shadow->y,                    SDL_FLIP_NONE },
+      { shadow->x + shadow->w - radius, shadow->y,                   SDL_FLIP_HORIZONTAL },
+      { shadow->x,                    shadow->y + shadow->h - radius, SDL_FLIP_VERTICAL },
+      { shadow->x + shadow->w - radius, shadow->y + shadow->h - radius,
         (SDL_RendererFlip) (SDL_FLIP_HORIZONTAL | SDL_FLIP_VERTICAL) },
    };
 
@@ -782,32 +937,42 @@ cobalt_draw_tile(cobalt_render *r, const SDL_Rect *rect, float focus)
    };
    SDL_Rect shadow_rect = { rect->x + 2, rect->y + 3 + (int) (2 * focus),
                             rect->w, rect->h };
-   cobalt_fill_rounded_rect(r, &shadow_rect, radius, shadow);
 
    /* Focused tiles lift slightly and brighten — the Wii U menu's tactile feel
     * (AGENTS.md §5) comes mostly from this rather than from any animation. */
    SDL_Rect body = *rect;
    body.y -= (int) (2.0f * focus);
 
+   fill_tile_shadow(r, &shadow_rect, &body, radius, shadow);
+
    if (focus > 0.0f) {
       /* A rounded ring just outside the body: SDL_RenderDrawRect would draw
-       * square corners around a rounded tile. */
+       * square corners around a rounded tile. Only its 2px border survives the
+       * body being drawn over it, so the middle is not filled — at this size
+       * that was the whole card's area of accent blended for a frame edge. */
       SDL_Color edge = COBALT_COLOUR_ACCENT;
       edge.a = (Uint8) (220 * focus);
       const SDL_Rect ring = { body.x - 2, body.y - 2, body.w + 4, body.h + 4 };
-      cobalt_fill_rounded_rect(r, &ring, radius + 2, edge);
+      fill_rounded_ring(r, &ring, radius + 2, 2, edge);
    }
 
    SDL_Color base = focus > 0.0f ? COBALT_COLOUR_TILE : COBALT_COLOUR_TILE;
    cobalt_fill_rounded_rect(r, &body, radius, base);
 
    /* Top sheen: a translucent band across the upper third, giving the glassy
-    * highlight the flat-card look lacks. */
+    * highlight the flat-card look lacks. It lies wholly within the opaque body,
+    * so it is composited with it first and drawn as one solid rounded rect;
+    * where the result is the body's own colour — a white gloss on a white tile,
+    * which is what the theme sets — there is nothing to draw and it is skipped
+    * rather than blended across the card's top third every frame. */
    SDL_Rect sheen = { body.x + radius / 2, body.y + 1,
                       body.w - radius, body.h / 3 };
    if (sheen.w > 0 && sheen.h > 0) {
       SDL_Color gloss = { 0xFF, 0xFF, 0xFF, (Uint8) (60 + 40 * focus) };
-      cobalt_fill_rounded_rect(r, &sheen, radius / 2, gloss);
+      const SDL_Color lit = blend_over(gloss, base);
+      if (lit.r != base.r || lit.g != base.g || lit.b != base.b) {
+         cobalt_fill_rounded_rect(r, &sheen, radius / 2, lit);
+      }
    }
 
 }
