@@ -118,6 +118,8 @@ Muted accounts and Blocked accounts (A on one undoes it), the post language sett
 
 ## Settings
 
+![Settings](screenshots/settings.png)
+
 Theme switches between Light, the Wii U menu's grey-white look, and Dark. Text scale sets post text to 100%, 115% (the default) or 130% without changing labels or buttons. High contrast uses a black ground, white text and brighter accents, and takes precedence over the theme. Reset to defaults puts all three back to Light, 115% and contrast off.
 
 Up and Down choose a row; A or a tap changes it. Every change applies immediately on both screens and is saved to the SD card, so it survives closing Cobalt. B goes back to the home menu. A failed save is reported under the rows and the setting still changes for this run.
