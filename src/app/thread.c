@@ -175,22 +175,32 @@ cobalt_thread_view_update(cobalt_thread_view *view, const cobalt_input *in)
 
 /* The scrollbar for the selected post's text window, drawn along the right
  * edge of the card it belongs to. Shared by the full-width card and the TV's
- * detail column. */
+ * detail column.
+ *
+ * Inset from the card edge by a full gap: at the very edge the 3px bar reads
+ * as a second border beside the tile's own, and a focused card's ring sits
+ * two pixels away from it. Inside the padding it reads as a scrollbar, and
+ * the text column still clears it. */
 static void
 draw_text_scrollbar(cobalt_render *r, const cobalt_metrics *m, const SDL_Rect *rect,
                     int first, int win, int tot)
 {
    const int track_h = rect->h - 2 * m->pad_tile;
+   if (track_h <= 0 || tot <= 0 || win <= 0) {
+      return;
+   }
    int thumb_h = track_h * win / tot;
    if (thumb_h < 8) {
       thumb_h = 8;
    }
    const int span = tot - win;
-   const int thumb_y = rect->y + m->pad_tile + (track_h - thumb_h) * first / span;
+   const int thumb_y = rect->y + m->pad_tile +
+                       (span > 0 ? (track_h - thumb_h) * first / span : 0);
    SDL_Color track = COBALT_COLOUR_TEXT_DIM;
    track.a = 70;
-   const SDL_Rect tr = { rect->x + rect->w - 6, rect->y + m->pad_tile, 3, track_h };
-   const SDL_Rect th = { rect->x + rect->w - 6, thumb_y, 3, thumb_h };
+   const int bar_x = rect->x + rect->w - m->pad_tile / 2;
+   const SDL_Rect tr = { bar_x, rect->y + m->pad_tile, 3, track_h };
+   const SDL_Rect th = { bar_x, thumb_y, 3, thumb_h };
    cobalt_fill_rect(r, &tr, track);
    cobalt_fill_rect(r, &th, COBALT_COLOUR_ACCENT);
 }

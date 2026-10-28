@@ -13,9 +13,17 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Changed
 
+- The TV's Home menu is four columns of tiles in three rows rather than six and two. Six columns fitted the height but not the words: "Notifications" and "Queued posts" had to drop to the caption face while the rest stayed body-sized, so one row read at a different size from the other. Every label is now body-sized and centred in its tile, and a tile that cannot be opened is dimmed rather than captioned "Sign in first" seven times over — the strip below the grid already says why the focused tile is unavailable.
+- A profile's footer names what its buttons do on the row that is selected: follow or unfollow, mute and block on the account, like and repost on a post, and only the More menu on your own profile, where the other three are refused. The tab being shown (Posts, Replies) moved from a non-button pill in the footer to the header beside the handle.
 - A control prompt — the pills along the bottom of every screen — is one draw per shape instead of seven. Each pill's body and its accent key chip are kept as tinted masks at the size they are drawn, so a footer of five prompts asks the renderer for ten commands where it asked for seventy, and the pill's antialiased ends are drawn at their own radius rather than a stretched tile. A screen's prompts cost a few kilobytes of texture between them.
 - A tile draws only what shows. Its shadow is filled where the body does not cover it rather than across the whole card, a focused tile's accent ring is drawn as the border it is instead of a whole card of accent, the glassy sheen is composited into the body first and skipped where that leaves the body's own colour — which, on a white tile, it always does — and opaque fills are written instead of blended, the background gradient included. On the development machine the timeline's TV frame fell from 2.3 ms to 1.9 ms and a thread's from 2.2 ms to 1.9 ms, most of what is left being the software renderer presenting the frame.
 - Text is laid out once and remembered. The renderer keeps where each string broke into lines at the width it was drawn, so a card no longer wraps its own text twice a frame, and the walk that finds the breaks goes word by word rather than byte by byte, so it no longer costs the square of the line's length. On the development machine a timeline frame's text work fell from about 2.7 ms to 2.3 ms and a thread's from 3.2 ms to 2.2 ms; `make -C tests bench` measures it.
+
+### Fixed
+
+- The thread's text scrollbar sits inside the card's padding instead of on its edge, where it read as a second border beside the tile's own and a focused card's accent ring ran two pixels from it.
+- An unread notification or conversation is marked with the accent bar down the left of its row that the code always claimed to draw, rather than a single dot stranded in the row's bottom-right corner.
+- Messages and Queued posts no longer repeat "B: back" in the footer under the header's Back pill.
 
 ### Removed
 
