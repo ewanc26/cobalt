@@ -159,7 +159,7 @@ SWEEP_SOURCES := $(filter-out \
 
 LINK_SOURCES := $(filter-out $(SRC)/main.c, $(SWEEP_SOURCES))
 
-.PHONY: all check sweep linkcheck e2e snapshot sim clean
+.PHONY: all check sweep linkcheck e2e snapshot sim bench clean
 
 all: sweep linkcheck check
 
@@ -237,6 +237,22 @@ snapshot:
 		$(E2E_BUILD)/libwolfram.$(SOEXT) $(E2E_BUILD)/_deps/cjson-build/libcjson.$(SOEXT) \
 		$(MHD_LIBS) $(LDLIBS) -Wl,-rpath,$(abspath $(E2E_BUILD)) -Wl,-rpath,$(abspath $(E2E_BUILD))/_deps/cjson-build
 	@./$(SNAP_BIN) $(OUT)/snapshot ../romfs/font.ttf
+
+BENCH_BIN := $(OUT)/cobalt-bench
+BENCH_FRAMES ?= 300
+
+# Frame benchmark: the real app and renderer on the dummy video driver, timing
+# each phase and counting the text work behind it. Needs the same host Wolfram
+# build as the simulator (E2E_BUILD) because it drives the app against the mock
+# PDS. Compares a before against an after on one machine; a console number still
+# has to come from a console.
+bench:
+	@mkdir -p $(OUT)/bench-data
+	@$(CC) $(CFLAGS) -DCOBALT_HAS_WOLFRAM=1 -DCOBALT_E2E_HOST=1 -I$(WOLFRAM_ROOT)/include $(CJSON_CFLAGS) \
+		-o $(BENCH_BIN) bench_main.c linkcheck_stubs.c host_stubs.c $(WOLFRAM_ROOT)/test/mock_pds.c $(E2E_SOURCES) \
+		$(E2E_BUILD)/libwolfram.$(SOEXT) $(E2E_BUILD)/_deps/cjson-build/libcjson.$(SOEXT) \
+		$(MHD_LIBS) $(LDLIBS) -Wl,-rpath,$(abspath $(E2E_BUILD)) -Wl,-rpath,$(abspath $(E2E_BUILD))/_deps/cjson-build
+	@./$(BENCH_BIN) $(OUT)/bench-data ../romfs/font.ttf $(BENCH_FRAMES)
 
 SIM_BIN := $(OUT)/cobalt-sim
 

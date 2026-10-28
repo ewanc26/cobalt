@@ -230,6 +230,28 @@ int cobalt_font_line_height(cobalt_render *r, cobalt_font_id font);
 /* Drop cached text textures. Call when switching screens to bound memory. */
 void cobalt_render_flush_text_cache(cobalt_render *r);
 
+/*
+ * How much text work this surface has done since the counters were reset:
+ *
+ *   measures       calls into TTF_SizeUTF8 — the wrapping walk is what makes
+ *                  these expensive, so this is the number to move
+ *   wrap_passes    strings walked to find their line breaks; what a wrap cache
+ *                  turns into a hit is not counted here
+ *   wrap_requests  calls to a wrapping entry point, hits and misses alike. A
+ *                  card asks for its own text twice per frame (once to size
+ *                  itself, once to draw), so this sits above wrap_passes
+ *                  wherever a result is reused.
+ *
+ *   measure_us     microseconds spent inside those calls. Host builds only:
+ *                  on the console the counters are increments and nothing
+ *                  reads a clock, so a shipping frame pays nothing for them.
+ *
+ * For tests/bench_main.c, which compares frame cost before and after a change.
+ */
+void cobalt_render_text_work(cobalt_render *r, uint64_t *measures, uint64_t *wrap_passes,
+                             uint64_t *wrap_requests, uint64_t *measure_us);
+void cobalt_render_reset_text_work(cobalt_render *r);
+
 #ifdef __cplusplus
 }
 #endif

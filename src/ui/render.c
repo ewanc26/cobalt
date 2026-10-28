@@ -17,6 +17,20 @@
  * it; the cap exists so the cache is a flat array with no per-entry malloc. */
 #define TEXT_KEY_MAX 160
 
+/* Room for a whole timeline screen's worth of laid-out strings, for the same
+ * reason and with the same least-recently-used eviction. */
+#define WRAP_CACHE_SIZE 12
+
+/* The longest string a layout entry keeps. COBALT_POST_TEXT_MAX is the longest
+ * text Cobalt draws; a longer one (a long compose draft) is laid out and drawn
+ * exactly as before, just not remembered. */
+#define WRAP_TEXT_MAX 1024
+
+/* Lines one entry can hold. The narrowest column any post text is laid out in
+ * needs well under this for WRAP_TEXT_MAX bytes; a string that beats it is
+ * drawn uncached rather than remembered with lines missing. */
+#define WRAP_LINES_MAX 64
+
 /* Vertical resolution of the baked background gradient. Stretched with linear
  * filtering, so a coarse ramp is indistinguishable from a per-scanline one. */
 #define GRADIENT_STEPS 64
@@ -34,6 +48,43 @@ typedef struct {
    uint32_t last_used;
    bool in_use;
 } text_entry;
+
+/*
+ * Where one wrapped line starts and ends, as offsets into the string it was
+ * laid out from. `next` is where the following line begins: past the spaces a
+ * break landed on, and past a newline if the text's own line ended there. It is
+ * always greater than `start`, so a walk over the text terminates.
+ */
+typedef struct {
+   int start;
+   int len;
+   int next;
+} wrap_line;
+
+/*
+ * The line breaks of one string at one width, kept between frames.
+ *
+ * The same string is wrapped more than once per frame: a card counts its lines
+ * to size itself and then wraps the same text again to draw it, and the TV
+ * timeline wraps the selected post a second time for the detail column. The
+ * breaks depend only on the text, the font and the width, so they are worked
+ * out once and kept — and the walk is the most expensive thing the renderer
+ * does (see cobalt_render_text_work).
+ *
+ * The text itself is held, not just a hash of it: a stale entry would draw the
+ * wrong words, and a hash is not allowed to decide that. The hash only skips
+ * the comparison on an obvious miss.
+ */
+typedef struct {
+   bool used;
+   cobalt_font_id font;
+   int max_width;
+   uint32_t hash;
+   uint32_t last_used;
+   int line_count;
+   char text[WRAP_TEXT_MAX];
+   wrap_line lines[WRAP_LINES_MAX];
+} wrap_entry;
 
 struct cobalt_render {
    cobalt_surface_id surface;
@@ -54,6 +105,9 @@ struct cobalt_render {
    text_entry cache[TEXT_CACHE_SIZE];
    uint32_t clock;
 
+   wrap_entry wraps[WRAP_CACHE_SIZE];
+   uint32_t wrap_clock;
+
    /* Borrowed, not owned — see cobalt_render_set_images(). */
    cobalt_imagecache *images;
    /* Borrowed, not owned — see cobalt_render_set_thumbs(). */
@@ -62,6 +116,13 @@ struct cobalt_render {
    cobalt_imagecache *viewer;
 
    bool warned_long_string;
+
+   /* Bench counters, see cobalt_render_text_work. */
+   uint64_t text_measures;
+   uint64_t text_wrap_passes;
+   uint64_t text_wrap_requests;
+   /* Host builds only: nanoseconds spent in TTF_SizeUTF8. See measure_text. */
+   uint64_t text_measure_ns;
 };
 
 /* --- helpers --- */
@@ -1075,11 +1136,39 @@ render_text_surface_impl(cobalt_render *r, cobalt_font_id id, const char *utf8, 
  * here by name instead of as an anonymous long frame. */
 #define SLOW_MS 100
 
+/*
+ * Nanoseconds on a monotonic clock, for the benchmark's own accounting.
+ *
+ * Host builds only — `make bench` compiles with COBALT_E2E_HOST — so a console
+ * frame takes no clock reading here. SDL_GetTicks is far too coarse for a
+ * single measurement (it would round every one of them to zero); the large
+ * integer arithmetic cannot overflow: SDL counts a few tens of millions per
+ * second and this is a 64-bit value.
+ */
+#ifdef COBALT_E2E_HOST
+static uint64_t
+now_ns(void)
+{
+   static uint64_t freq;
+   if (freq == 0) {
+      freq = SDL_GetPerformanceFrequency();
+   }
+   return freq ? SDL_GetPerformanceCounter() * 1000000000ull / freq : 0;
+}
+#endif
+
 static int
 measure_text(cobalt_render *r, cobalt_font_id id, const char *utf8, int *out_w, int *out_h)
 {
    const uint32_t t0 = SDL_GetTicks();
+#ifdef COBALT_E2E_HOST
+   const uint64_t ns0 = now_ns();
+#endif
+   if (r) r->text_measures++;
    const int rc = measure_text_impl(r, id, utf8, out_w, out_h);
+#ifdef COBALT_E2E_HOST
+   if (r) r->text_measure_ns += now_ns() - ns0;
+#endif
    const uint32_t dt = SDL_GetTicks() - t0;
    if (dt >= SLOW_MS) {
       COBALT_LOGW("render: slow measure %u ms (font %d, %.40s)", (unsigned) dt, (int) id, utf8);
@@ -1320,6 +1409,253 @@ draw_line_spans(cobalt_render *r, cobalt_font_id font_id, TTF_Font *font,
    }
 }
 
+/*
+ * Works out the line that begins at `offset` in `text`, leaving its bytes in
+ * `out` (which holds TEXT_KEY_MAX bytes) and its extent in `ln`. Returns false
+ * when there is nothing left to lay out, which includes the degenerate case of
+ * a single glyph too wide for the column.
+ *
+ * This is the only place the wrapping rule lives, so a string laid out into the
+ * cache and the same string drawn without one cannot break in different places.
+ *
+ * The rule is a line of whole words: measure a token at a time — a run of
+ * non-spaces plus the spaces after it — and commit it while it fits. A line can
+ * only break at a space, so measuring every byte of the line (what this used to
+ * do) pays the length of the whole prefix to find one break, once per byte, and
+ * so squares with the length of the line. Only the token that does not fit is
+ * counted byte by byte, which is that same prefix walk narrowed to the one
+ * place the break can be.
+ */
+static bool
+next_wrapped_line(cobalt_render *r, cobalt_font_id font_id, const char *text, int offset,
+                  int max_width, char *out, wrap_line *ln)
+{
+   const char *cursor = text + offset;
+   if (!*cursor) {
+      return false;
+   }
+
+   size_t len = 0;          /* bytes committed to this line */
+   size_t last_break = 0;   /* byte offset just past the last space */
+   bool overflowed = false;
+
+   while (cursor[len] && cursor[len] != '\n' && len + 1 < TEXT_KEY_MAX) {
+      size_t token = len;
+      while (cursor[token] && cursor[token] != ' ' && cursor[token] != '\n') {
+         token++;
+      }
+      while (cursor[token] == ' ') {
+         token++;
+      }
+      if (token > TEXT_KEY_MAX - 1) {
+         token = TEXT_KEY_MAX - 1;
+      }
+
+      memcpy(out, cursor, token);
+      out[token] = '\0';
+
+      int w = 0;
+      if (measure_text(r, font_id, out, &w, NULL) == 0 && w <= max_width) {
+         /* The whole token fits. The spaces in it are now the last place this
+          * line could break. Space is never a UTF-8 continuation byte, so this
+          * is byte-safe. */
+         for (size_t i = len; i < token; i++) {
+            if (cursor[i] == ' ') {
+               last_break = i + 1;
+            }
+         }
+         len = token;
+         continue;
+      }
+
+      /* The break is somewhere in this token: find it byte by byte from the
+       * length already known to fit, so the line break is the one a prefix walk
+       * would have found. */
+      bool found = false;
+      for (size_t k = len + 1; k <= token; k++) {
+         /* Restore the byte the previous pass replaced with a terminator
+          * before cutting the string one byte further along: the measurement is
+          * of the prefix up to k, not of the first prefix this loop tried. */
+         out[k - 1] = cursor[k - 1];
+         out[k] = '\0';
+         if (cursor[k - 1] == ' ') {
+            last_break = k;
+         }
+         int pw = 0;
+         if (measure_text(r, font_id, out, &pw, NULL) == 0 && pw > max_width) {
+            len = k;
+            overflowed = true;
+            found = true;
+            break;
+         }
+      }
+      if (!found) {
+         /* No prefix of the token measured wider than the column, so the
+          * token-level measurement must have failed rather than overflowed
+          * (libfreetype could not size something in it). Take the token and move
+          * on: a line has to consume something to make progress. */
+         len = token;
+      }
+      break;
+   }
+
+   if (overflowed) {
+      if (last_break > 0) {
+         /* Break at the last space; drop it from the drawn line. */
+         len = last_break - 1;
+      } else {
+         /* One long unbroken run (CJK, a URL). Hard-break at the previous
+          * codepoint boundary so a multi-byte sequence is never split. */
+         len = utf8_prev(out, len);
+         if (len == 0) {
+            return false;
+         }
+      }
+   }
+
+   out[len] = '\0';
+
+   const char *tail = cursor + (overflowed && last_break > 0 ? last_break : len);
+   while (*tail == ' ') {
+      tail++;
+   }
+   if (*tail == '\n') {
+      tail++;
+   }
+
+   ln->start = offset;
+   ln->len = (int) len;
+   ln->next = (int) (tail - text);
+   return true;
+}
+
+/*
+ * Draws one laid-out line at (x, y). `truncated` adds the ellipsis, for the line
+ * a draw stops on with text still to come.
+ */
+static void
+draw_wrapped_line(cobalt_render *r, cobalt_font_id font_id, const char *text,
+                  const wrap_line *ln, int max_width, bool truncated, int x, int y,
+                  SDL_Color colour, const cobalt_text_span *spans, int span_count)
+{
+   char line[TEXT_KEY_MAX];
+   int len = ln->len;
+   if (len > TEXT_KEY_MAX - 1) {
+      len = TEXT_KEY_MAX - 1;
+   }
+   memcpy(line, text + ln->start, (size_t) len);
+   line[len] = '\0';
+
+   if (truncated) {
+      /* Shorten the line until what is left of it and the ellipsis fit. */
+      size_t trim = (size_t) len;
+      while (trim > 0) {
+         char candidate[TEXT_KEY_MAX];
+         memcpy(candidate, line, trim);
+         candidate[trim] = '\0';
+         strncat(candidate, ELLIPSIS, sizeof(candidate) - trim - 1);
+
+         int w = 0;
+         if (measure_text(r, font_id, candidate, &w, NULL) == 0 && w <= max_width) {
+            memcpy(line, candidate, strlen(candidate) + 1);
+            break;
+         }
+         trim = utf8_prev(line, trim);
+      }
+   }
+
+   if (spans && span_count > 0) {
+      draw_line_spans(r, font_id, font_of(r, font_id), line, ln->start, x, y, colour,
+                      spans, span_count);
+   } else {
+      cobalt_draw_text(r, font_id, line, x, y, colour);
+   }
+}
+
+/*
+ * Lays `utf8` out into `lines`, which must hold `line_cap` of them, and reports
+ * how many it took. Returns false when the text needs more lines than that,
+ * leaving nothing worth keeping.
+ */
+static bool
+wrap_walk(cobalt_render *r, cobalt_font_id font_id, const char *utf8, int max_width,
+          wrap_line *lines, int line_cap, int *out_count)
+{
+   char line[TEXT_KEY_MAX];
+   int offset = 0;
+   int count = 0;
+   while (utf8[offset]) {
+      if (count >= line_cap) {
+         return false;
+      }
+      wrap_line ln;
+      if (!next_wrapped_line(r, font_id, utf8, offset, max_width, line, &ln)) {
+         break;
+      }
+      lines[count++] = ln;
+      offset = ln.next;
+   }
+   *out_count = count;
+   return true;
+}
+
+/*
+ * The layout of `utf8` at this width, walking it and keeping the result if it is
+ * not there yet. NULL when the string is too long or too tall for an entry, and
+ * the caller then lays it out as it draws, exactly as it did before the cache
+ * existed.
+ */
+static const wrap_entry *
+wrap_lookup(cobalt_render *r, cobalt_font_id font_id, const char *utf8, int max_width)
+{
+   const size_t n = strlen(utf8);
+   if (n == 0 || n >= WRAP_TEXT_MAX) {
+      return NULL;
+   }
+   const uint32_t hash = hash_string(utf8);
+
+   wrap_entry *spare = NULL;
+   wrap_entry *oldest = NULL;
+   for (int i = 0; i < WRAP_CACHE_SIZE; i++) {
+      wrap_entry *e = &r->wraps[i];
+      if (!e->used) {
+         if (!spare) spare = e;
+         continue;
+      }
+      if (e->hash == hash && e->font == font_id && e->max_width == max_width &&
+          strcmp(e->text, utf8) == 0) {
+         e->last_used = ++r->wrap_clock;
+         return e;
+      }
+      if (!oldest || e->last_used < oldest->last_used) {
+         oldest = e;
+      }
+   }
+
+   /* Laid out beside the cache first: a string too tall to keep must not evict
+    * a useful entry on its way past. */
+   wrap_line lines[WRAP_LINES_MAX];
+   int count = 0;
+   r->text_wrap_passes++;
+   if (!wrap_walk(r, font_id, utf8, max_width, lines, WRAP_LINES_MAX, &count)) {
+      return NULL;
+   }
+
+   wrap_entry *e = spare ? spare : oldest;
+   if (!e) {
+      return NULL;
+   }
+   memcpy(e->text, utf8, n + 1);
+   memcpy(e->lines, lines, (size_t) count * sizeof e->lines[0]);
+   e->used = true;
+   e->font = font_id;
+   e->max_width = max_width;
+   e->hash = hash;
+   e->line_count = count;
+   e->last_used = ++r->wrap_clock;
+   return e;
+}
+
 static int
 wrapped_impl(cobalt_render *r, cobalt_font_id font_id, const char *utf8,
              int x, int y, int max_width, int first_line, int max_lines,
@@ -1333,89 +1669,55 @@ wrapped_impl(cobalt_render *r, cobalt_font_id font_id, const char *utf8,
    if (!r || !font || !utf8 || max_width <= 0 || max_lines <= 0) {
       return 0;
    }
+   r->text_wrap_requests++;
 
    const int line_height = TTF_FontLineSkip(font) + r->m->line_gap;
+
+   const wrap_entry *entry = wrap_lookup(r, font_id, utf8, max_width);
+   if (entry) {
+      /* The breaks are known: walk them, skipping to the first drawn line and
+       * stopping at the last, and mark the one a cut lands on. */
+      const int limit = first_line + max_lines;
+      const int walked = entry->line_count < limit ? entry->line_count : limit;
+      int used = 0;
+      for (int i = first_line; i < walked; i++) {
+         const wrap_line *ln = &entry->lines[i];
+         if (draw) {
+            const bool truncated = (i == walked - 1) && utf8[ln->next] != '\0';
+            draw_wrapped_line(r, font_id, utf8, ln, max_width, truncated, x, y + used,
+                              colour, spans, span_count);
+         }
+         used += line_height;
+      }
+      if (total_lines) {
+         *total_lines = walked;
+      }
+      return used;
+   }
+
+   /* Not kept: a compose draft longer than an entry holds, or a text that needs
+    * more lines than one can carry. Lay it out and draw it line by line, by the
+    * same rule — the only difference is that nothing is remembered. */
+   r->text_wrap_passes++;
    char line[TEXT_KEY_MAX];
 
-   const char *cursor = utf8;
+   int offset = 0;
    int drawn_lines = 0;
    int used_height = 0;
 
-   while (*cursor && drawn_lines < first_line + max_lines) {
-      size_t len = 0;          /* bytes committed to this line */
-      size_t last_break = 0;   /* byte offset just past the last space */
-      bool overflowed = false;
-
-      /* Grow the line one byte at a time, remembering the last point we could
-       * break at, and stop as soon as it no longer fits. */
-      while (cursor[len] && cursor[len] != '\n' && len + 1 < sizeof(line)) {
-         line[len] = cursor[len];
-         line[len + 1] = '\0';
-         len++;
-
-         /* Space is never a UTF-8 continuation byte, so this is byte-safe. */
-         if (cursor[len - 1] == ' ') {
-            last_break = len;
-         }
-
-         int w = 0;
-         if (measure_text(r, font_id, line, &w, NULL) == 0 && w > max_width) {
-            overflowed = true;
-            break;
-         }
-      }
-
-      if (overflowed) {
-         if (last_break > 0) {
-            /* Break at the last space; drop it from the drawn line. */
-            len = last_break - 1;
-         } else {
-            /* One long unbroken run (CJK, a URL). Hard-break at the previous
-             * codepoint boundary so a multi-byte sequence is never split. */
-            len = utf8_prev(line, len);
-            if (len == 0) {
-               break; /* Single glyph wider than max_width; nothing sensible left. */
-            }
-         }
-      }
-
-      line[len] = '\0';
-
-      bool is_last_allowed = (drawn_lines == first_line + max_lines - 1);
-      const char *tail = cursor + (overflowed && last_break > 0 ? last_break : len);
-      while (*tail == ' ') {
-         tail++;
-      }
-      if (*tail == '\n') {
-         tail++;
+   while (utf8[offset] && drawn_lines < first_line + max_lines) {
+      wrap_line ln;
+      if (!next_wrapped_line(r, font_id, utf8, offset, max_width, line, &ln)) {
+         break;
       }
 
       /* Ran out of lines with text still to go: mark the truncation. */
-      if (is_last_allowed && *tail != '\0') {
-         size_t trim = len;
-         while (trim > 0) {
-            char candidate[TEXT_KEY_MAX];
-            memcpy(candidate, line, trim);
-            candidate[trim] = '\0';
-            strncat(candidate, ELLIPSIS, sizeof(candidate) - trim - 1);
-
-            int w = 0;
-            if (measure_text(r, font_id, candidate, &w, NULL) == 0 && w <= max_width) {
-               memcpy(line, candidate, strlen(candidate) + 1);
-               break;
-            }
-            trim = utf8_prev(line, trim);
-         }
-      }
-
+      const bool is_last_allowed = (drawn_lines == first_line + max_lines - 1);
       if (drawn_lines >= first_line) {
          if (draw) {
-            if (spans && span_count > 0) {
-               draw_line_spans(r, font_id, font, line, (int) (cursor - utf8), x,
-                               y + used_height, colour, spans, span_count);
-            } else {
-               cobalt_draw_text(r, font_id, line, x, y + used_height, colour);
-            }
+            draw_wrapped_line(r, font_id, utf8, &ln, max_width,
+                              is_last_allowed && utf8[ln.next] != '\0', x,
+                              y + used_height, colour, spans, span_count);
          }
          used_height += line_height;
       }
@@ -1424,7 +1726,7 @@ wrapped_impl(cobalt_render *r, cobalt_font_id font_id, const char *utf8,
          *total_lines = drawn_lines;
       }
 
-      cursor = tail;
+      offset = ln.next;
    }
 
    return used_height;
@@ -1446,6 +1748,26 @@ cobalt_text_wrapped_lines(cobalt_render *r, cobalt_font_id font_id,
    SDL_Color none = { 0, 0, 0, 0 };
    wrapped_impl(r, font_id, utf8, 0, 0, max_width, 0, 4096, none, false, &total, NULL, 0);
    return total;
+}
+
+void
+cobalt_render_text_work(cobalt_render *r, uint64_t *measures, uint64_t *wrap_passes,
+                        uint64_t *wrap_requests, uint64_t *measure_us)
+{
+   if (measures) *measures = r ? r->text_measures : 0;
+   if (wrap_passes) *wrap_passes = r ? r->text_wrap_passes : 0;
+   if (wrap_requests) *wrap_requests = r ? r->text_wrap_requests : 0;
+   if (measure_us) *measure_us = r ? r->text_measure_ns / 1000 : 0;
+}
+
+void
+cobalt_render_reset_text_work(cobalt_render *r)
+{
+   if (!r) return;
+   r->text_measures = 0;
+   r->text_wrap_passes = 0;
+   r->text_wrap_requests = 0;
+   r->text_measure_ns = 0;
 }
 
 void
