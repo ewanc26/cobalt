@@ -43,6 +43,7 @@ typedef enum {
    COBALT_SCREEN_CHAT_THREAD,
    COBALT_SCREEN_QUEUE,
    COBALT_SCREEN_SETTINGS,
+   COBALT_SCREEN_CREDITS,
 } cobalt_screen;
 
 /*
