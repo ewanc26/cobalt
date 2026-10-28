@@ -21,6 +21,9 @@
  * reason and with the same least-recently-used eviction. */
 #define WRAP_CACHE_SIZE 12
 
+/* Distinct pill widths on screen at once, with room for the next screen's. */
+#define SHAPE_CACHE_SIZE 8
+
 /* The longest string a layout entry keeps. COBALT_POST_TEXT_MAX is the longest
  * text Cobalt draws; a longer one (a long compose draft) is laid out and drawn
  * exactly as before, just not remembered. */
@@ -86,6 +89,19 @@ typedef struct {
    wrap_line lines[WRAP_LINES_MAX];
 } wrap_entry;
 
+/*
+ * A rounded rect's coverage at one size, white with the same antialiased alpha
+ * the corner tiles carry. Tinted and blitted it is one command where the
+ * primitives are three fills and four copies — which is what the footer's pills
+ * are worth: five prompts, sixteen commands each, every frame.
+ */
+typedef struct {
+   bool used;
+   int w, h, radius;
+   uint32_t last_used;
+   SDL_Texture *tex;
+} shape_entry;
+
 struct cobalt_render {
    cobalt_surface_id surface;
    const cobalt_metrics *m;
@@ -107,6 +123,9 @@ struct cobalt_render {
 
    wrap_entry wraps[WRAP_CACHE_SIZE];
    uint32_t wrap_clock;
+
+   shape_entry shapes[SHAPE_CACHE_SIZE];
+   uint32_t shape_clock;
 
    /* Borrowed, not owned — see cobalt_render_set_images(). */
    cobalt_imagecache *images;
@@ -247,6 +266,58 @@ build_corner(SDL_Renderer *renderer, int radius)
    return tex;
 }
 
+/*
+ * A whole rounded rect's coverage as a texture: white, with the same alpha the
+ * corner tiles carry. Tinted and blitted it draws what the three fills and four
+ * corner copies draw, in one command instead of seven.
+ *
+ * The distance to the nearest corner's centre is what decides a pixel: along
+ * the straight middle of the rect it is zero, so one formula covers the middle
+ * and the caps alike, and it is the formula build_corner uses, so the two
+ * shapes agree to the pixel.
+ */
+static SDL_Texture *
+build_shape_mask(SDL_Renderer *renderer, int w, int h, int radius)
+{
+   SDL_Texture *tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+                                        SDL_TEXTUREACCESS_STATIC, w, h);
+   if (!tex) {
+      COBALT_LOGE("shape texture creation failed: %s", SDL_GetError());
+      return NULL;
+   }
+
+   uint32_t *pixels = (uint32_t *) malloc((size_t) w * (size_t) h * sizeof(uint32_t));
+   if (!pixels) {
+      SDL_DestroyTexture(tex);
+      return NULL;
+   }
+
+   const float rf = (float) radius;
+   const float wf = (float) w;
+   const float hf = (float) h;
+   for (int y = 0; y < h; y++) {
+      const float py = (float) y + 0.5f;
+      float cy = py < rf ? rf : (py > hf - rf ? hf - rf : py);
+      for (int x = 0; x < w; x++) {
+         const float px = (float) x + 0.5f;
+         const float cx = px < rf ? rf : (px > wf - rf ? wf - rf : px);
+         const float dx = px - cx;
+         const float dy = py - cy;
+         const float dist = sqrtf(dx * dx + dy * dy);
+         float cover = rf - dist + 0.5f;
+         if (cover < 0.0f) cover = 0.0f;
+         if (cover > 1.0f) cover = 1.0f;
+         const uint8_t a = (uint8_t) (cover * 255.0f + 0.5f);
+         pixels[y * w + x] = ((uint32_t) a << 24) | 0x00FFFFFFu;
+      }
+   }
+
+   SDL_UpdateTexture(tex, NULL, pixels, w * (int) sizeof(uint32_t));
+   SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+   free(pixels);
+   return tex;
+}
+
 /* --- lifecycle --- */
 
 cobalt_render *
@@ -334,6 +405,11 @@ cobalt_render_destroy(cobalt_render *r)
    cobalt_render_flush_text_cache(r);
 
    if (r->corner)   SDL_DestroyTexture(r->corner);
+   for (int i = 0; i < SHAPE_CACHE_SIZE; i++) {
+      if (r->shapes[i].tex) SDL_DestroyTexture(r->shapes[i].tex);
+      r->shapes[i].used = false;
+      r->shapes[i].tex = NULL;
+   }
    if (r->gradient) SDL_DestroyTexture(r->gradient);
    if (r->band) SDL_DestroyTexture(r->band);
 
@@ -505,6 +581,76 @@ cobalt_fill_rect(cobalt_render *r, const SDL_Rect *rect, SDL_Color colour)
    fill_opaque(r, rect, colour);
 }
 
+/* Blit a cached mask, tinted. */
+static void
+blit_shape(cobalt_render *r, SDL_Texture *tex, const SDL_Rect *dst, SDL_Color colour)
+{
+   SDL_SetTextureColorMod(tex, colour.r, colour.g, colour.b);
+   SDL_SetTextureAlphaMod(tex, colour.a);
+   SDL_RenderCopy(r->renderer, tex, NULL, dst);
+}
+
+/*
+ * A rounded rect, drawn as one tinted mask of its own shape at this size.
+ *
+ * Worth it for the shapes that recur every frame at a handful of sizes — the
+ * footer's pills, which are a stadium body and an accent chip each — and not
+ * for a card, whose size and radius vary with the layout. The masks are a few
+ * kilobytes apiece and are evicted least-recently-used like everything else
+ * here, so a screen full of prompts cannot grow the cache without bound.
+ */
+static void
+draw_rounded_shape(cobalt_render *r, const SDL_Rect *rect, int radius, SDL_Color colour)
+{
+   if (!r || !rect || rect->w <= 0 || rect->h <= 0) {
+      return;
+   }
+
+   const int max_radius = ((rect->w < rect->h) ? rect->w : rect->h) / 2;
+   if (radius > max_radius) radius = max_radius;
+   if (radius <= 0) {
+      cobalt_fill_rect(r, rect, colour);
+      return;
+   }
+
+   shape_entry *spare = NULL;
+   shape_entry *oldest = NULL;
+   for (int i = 0; i < SHAPE_CACHE_SIZE; i++) {
+      shape_entry *e = &r->shapes[i];
+      if (!e->used) {
+         if (!spare) spare = e;
+         continue;
+      }
+      if (e->w == rect->w && e->h == rect->h && e->radius == radius) {
+         e->last_used = ++r->shape_clock;
+         blit_shape(r, e->tex, rect, colour);
+         return;
+      }
+      if (!oldest || e->last_used < oldest->last_used) {
+         oldest = e;
+      }
+   }
+
+   shape_entry *e = spare ? spare : oldest;
+   if (e->tex) {
+      SDL_DestroyTexture(e->tex);
+      e->tex = NULL;
+   }
+   e->tex = build_shape_mask(r->renderer, rect->w, rect->h, radius);
+   if (!e->tex) {
+      /* Out of memory or no renderer: the primitives still draw it. */
+      e->used = false;
+      cobalt_fill_rounded_rect(r, rect, radius, colour);
+      return;
+   }
+   e->used = true;
+   e->w = rect->w;
+   e->h = rect->h;
+   e->radius = radius;
+   e->last_used = ++r->shape_clock;
+   blit_shape(r, e->tex, rect, colour);
+}
+
 int
 cobalt_pill_height(cobalt_render *r)
 {
@@ -540,11 +686,11 @@ cobalt_draw_pill(cobalt_render *r, const char *key, const char *label, int x, in
    if (has_key) cobalt_text_size(r, COBALT_FONT_CAPTION, key, &kw, NULL);
    const int chip_w = has_key ? kw + pill_h / 3 + 4 : 0;
    SDL_Rect pill = { x, y, cobalt_pill_width(r, key, label), pill_h };
-   cobalt_fill_rounded_rect(r, &pill, pill_h / 2, body);
+   draw_rounded_shape(r, &pill, pill_h / 2, body);
    int tx = x + padx;
    if (has_key) {
       SDL_Rect chip = { x + 4, y + 4, chip_w, pill_h - 8 };
-      cobalt_fill_rounded_rect(r, &chip, chip.h / 2, COBALT_COLOUR_ACCENT);
+      draw_rounded_shape(r, &chip, chip.h / 2, COBALT_COLOUR_ACCENT);
       cobalt_draw_text(r, COBALT_FONT_CAPTION, key, chip.x + (chip.w - kw) / 2,
                        y + (pill_h - line) / 2, white);
       tx = chip.x + chip.w + 6;
