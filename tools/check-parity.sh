@@ -10,7 +10,10 @@ agents=${3:-AGENTS.md}
 fails=0
 fail() { echo "FAIL [parity] $1"; fails=$((fails + 1)); }
 
-state_re='^(implemented|partial|issue|declined|impossible|n/a)\b'
+# `\b` is a GNU extension: BSD regexec (macOS) does not implement it, so a
+# word boundary there made every cell fail on a Mac while CI stayed green. A
+# trailing group does the same job in both.
+state_re='^(implemented|partial|issue|declined|impossible|n/a)([^[:alnum:]_-]|$)'
 ref_re='(#[0-9]+|[a-z]+#[0-9]+)'
 
 rows=0
