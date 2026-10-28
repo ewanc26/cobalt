@@ -1010,6 +1010,12 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
          cobalt_settings_view_update(app, in);
          break;
 
+      case COBALT_SCREEN_CREDITS:
+         if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
+            app->screen = COBALT_SCREEN_HOME;
+         }
+         break;
+
       case COBALT_SCREEN_FEEDS:
          cobalt_app_update_feeds(app, in);
          break;
@@ -1285,6 +1291,10 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_SETTINGS:
          cobalt_settings_view_draw(app, r, surface);
+         break;
+
+      case COBALT_SCREEN_CREDITS:
+         cobalt_credits_view_draw(r);
          break;
 
       case COBALT_SCREEN_FEEDS:

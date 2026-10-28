@@ -380,7 +380,7 @@ drag_to(int x, int from, int to)
 
 /* Home selection is linear and wraps; the app remembers it across screens.
  * Must match COBALT_HOME_MENU_COUNT in app/app_internal.h. */
-#define HOME_MENU_COUNT 13
+#define HOME_MENU_COUNT 14
 
 static void
 open_home_item(int idx)
@@ -1172,7 +1172,7 @@ main(int argc, char **argv)
     * 9, and the two lists, feeds 3 and lists 4. Compose and search are left
     * out on purpose: B types there, so they have no pill. */
    {
-      static const int items[] = {0, 3, 4, 5, 6, 8, 9};
+      static const int items[] = {0, 3, 4, 5, 6, 8, 9, 12};
       for (size_t k = 0; k < sizeof items / sizeof items[0]; k++) {
          open_home_item(items[k]);
          settle(20);
@@ -1254,7 +1254,7 @@ main(int argc, char **argv)
       }
    }
 
-   /* The GamePad's Home list is thirteen rows at six visible, so the bottom
+   /* The GamePad's Home list is fourteen rows at six visible, so the bottom
     * half is only reachable by dragging: it moves a row per 44-pixel row of
     * travel. */
    {
@@ -1451,6 +1451,24 @@ main(int argc, char **argv)
       /* The toggles save to the working directory under the host stub; do not
        * leave that file behind for the next snapshot run. */
       remove("settings.dat");
+   }
+
+   /* Credits prints the full repository addresses rather than hiding them
+    * behind buttons a console cannot open. The screen is passive: B or the
+    * Back pill leaves it. */
+   {
+      open_home_item(12); /* credits */
+      settle(4);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_CREDITS);
+      CHECK(cobalt_credits_repo_count() == 5);
+      CHECK(strcmp(cobalt_credits_repo(0)->url,
+                   "https://github.com/ewanc26/cobalt") == 0);
+      CHECK(strcmp(cobalt_credits_repo(4)->url,
+                   "https://github.com/ewanc26/channel-blue") == 0);
+      shoot("credits");
+      frame(COBALT_BTN_BACK);
+      settle(4);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
    }
 
    /* High contrast is a whole-palette state, so it is checked on the surfaces
