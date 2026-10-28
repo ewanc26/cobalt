@@ -88,7 +88,7 @@ only rule out the failures that do not need hardware to find.
 Opens the real app and renderer in two windows sized like the Wii U outputs
 (TV 1280x720, GamePad 854x480) so UI work does not need Cemu. Needs the same
 Wolfram host build as `e2e`/`snapshot`. It runs against the shared mock PDS
-(`fixtures.h`) and signs in as `alice.test`; `make -C tests sim SIM_ARGS=--live`
+(`fixtures.h`) and signs in as `ewancroft.test` — a non-resolvable lookalike of the fixtures' `@ewancroft.uk`, so login discovery cannot escape the mock PDS to the real internet; `make -C tests sim SIM_ARGS=--live`
 uses the real network and the app's sign-in screen instead. State goes to
 `build/sim`.
 

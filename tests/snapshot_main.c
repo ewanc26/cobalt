@@ -73,7 +73,7 @@ video_post_json(const char *n, const char *playlist)
    static char buf[2400];
    snprintf(buf, sizeof buf,
       "{\"posts\":[{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/%s\","
-      "\"cid\":\"bafy%s\",\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\"},"
+      "\"cid\":\"bafy%s\",\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\"},"
       "\"record\":{\"$type\":\"app.bsky.feed.post\",\"text\":\"clip\","
       "\"createdAt\":\"2026-10-01T10:00:00.000Z\"},"
       "\"embed\":{\"$type\":\"app.bsky.embed.video#view\",\"cid\":\"bafyvid\","
@@ -442,7 +442,7 @@ main(int argc, char **argv)
 
    char svc[64];
    snprintf(svc, sizeof svc, "http://127.0.0.1:%d", port);
-   CHECK(cobalt_session_begin_login(svc, "alice.test", "app-pass"));
+   CHECK(cobalt_session_begin_login(svc, "ewancroft.test", "app-pass"));
    /* Bounded by time, not by poll count: a loaded machine can take well over
     * a second to finish the login against the mock PDS (cobalt#226). */
    const uint32_t signin_deadline = SDL_GetTicks() + 10000;
