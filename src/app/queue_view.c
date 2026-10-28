@@ -59,7 +59,8 @@ cobalt_queue_view_draw(const cobalt_queue_view *view, const cobalt_post_queue *q
                                "later to keep it here until you send it.",
                                m->pad_edge, top + m->pad_tile, width, 3,
                                COBALT_COLOUR_TEXT);
-      cobalt_draw_hints(r, "B: back");
+      /* No footer prompt: the header's Back pill is the only binding here
+       * and naming it twice reads as two different back buttons. */
       return;
    }
 
@@ -81,5 +82,5 @@ cobalt_queue_view_draw(const cobalt_queue_view *view, const cobalt_post_queue *q
       y += h + m->gap;
    }
 
-   cobalt_draw_hints(r, "A: send   X: discard   Up/Down: choose   B: back");
+   cobalt_draw_hints(r, "A: send   X: discard   Up/Down: choose");
 }

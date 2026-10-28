@@ -280,11 +280,13 @@ draw_row(cobalt_render *r, const cobalt_chat_convo *item, const SDL_Rect *rect,
    const int right = rect->x + rect->w - m->pad_tile;
    int y = rect->y + m->pad_tile;
 
-   /* Unread conversations get the same accent dot as unread notifications. */
+   /* Unread conversations get the same accent bar as unread notifications. */
    if (item->unread > 0) {
-      const int d = 10;
-      SDL_Rect dot = { rect->x + rect->w - d - 14, rect->y + rect->h - d - 12, d, d };
-      cobalt_fill_rounded_rect(r, &dot, d / 2, COBALT_COLOUR_ACCENT);
+      SDL_Rect bar = { rect->x + 3, rect->y + m->pad_tile, 4,
+                       rect->h - 2 * m->pad_tile };
+      if (bar.h > 0) {
+         cobalt_fill_rounded_rect(r, &bar, 2, COBALT_COLOUR_ACCENT);
+      }
    }
 
    const int name_w = cobalt_draw_text(r, COBALT_FONT_BODY, item->name, left, y,
@@ -453,5 +455,5 @@ cobalt_messages_view_draw(cobalt_messages_view *view, cobalt_render *r,
    }
 
    draw_list(r, surface, &view->nav, inbox, "No messages yet.",
-             "X: new message   Y: requests   B: back   +: refresh");
+             "X: new message   Y: requests   +: refresh");
 }

@@ -133,9 +133,11 @@ draw_row(cobalt_render *r, const cobalt_notification *item, const SDL_Rect *rect
     * tile already carries the focus state, and two competing highlights on one
     * row is harder to read than one. */
    if (item->unread) {
-      const int d = 10;
-      SDL_Rect dot = { rect->x + rect->w - d - 14, rect->y + rect->h - d - 12, d, d };
-      cobalt_fill_rounded_rect(r, &dot, d / 2, COBALT_COLOUR_ACCENT);
+      SDL_Rect bar = { rect->x + 3, rect->y + m->pad_tile, 4,
+                       rect->h - 2 * m->pad_tile };
+      if (bar.h > 0) {
+         cobalt_fill_rounded_rect(r, &bar, 2, COBALT_COLOUR_ACCENT);
+      }
    }
 
    cobalt_avatar_draw(r, item->avatar, item->actor, item->handle, left, y,
