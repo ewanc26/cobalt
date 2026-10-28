@@ -1027,11 +1027,19 @@ main(int argc, char **argv)
       settle(40);
 
       int a = -1, y = -1;
+      int pills = 0;
       for (int i = 0; i < 16; i++) {
          if (cobalt_hints_pill(i, &r, key, sizeof key) != 1) break;
+         /* Every prompt on the pad is a fingertip tall — they are buttons. */
+         if (r.h < 44) {
+            printf("hint pill %d is %d px tall\n", i, r.h);
+         }
+         CHECK(r.h >= 44);
+         pills++;
          if (a < 0 && strcmp(key, "A") == 0) a = i;
          if (y < 0 && strcmp(key, "Y") == 0) y = i;
       }
+      CHECK(pills == 4);
       CHECK(a >= 0);
       CHECK(y >= 0);
 

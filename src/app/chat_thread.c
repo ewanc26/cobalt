@@ -407,7 +407,7 @@ draw_join_requests(cobalt_chat_thread_view *view, cobalt_render *r,
    }
 
    const int top = cobalt_content_top(r);
-   const int bottom = m->height - m->pad_edge - 28;
+   const int bottom = cobalt_content_bottom(r);
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
    cobalt_listnav_draw_begin(&view->join_nav, touchable);

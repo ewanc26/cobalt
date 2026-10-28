@@ -277,8 +277,8 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
 
    /* A card taller than the viewport is still drawn whole; the strip keeps the
     * hint legible instead of printing it across the card. */
-   const SDL_Rect strip = { 0, m->height - m->pad_edge - 22, m->width,
-                            m->pad_edge + 22 };
+   const int strip_top = cobalt_content_bottom(r);
+   const SDL_Rect strip = { 0, strip_top, m->width, m->height - strip_top };
    cobalt_fill_rect(r, &strip, COBALT_COLOUR_BG_BOTTOM);
 
    char footer[120];

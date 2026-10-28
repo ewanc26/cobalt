@@ -47,7 +47,7 @@ cobalt_queue_view_draw(const cobalt_queue_view *view, const cobalt_post_queue *q
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int top = cobalt_content_top(r);
-   const int bottom = m->height - m->pad_edge - 28;
+   const int bottom = cobalt_content_bottom(r);
    const int width = m->width - 2 * m->pad_edge;
 
    cobalt_draw_text(r, COBALT_FONT_TITLE, "Queued posts", m->pad_edge, m->pad_edge,

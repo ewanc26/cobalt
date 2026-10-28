@@ -137,6 +137,10 @@ int cobalt_pill_height(cobalt_render *r);
 int cobalt_pill_width(cobalt_render *r, const char *key, const char *label);
 void cobalt_draw_pill(cobalt_render *r, const char *key, const char *label, int x, int y);
 
+/* The last y a screen may draw to without running under the footer prompts.
+ * Derived from the pill's own height, so a taller pill cannot overlap. */
+int cobalt_content_bottom(cobalt_render *r);
+
 /*
  * A Wii U menu style tile: rounded, light, with a soft drop shadow and a top
  * sheen. `focus` is 0..1 and drives the highlight and lift (AGENTS.md §5 asks

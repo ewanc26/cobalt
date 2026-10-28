@@ -347,9 +347,10 @@ draw_start(cobalt_messages_view *view, cobalt_render *r, cobalt_surface_id surfa
                      cobalt_keyboard_height(surface) };
    cobalt_keyboard_draw(&view->start.kb, r, surface, &keys);
 
-   /* A bare phrase, not "Key: label": B is the keyboard's backspace here, so
-    * the footer must not name it as a button. */
-   cobalt_draw_hints(r, "Type a handle or DID, then OK");
+   /* No footer here: this screen's keyboard runs down into the strip the
+    * prompts use, so a row of them would be drawn across its last row of keys.
+    * The field's placeholder and the OK key say what to do, and naming B would
+    * be wrong anyway — on this screen it is the keyboard's backspace. */
 }
 
 /* One list of rows, as the inbox and the request list both draw it. An empty
@@ -360,7 +361,7 @@ draw_list(cobalt_render *r, cobalt_surface_id surface, cobalt_listnav *nav,
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int top = cobalt_content_top(r);
-   const int bottom = m->height - m->pad_edge - 28;
+   const int bottom = cobalt_content_bottom(r);
    const bool touchable = (surface == COBALT_SURFACE_DRC);
    const bool busy = cobalt_session_busy();
 

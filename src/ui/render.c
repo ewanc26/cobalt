@@ -679,20 +679,51 @@ draw_rounded_shape(cobalt_render *r, const SDL_Rect *rect, int radius, SDL_Color
    blit_shape(r, e->tex, rect, colour);
 }
 
+/*
+ * The face a control prompt is set in. The GamePad is held in two hands and
+ * touched, so its prompts are body sized; the TV's are a caption along the
+ * bottom of a picture read from across a room, where they only have to be
+ * legible, not tappable.
+ */
+static cobalt_font_id
+pill_font(const cobalt_render *r)
+{
+   return (r && r->surface == COBALT_SURFACE_DRC) ? COBALT_FONT_BODY
+                                                  : COBALT_FONT_CAPTION;
+}
+
 int
 cobalt_pill_height(cobalt_render *r)
 {
-   return cobalt_font_line_height(r, COBALT_FONT_CAPTION) + 12;
+   const int line = cobalt_font_line_height(r, pill_font(r));
+   const int h = line + 12;
+   /* The GamePad's prompts are touched, so they are at least a fingertip tall
+    * (44 px on the 480-line panel, as the rows and keys are). The TV's are a
+    * caption in the corner of a picture nobody touches. */
+   return (r && r->surface == COBALT_SURFACE_DRC && h < 44) ? 44 : h;
+}
+
+int
+cobalt_content_bottom(cobalt_render *r)
+{
+   if (!r) {
+      return 0;
+   }
+   /* The top of the footer strip, less a little air: the last row a screen may
+    * draw without running under the prompts. Derived rather than a constant so
+    * a taller pill cannot overlap content. */
+   return r->m->height - r->m->pad_edge / 2 - cobalt_pill_height(r) - 4;
 }
 
 int
 cobalt_pill_width(cobalt_render *r, const char *key, const char *label)
 {
    const int pill_h = cobalt_pill_height(r);
+   const cobalt_font_id font = pill_font(r);
    const int padx = pill_h / 3 + 2;
    int kw = 0, lw = 0;
-   if (key && key[0]) cobalt_text_size(r, COBALT_FONT_CAPTION, key, &kw, NULL);
-   if (label && label[0]) cobalt_text_size(r, COBALT_FONT_CAPTION, label, &lw, NULL);
+   if (key && key[0]) cobalt_text_size(r, font, key, &kw, NULL);
+   if (label && label[0]) cobalt_text_size(r, font, label, &lw, NULL);
    if (key && key[0]) {
       return padx + (kw + pill_h / 3 + 4) + 6 + lw + padx - 2;
    }
@@ -704,14 +735,15 @@ cobalt_pill_width(cobalt_render *r, const char *key, const char *label)
 void
 cobalt_draw_pill(cobalt_render *r, const char *key, const char *label, int x, int y)
 {
-   const int line = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
-   const int pill_h = line + 12;
+   const cobalt_font_id font = pill_font(r);
+   const int line = cobalt_font_line_height(r, font);
+   const int pill_h = cobalt_pill_height(r);
    const int padx = pill_h / 3 + 2;
    const SDL_Color white = { 0xFF, 0xFF, 0xFF, 0xFF };
    const SDL_Color body = { 0xFF, 0xFF, 0xFF, 0xE6 };
    const bool has_key = key && key[0];
    int kw = 0;
-   if (has_key) cobalt_text_size(r, COBALT_FONT_CAPTION, key, &kw, NULL);
+   if (has_key) cobalt_text_size(r, font, key, &kw, NULL);
    const int chip_w = has_key ? kw + pill_h / 3 + 4 : 0;
    SDL_Rect pill = { x, y, cobalt_pill_width(r, key, label), pill_h };
    draw_rounded_shape(r, &pill, pill_h / 2, body);
@@ -719,11 +751,11 @@ cobalt_draw_pill(cobalt_render *r, const char *key, const char *label, int x, in
    if (has_key) {
       SDL_Rect chip = { x + 4, y + 4, chip_w, pill_h - 8 };
       draw_rounded_shape(r, &chip, chip.h / 2, COBALT_COLOUR_ACCENT);
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, key, chip.x + (chip.w - kw) / 2,
+      cobalt_draw_text(r, font, key, chip.x + (chip.w - kw) / 2,
                        y + (pill_h - line) / 2, white);
       tx = chip.x + chip.w + 6;
    }
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, label, tx, y + (pill_h - line) / 2,
+   cobalt_draw_text(r, font, label, tx, y + (pill_h - line) / 2,
                     COBALT_COLOUR_TEXT);
 }
 
@@ -774,8 +806,8 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
       return;
    }
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   const int line = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
-   const int pill_h = line + 12;
+   const cobalt_font_id font = pill_font(r);
+   const int pill_h = cobalt_pill_height(r);
    const int padx = pill_h / 3 + 2;
    const int gap = 16;
    const int right = m->width - m->pad_edge;
@@ -806,7 +838,7 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
          *colon = '\0';
          snprintf(h->key, sizeof h->key, "%s", seg);
          snprintf(h->label, sizeof h->label, "%s", colon + 2);
-         cobalt_text_size(r, COBALT_FONT_CAPTION, h->key, &h->kw, NULL);
+         cobalt_text_size(r, font, h->key, &h->kw, NULL);
       } else {
          snprintf(h->label, sizeof h->label, "%s", seg);
       }
@@ -822,7 +854,7 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
                   h->key);
          h->pill = s_hint_count++;
       }
-      cobalt_text_size(r, COBALT_FONT_CAPTION, h->label, &h->lw, NULL);
+      cobalt_text_size(r, font, h->label, &h->lw, NULL);
       const int chip_w = h->key[0] ? h->kw + pill_h / 3 + 4 : 0;
       h->w = padx + (h->key[0] ? chip_w + 6 : 0) + h->lw + padx -
              (h->key[0] ? 2 : 0);
@@ -830,9 +862,12 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
 
    /* The GamePad is short: with more than three prompts the first half moves
     * into the header band (right-aligned, under the Back pill) so the bottom
-    * edge is not a crowded strip. */
+    * edge is not a crowded strip — but only when a row of them fits there.
+    * With finger-sized pills it does not, and a second row in the band would
+    * sit on the content; the whole row goes along the bottom instead. */
    int header_n = 0;
-   if (m->width < 1000 && count > 3) {
+   if (m->width < 1000 && count > 3 &&
+       m->pad_edge + 2 * pill_h + 6 <= cobalt_header_height(r)) {
       header_n = count / 2;
       /* Keep clear of the title and subtitle on the left. */
       const int left_limit = 300;
@@ -1160,9 +1195,10 @@ cobalt_typing_area(cobalt_render *r)
    }
    const cobalt_metrics *m = r->m;
    const int top = cobalt_content_top(r);
-   /* Down to the footer's top edge, which is one pill plus the half margin
-    * cobalt_draw_hints() puts under it. */
-   const int bottom = m->height - m->pad_edge / 2 - cobalt_pill_height(r) - m->gap;
+   /* Right down to the screen's bottom margin: a reader-mode TV on one of
+    * these screens draws no footer prompts, because the buttons are on the
+    * GamePad, so leaving room for them would be a strip of empty background. */
+   const int bottom = m->height - m->pad_edge;
    area.x = m->pad_edge;
    area.y = top;
    area.w = m->width - 2 * m->pad_edge;
