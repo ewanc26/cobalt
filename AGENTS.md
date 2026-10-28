@@ -911,3 +911,5 @@ This block is byte-identical in every repo of the stack and is drift-checked by 
 ## File naming
 
 Source files are named `<scope>/<atom>.<ext>`: the directory is the scope and the file is one atom. This applies to every language, with the language's own extension (for C, `.c` and `.h`; for C++, `.cpp` and `.hpp`).
+
+A screen with its own selection and touch state is an atom of its own: `app/<screen>_view.c` owns that screen's update/draw pair and hit rectangles, and its `.h` declares them. `settings_view.c` and `account_view.c` follow this; `app_internal.h` keeps shared app state and helpers, not per-screen prototypes. The home menu, feed picker and sign-in still live in `app_home.c` because they share the menu lifecycle; split a screen out when it grows its own independent state, not merely to shorten a file.
