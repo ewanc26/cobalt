@@ -498,13 +498,17 @@ cobalt_app_draw_home_tv(cobalt_app *app, cobalt_render *r)
    const cobalt_metrics *m = cobalt_render_metrics(r);
    cobalt_app_draw_header(r, "Bluesky for Wii U");
 
-   /* Two rows of large tiles, Wii U menu style. Ten in one row left each
-    * about 100px wide, which truncated every label. */
-   const int cols = (MENU_COUNT + 1) / 2;
+   /* Four columns of large tiles, Wii U menu style. Six columns plus two rows
+    * fitted the height, but each tile was narrower than the longer labels:
+    * "Notifications" and "Queued posts" had to drop to the caption face, so
+    * one row of the grid read at a different size from the other. The extra
+    * row buys tiles wide enough to set every label in the body face. */
+   const int cols = 4;
    const int rows = (MENU_COUNT + cols - 1) / cols;
    const int top = cobalt_content_top(r);
-   const int tile_h = 130;
+   const int tile_h = 110;
    const int tile_w = (m->width - 2 * m->pad_edge - m->gap * (cols - 1)) / cols;
+   const int label_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
 
    for (int i = 0; i < MENU_COUNT; i++) {
       const int col = i % cols;
@@ -513,30 +517,25 @@ cobalt_app_draw_home_tv(cobalt_app *app, cobalt_render *r)
                         top + row * (tile_h + m->gap), tile_w, tile_h };
       cobalt_draw_tile(r, &tile, app->focus[i]);
 
-      SDL_Color label = menu_enabled(i) ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM;
-      /* Half the tile padding on each side for the label: at six tiles a row a
-       * long word such as "Notifications" otherwise breaks mid-word. */
-      int label_inset = m->pad_tile / 2;
-      int label_max = tile.w - 2 * label_inset;
-      int label_w = 0;
-      cobalt_font_id label_font = COBALT_FONT_BODY;
-      cobalt_text_size(r, COBALT_FONT_BODY, menu_label(i), &label_w, NULL);
-      if (label_w > label_max) {
-         /* The smaller font, with less inset, before any word is allowed to break:
-          * a word that still does not fit then wraps mid-word, which reads wrong. */
-         label_font = COBALT_FONT_CAPTION;
-         label_inset = 4;
-         label_max = tile.w - 2 * label_inset;
-      }
-      cobalt_draw_text_wrapped(r, label_font, menu_label(i), tile.x + label_inset,
-                               tile.y + m->pad_tile, label_max, 2, label);
+      const bool enabled = menu_enabled(i);
+      SDL_Color label = enabled ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM;
 
-      if (!menu_enabled(i)) {
-         cobalt_draw_text(r, COBALT_FONT_CAPTION,
-                          (signed_in() || MENU[i] == ACTION_ACCOUNT) ? "Unavailable" : "Sign in first",
-                          tile.x + m->pad_tile, tile.y + tile.h - m->pad_tile - 24,
-                          COBALT_COLOUR_TEXT_DIM);
-      }
+      /* The label is centred in the tile so a row of them reads as one band.
+       * A disabled tile is dimmed but says nothing itself: the note inside
+       * every such tile would repeat "Sign in first" seven times across the
+       * grid, and the strip under it already says why the focused tile is
+       * unavailable in words. */
+      const int label_max = tile.w - 2 * m->pad_tile;
+      int label_w = 0;
+      cobalt_text_size(r, COBALT_FONT_BODY, menu_label(i), &label_w, NULL);
+      const cobalt_font_id label_font =
+         (label_w > label_max) ? COBALT_FONT_CAPTION : COBALT_FONT_BODY;
+      const int label_line = (label_font == COBALT_FONT_BODY)
+                                ? label_h
+                                : cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+      cobalt_draw_text_wrapped(r, label_font, menu_label(i), tile.x + m->pad_tile,
+                               tile.y + (tile.h - label_line) / 2, label_max, 1,
+                               label);
    }
 
    /* Detail strip for the focused tile: the TV has room, so use it rather

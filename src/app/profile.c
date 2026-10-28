@@ -236,8 +236,17 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
                     COBALT_COLOUR_TILE);
    {
       SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
-      cobalt_draw_text(r, COBALT_FONT_CAPTION,
-                       cobalt_session_busy() ? "Loading..." : profile->handle,
+      /* The tab is part of the screen's identity, not a button, so it belongs
+       * here with the handle rather than as a pill in the footer. */
+      char subtitle[96];
+      if (cobalt_session_busy()) {
+         snprintf(subtitle, sizeof(subtitle), "Loading...");
+      } else {
+         snprintf(subtitle, sizeof(subtitle), "%s%s%s", profile->handle,
+                  profile->handle[0] ? "  \xC2\xB7  " : "",
+                  wf_profile_tab_name(cobalt_session_profile_tab()));
+      }
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle,
                        m->pad_edge,
                        m->pad_edge +
                           cobalt_font_line_height(r, COBALT_FONT_TITLE) -
@@ -300,8 +309,23 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
                        y + m->gap, COBALT_COLOUR_TEXT_DIM);
    }
 
+   /* Name what the buttons do on the row that is actually selected: they act
+    * on the account on the header row and on the post on any other, and on
+    * your own profile the header row has nothing for A, Left or Right (the
+    * session layer refuses them for is_self) — so promising those would be
+    * false. */
    char hint_text[160];
-   snprintf(hint_text, sizeof(hint_text), "[%s]  Y: more   A/Left/Right: act",
-            wf_profile_tab_name(cobalt_session_profile_tab()));
+   if (view->nav.selected == HEADER_ROW) {
+      if (profile->is_self) {
+         snprintf(hint_text, sizeof(hint_text), "Y: more");
+      } else {
+         snprintf(hint_text, sizeof(hint_text),
+                  "A: %s   Left: mute   Right: block   Y: more",
+                  profile->viewer_following[0] ? "unfollow" : "follow");
+      }
+   } else {
+      snprintf(hint_text, sizeof(hint_text),
+               "A: thread   Left: like   Right: repost   Y: more");
+   }
    cobalt_draw_hints(r, cobalt_session_busy() ? "Working..." : hint_text);
 }
