@@ -172,6 +172,10 @@ cobalt_app_view_position(const cobalt_app *app, cobalt_screen screen, int *selec
             sel = app->profile.nav.selected;
             scr = app->profile.nav.scroll;
             break;
+         case COBALT_SCREEN_FEEDS:
+            sel = app->feeds_selected;
+            scr = app->feeds_scroll;
+            break;
          default:
             break;
       }
@@ -188,6 +192,12 @@ void
 cobalt_app_timeline_position(const cobalt_app *app, int *selected, int *scroll)
 {
    cobalt_app_view_position(app, COBALT_SCREEN_TIMELINE, selected, scroll);
+}
+
+int
+cobalt_app_chat_offset(const cobalt_app *app)
+{
+   return app ? app->chat_view.offset : 0;
 }
 
 const cobalt_popup *

@@ -821,6 +821,20 @@ main(int argc, char **argv)
    settle(40);
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_CHAT_THREAD);
    shoot("chat-thread");
+   /* Dragging the conversation goes back through it, as Up does: a finger
+    * moving down the panel reveals an older message. */
+   {
+      const int before = cobalt_app_chat_offset(g_app);
+      drag_to(300, 120, 120 + 80);
+      settle(3);
+      if (cobalt_app_chat_offset(g_app) != before + 1) {
+         printf("chat drag: %d -> %d\n", before, cobalt_app_chat_offset(g_app));
+      }
+      CHECK(cobalt_app_chat_offset(g_app) == before + 1);
+      drag_to(300, 200, 200 - 80);
+      settle(3);
+      CHECK(cobalt_app_chat_offset(g_app) == before);
+   }
    /* A opens the keyboard for a reply. On the keyboard B is backspace, so it is
     * left by touching its Cancel key, which sits on the bottom row of the GamePad. */
    frame(COBALT_BTN_CONFIRM);
@@ -896,6 +910,25 @@ main(int argc, char **argv)
    CHECK(strcmp(cobalt_session_saved_feeds()->feeds[0].label, "Cat Pics") == 0);
    CHECK(strcmp(cobalt_session_saved_feeds()->feeds[1].label, "poetry") == 0);
    shoot("feeds");
+
+   /* Dragging the feed list moves the highlight a row per row of travel. */
+   {
+      int sel0 = -1, scr0 = -1;
+      cobalt_app_view_position(g_app, COBALT_SCREEN_FEEDS, &sel0, &scr0);
+      CHECK(sel0 == 0);
+      drag_to(300, 300, 300 - 44);
+      settle(3);
+      int sel1 = -1, scr1 = -1;
+      cobalt_app_view_position(g_app, COBALT_SCREEN_FEEDS, &sel1, &scr1);
+      if (sel1 != 1) {
+         printf("feeds drag: %d -> %d\n", sel0, sel1);
+      }
+      CHECK(sel1 == 1);
+      drag_to(300, 100, 100 + 44);
+      settle(3);
+      cobalt_app_view_position(g_app, COBALT_SCREEN_FEEDS, &sel1, &scr1);
+      CHECK(sel1 == 0);
+   }
 
    frame(COBALT_BTN_BACK);
    settle(10);
