@@ -2,6 +2,7 @@
 #include "util/log.h"
 
 #ifdef COBALT_HAS_WOLFRAM
+#include <wolfram/embed_typed.h>
 #include <wolfram/feed_typed.h>
 #include <wolfram/post_view_typed.h>
 #include <wolfram/time.h>
@@ -324,6 +325,7 @@ cobalt_feed_embed_note(const char *type)
    } NOTES[] = {
       { "app.bsky.embed.recordWithMedia", "[quote + media]" },
       { "app.bsky.embed.images",          "[image]" },
+      { "app.bsky.embed.gallery",         "[gallery]" },
       { "app.bsky.embed.video",           "[video]" },
       { "app.bsky.embed.external",        "[link]" },
       { "app.bsky.embed.record",          "[quote]" },
@@ -444,12 +446,27 @@ apply_facets(cobalt_post *post, const wf_post_record *rec)
    }
 }
 
+static void
+add_image(cobalt_post *post, const char *thumb, const char *alt,
+          int width, int height)
+{
+   if (!thumb || !thumb[0] || post->image_count >= COBALT_POST_IMAGES_MAX) {
+      return;
+   }
+   cobalt_post_image *img = &post->images[post->image_count++];
+   snprintf(img->thumb, sizeof(img->thumb), "%s", thumb);
+   cobalt_feed_copy_text(img->alt, sizeof(img->alt), alt ? alt : "");
+   img->aspect_w = width > 0 ? width : 0;
+   img->aspect_h = height > 0 ? height : 0;
+}
+
 /*
- * Populate the drawable media (images, link card) and the quote from a typed
- * embed. The bracket note is derived from the embed's own $type.
+ * Populate the drawable media (images, gallery, link card) and the quote from a
+ * typed embed. The bracket note is derived from the embed's own $type.
  *
- * A pure quote or a video embed leaves both post->image_count and
- * post->link.uri empty, so the bracket note is the only thing shown for those.
+ * A pure quote, a video embed without a poster, or a gallery with no thumbnail
+ * leaves both post->image_count and post->link.uri empty, so the bracket note
+ * is the only thing shown for those.
  */
 static void
 apply_embed(cobalt_post *post, const wf_post_embed *embed)
@@ -458,16 +475,8 @@ apply_embed(cobalt_post *post, const wf_post_embed *embed)
             cobalt_feed_embed_note(embed->type));
 
    for (size_t i = 0; i < embed->image_count; i++) {
-      if (post->image_count >= COBALT_POST_IMAGES_MAX) {
-         break;
-      }
       const wf_post_embed_image *src = &embed->images[i];
-      cobalt_post_image *img = &post->images[post->image_count];
-      snprintf(img->thumb, sizeof(img->thumb), "%s", src->thumb);
-      cobalt_feed_copy_text(img->alt, sizeof(img->alt), src->alt ? src->alt : "");
-      img->aspect_w = src->width;
-      img->aspect_h = src->height;
-      post->image_count++;
+      add_image(post, src->thumb, src->alt, src->width, src->height);
    }
 
    if (embed->has_external) {
@@ -514,6 +523,94 @@ apply_embed(cobalt_post *post, const wf_post_embed *embed)
    }
 }
 
+/*
+ * Wolfram's embed-view parsers take the JSON text rather than the cJSON node,
+ * because they are also used for standalone query bodies. Serialising here
+ * keeps that one parser authoritative instead of re-reading the shape with a
+ * second set of cJSON lookups that could disagree with it.
+ */
+static wf_status
+parse_embed_view_json(const cJSON *json, wf_embed_view *view)
+{
+   char *text = cJSON_PrintUnformatted(json);
+   if (!text) {
+      return WF_ERR_ALLOC;
+   }
+   const wf_status status = wf_embed_parse_view(text, strlen(text), view);
+   cJSON_free(text);
+   return status;
+}
+
+static void
+apply_gallery(cobalt_post *post, const wf_embed_view_gallery *gallery)
+{
+   for (size_t i = 0; i < gallery->count; i++) {
+      const wf_embed_view_image *src = &gallery->items[i];
+      add_image(post, src->thumb, src->alt, src->width, src->height);
+   }
+   if (post->image_count > 0) {
+      post->embed_note[0] = '\0';
+   }
+}
+
+static void
+apply_external_meta(cobalt_post *post, const wf_embed_view_external *ext)
+{
+   if (ext->has_reading_time && ext->reading_time > 0 &&
+       ext->reading_time <= 9999) {
+      post->link.reading_time = (int) ext->reading_time;
+   }
+   if (ext->source) {
+      const cJSON *title = cJSON_GetObjectItemCaseSensitive(ext->source, "title");
+      if (cJSON_IsString(title) && title->valuestring) {
+         cobalt_feed_copy_text(post->link.source_title,
+                               sizeof(post->link.source_title),
+                               title->valuestring);
+      }
+   }
+}
+
+/*
+ * `app.bsky.embed.gallery#view` and the enriched `external#view` fields are not
+ * in the older wf_post_embed shape, so they are read through Wolfram's
+ * embed-view parser. The media half of recordWithMedia is the same shape one
+ * level down; the outer `$type` decides where to look. Images, video and the
+ * outer quote stay with apply_embed above.
+ */
+static void
+apply_extended_media(cobalt_post *post, const cJSON *embed_json)
+{
+   const cJSON *media = embed_json;
+   const cJSON *outer_type = cJSON_GetObjectItemCaseSensitive(embed_json, "$type");
+   if (cJSON_IsString(outer_type) && outer_type->valuestring &&
+       strstr(outer_type->valuestring, "app.bsky.embed.recordWithMedia")) {
+      media = cJSON_GetObjectItemCaseSensitive(embed_json, "media");
+   }
+   if (!cJSON_IsObject(media)) {
+      return;
+   }
+
+   const cJSON *type = cJSON_GetObjectItemCaseSensitive(media, "$type");
+   const char *media_type = cJSON_IsString(type) ? type->valuestring : NULL;
+   if (!media_type ||
+       (!strstr(media_type, "app.bsky.embed.gallery#view") &&
+        !strstr(media_type, "app.bsky.embed.external#view"))) {
+      return;
+   }
+
+   wf_embed_view view;
+   memset(&view, 0, sizeof(view));
+   if (parse_embed_view_json(media, &view) != WF_OK) {
+      return;
+   }
+   if (view.kind == WF_EMBED_VIEW_GALLERY) {
+      apply_gallery(post, &view.u.gallery);
+   } else if (view.kind == WF_EMBED_VIEW_EXTERNAL) {
+      apply_external_meta(post, &view.u.external);
+   }
+   wf_embed_view_free(&view);
+}
+
 /* The embed arrives as an open cJSON subtree; Wolfram flattens it. A failed
  * read (allocation) leaves the post without media or note rather than
  * half-filled. */
@@ -528,6 +625,7 @@ fill_embed(cobalt_post *post, const cJSON *embed_json)
       return;
    }
    apply_embed(post, &embed);
+   apply_extended_media(post, embed_json);
    wf_post_embed_free(&embed);
 }
 

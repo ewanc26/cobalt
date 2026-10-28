@@ -61,10 +61,10 @@ replace testing on the console.
 - Pinned posts
 - Links shown as a QR code (Wolfram's encoder), so a phone can open what the console cannot
 - Avatars
-- Post, reply and quote images with alt text
+- Post, reply, quote and gallery images with alt text (the first four of a gallery)
 - A full-size image viewer, from the post menu, on both screens
 - Who liked or reposted a post, from the post menu
-- Link-card previews
+- Link-card previews that name the publication and reading time when the view supplies them
 - Actor search
 - Custom feed browsing
 - Read-only lists and list members

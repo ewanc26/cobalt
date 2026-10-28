@@ -598,13 +598,28 @@ card that's an exception keeps `cobalt_postcard_height()` and
 the same `embed_block_height()` — which is worth more than a height that
 happens to track a particular photo's aspect ratio.
 
-The pure geometry — contain-fit sizing, and the link card's host-only display
-string (`cobalt_feed_link_domain`, "bsky.app" rather than the full URI) — is
+`app.bsky.embed.gallery#view` is a separate shape from `images#view`: its
+items use `thumbnail`, not `thumb`. The first four draw in the same image row,
+so the card has one media path rather than a second gallery layout. An enriched
+`external#view` can carry `source.title` and `readingTime`; the card's bottom
+line names the publication and the reading time when present, adding the
+minutes to a publication name and falling back to the bare host otherwise.
+Both shapes are read through Wolfram's `wf_embed_parse_view` and
+`wf_embed_parse_external_embed_view`, not a second cJSON reader: they are not
+in the older `wf_post_embed` result, and the media half of a `recordWithMedia`
+is the same shape one level down. The parser needs JSON text, so `fill_embed`
+serialises the open cJSON subtree once per post — a fetch-time cost, not a
+frame-loop one — and only for a gallery or external media type.
+
+The pure geometry — contain-fit sizing, and the link card's host fallback
+(`cobalt_feed_link_domain`, "bsky.app" rather than the full URI) — is
 exposed and unit tested (`tests/test_main.c`), per §10's carve-out for
 platform-independent logic. The embed-JSON parsing that feeds it
-(`fill_embed_media` in `atproto/feed.c`) is behind `COBALT_HAS_WOLFRAM` like
-the rest of the view-flattening code, so it gets sweep and link coverage but
-not a unit test run — same situation as `fill_from_view` already was.
+(`fill_embed` in `atproto/feed.c`) is behind `COBALT_HAS_WOLFRAM` like the rest
+of the view-flattening code, so it gets sweep and link coverage but not a unit
+test run — same situation as `fill_from_view` already was. The gallery and
+enriched-external cases are covered by the snapshot fixtures, which check the
+flattened fields and shoot both cards.
 
 Alt text landed alongside this rather than in the same pass, initially dropped
 for scope. `cobalt_post_image.alt` is captured the same way `thumb` is; every

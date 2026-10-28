@@ -529,11 +529,27 @@ draw_link_card(cobalt_render *r, const cobalt_post *post, int x, int y,
                                      text_width, 2, COBALT_COLOUR_TEXT_DIM);
    }
 
+   /* The bottom line names the publication when the view supplied one, with
+    * the reading time beside it; otherwise it falls back to the host, which is
+    * all a plain link card has. Wrapped to one line so a long publication name
+    * cannot run out of the card. */
    char domain[64];
+   char footer[128];
    cobalt_feed_link_domain(post->link.uri, domain, sizeof(domain));
-   if (domain[0]) {
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, domain, text_x,
-                       y + height - pad - caption_h, COBALT_COLOUR_ACCENT_TEXT);
+   if (post->link.source_title[0] && post->link.reading_time > 0) {
+      snprintf(footer, sizeof(footer), "%d min \xC2\xB7 %s",
+               post->link.reading_time, post->link.source_title);
+   } else if (post->link.source_title[0]) {
+      snprintf(footer, sizeof(footer), "%s", post->link.source_title);
+   } else if (post->link.reading_time > 0) {
+      snprintf(footer, sizeof(footer), "%d min read", post->link.reading_time);
+   } else {
+      snprintf(footer, sizeof(footer), "%s", domain);
+   }
+   if (footer[0]) {
+      cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, footer, text_x,
+                               y + height - pad - caption_h, text_width, 1,
+                               COBALT_COLOUR_ACCENT_TEXT);
    }
 }
 

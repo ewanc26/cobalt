@@ -58,10 +58,12 @@ extern "C" {
 /*
  * Image embeds and link cards.
  *
- * `app.bsky.embed.images` allows up to four images per post. Both this and
+ * `app.bsky.embed.images` allows up to four images per post, and a gallery
+ * embed can carry more; Cobalt draws the first four of either. Both this and
  * the link-card fields below are read straight from the view's already-
- * resolved CDN URLs (`thumb`, `external.thumb`) — the view shape carries no
- * blob refs to reconstruct, unlike a record fetched directly from a repo.
+ * resolved CDN URLs (`thumb`/`thumbnail`, `external.thumb`) — the view shape
+ * carries no blob refs to reconstruct, unlike a record fetched directly from a
+ * repo.
  */
 #define COBALT_POST_IMAGES_MAX     4
 #define COBALT_POST_THUMB_MAX    256
@@ -105,6 +107,13 @@ typedef struct {
    char title[COBALT_POST_LINK_TITLE_MAX];
    char description[COBALT_POST_LINK_DESC_MAX];
    char thumb[COBALT_POST_THUMB_MAX];
+   /* Minutes, from an external view's `readingTime`; 0 when the view did not
+    * carry one. Only articles and similar long-form sources set it. */
+   int reading_time;
+   /* The publication or site behind an enhanced external card, from
+    * `external.source.title`; empty when absent. Drawn in place of the bare
+    * host so a Standard.site article names its publication. */
+   char source_title[COBALT_POST_NAME_MAX];
 } cobalt_post_link;
 
 #define COBALT_POST_QUOTE_TEXT_MAX 256
@@ -171,13 +180,15 @@ typedef struct {
     */
    char embed_note[32];
 
-   /* Populated for an `app.bsky.embed.images` embed, or the image half of a
-    * `recordWithMedia` one. image_count is 0 for any other embed. */
+   /* Populated for an `app.bsky.embed.images` or `app.bsky.embed.gallery`
+    * embed, or the image/gallery half of a `recordWithMedia` one. image_count
+    * is 0 for any other embed. */
    cobalt_post_image images[COBALT_POST_IMAGES_MAX];
    int image_count;
 
    /* Populated for an `app.bsky.embed.external` embed, or the external half
-    * of a `recordWithMedia` one. link.uri[0] == '\0' otherwise. */
+    * of a `recordWithMedia` one, including an enhanced view's reading time and
+    * source publication. link.uri[0] == '\0' otherwise. */
    cobalt_post_link link;
 
    /* Populated for an `app.bsky.embed.record` or `recordWithMedia` embed whose

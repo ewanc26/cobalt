@@ -60,12 +60,25 @@ register_fixtures(wf_mock_pds *pds)
       "\"record\":{\"text\":\"A link card\",\"createdAt\":\"2026-10-01T10:00:00.000Z\"},"
       "\"embed\":{\"$type\":\"app.bsky.embed.external#view\",\"external\":{\"uri\":\"https://example.com/some/very/long/path/to/an/article\","
       "\"title\":\"An article with a rather long title that needs truncating somewhere\",\"description\":\"A description that is also long enough to need clipping in the card.\","
-      "\"thumb\":\"https://127.0.0.1:1/t.jpg\"}},"
+      "\"thumb\":\"https://127.0.0.1:1/t.jpg\",\"readingTime\":4,"
+      "\"source\":{\"$type\":\"app.bsky.embed.external#viewExternalSource\",\"uri\":\"https://example.com\",\"title\":\"Example Press\"}}},"
       "\"likeCount\":0,\"repostCount\":0,\"replyCount\":0,\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}");
-   static char tl[9000];
-   snprintf(tl, sizeof tl, "{\"feed\":[{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s}],\"cursor\":\"c1\"}",
+   /* A gallery is a separate view shape from images#view. The first four are
+    * drawn; the fixture carries three so the row is visibly a gallery. */
+   static char galp[2800];
+   snprintf(galp, sizeof galp,
+      "{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/7\",\"cid\":\"bafy7\","
+      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\",\"displayName\":\"Ewan Croft\"},"
+      "\"record\":{\"text\":\"Three pictures from the gallery\",\"createdAt\":\"2026-10-01T10:00:00.000Z\"},"
+      "\"embed\":{\"$type\":\"app.bsky.embed.gallery#view\",\"items\":["
+      "{\"thumbnail\":\"https://127.0.0.1:1/g1.jpg\",\"fullsize\":\"https://127.0.0.1:1/g1.jpg\",\"alt\":\"Gallery one\",\"aspectRatio\":{\"width\":4,\"height\":3}},"
+      "{\"thumbnail\":\"https://127.0.0.1:1/g2.jpg\",\"fullsize\":\"https://127.0.0.1:1/g2.jpg\",\"alt\":\"Gallery two\"},"
+      "{\"thumbnail\":\"https://127.0.0.1:1/g3.jpg\",\"fullsize\":\"https://127.0.0.1:1/g3.jpg\",\"alt\":\"Gallery three\"}]},"
+      "\"likeCount\":2,\"repostCount\":0,\"replyCount\":0,\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}");
+   static char tl[12000];
+   snprintf(tl, sizeof tl, "{\"feed\":[{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s}],\"cursor\":\"c1\"}",
       post_json("1", "Hello from the Wii U. A longer post that should wrap across several lines on both the television and the GamePad so we can see how the card handles it."),
-      post_json_facets("2", "Hi @bob.test see https://example.com/page and #wiiu rocks", "[{\"index\":{\"byteStart\":3,\"byteEnd\":12},\"features\":[{\"$type\":\"app.bsky.richtext.facet#mention\",\"did\":\"did:plc:bob\"}]},{\"index\":{\"byteStart\":17,\"byteEnd\":41},\"features\":[{\"$type\":\"app.bsky.richtext.facet#link\",\"uri\":\"https://example.com/page\"}]},{\"index\":{\"byteStart\":46,\"byteEnd\":51},\"features\":[{\"$type\":\"app.bsky.richtext.facet#tag\",\"tag\":\"wiiu\"}]}]"), post_json("3", "third post with unicode: caf\u00e9 \u65e5\u672c\u8a9e \\ud83d\\ude00"), longp, imgp, extp);
+      post_json_facets("2", "Hi @bob.test see https://example.com/page and #wiiu rocks", "[{\"index\":{\"byteStart\":3,\"byteEnd\":12},\"features\":[{\"$type\":\"app.bsky.richtext.facet#mention\",\"did\":\"did:plc:bob\"}]},{\"index\":{\"byteStart\":17,\"byteEnd\":41},\"features\":[{\"$type\":\"app.bsky.richtext.facet#link\",\"uri\":\"https://example.com/page\"}]},{\"index\":{\"byteStart\":46,\"byteEnd\":51},\"features\":[{\"$type\":\"app.bsky.richtext.facet#tag\",\"tag\":\"wiiu\"}]}]"), post_json("3", "third post with unicode: caf\u00e9 \u65e5\u672c\u8a9e \\ud83d\\ude00"), longp, imgp, extp, galp);
    wf_mock_pds_register(pds, "app.bsky.feed.getTimeline", tl);
    char th[6000];
    snprintf(th, sizeof th, "{\"thread\":{\"$type\":\"app.bsky.feed.defs#threadViewPost\",\"post\":%s,"
