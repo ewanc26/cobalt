@@ -64,7 +64,7 @@ replace testing on the console.
 - Post, reply, quote and gallery images with alt text (the first four of a gallery)
 - A full-size image viewer, from the post menu, on both screens
 - Who liked or reposted a post, from the post menu
-- Link-card previews that name the publication and reading time when the view supplies them
+- Link-card previews, including hydrated article, gallery and livestream cards from the AppView
 - Actor search
 - Custom feed browsing
 - Read-only lists and list members
