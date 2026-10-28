@@ -114,6 +114,12 @@ typedef struct {
     * `external.source.title`; empty when absent. Drawn in place of the bare
     * host so a Standard.site article names its publication. */
    char source_title[COBALT_POST_NAME_MAX];
+
+   /* The first `external.associatedRefs` record, empty for a plain link. This
+    * is the canonical record `app.bsky.embed.getEmbedExternalView` resolves;
+    * without it there is no richer article/gallery/livestream card to ask for,
+    * so atproto/external_card.c leaves the plain card alone. */
+   char canonical_uri[COBALT_POST_URI_MAX];
 } cobalt_post_link;
 
 #define COBALT_POST_QUOTE_TEXT_MAX 256

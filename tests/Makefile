@@ -111,6 +111,7 @@ UNIT_SOURCES := \
 	$(SRC)/util/rng.c \
 	$(SRC)/util/clock.c \
 	$(SRC)/atproto/feed.c \
+	$(SRC)/atproto/external_card.c \
 	$(SRC)/atproto/prefs.c \
 	$(WOLFRAM_SOURCES) \
 	$(SRC)/app/entropyview.c \

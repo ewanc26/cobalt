@@ -7,6 +7,7 @@
 #include "app/app_internal.h"
 #include "atproto/session.h"
 #include "atproto/feed.h"
+#include "atproto/external_card.h"
 #include "ui/videoduration.h"
 #include "../../wolfram/test/mock_pds.h"
 #include <wolfram/feed_typed.h>
@@ -67,6 +68,60 @@ static const char *const LIVE_PLAYLIST =
 static const char *const MASTER_PLAYLIST =
    "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\n"
    "var/360p.m3u8\n";
+
+/* getEmbedExternalView responses for the three associated-link fixtures. The
+ * query URL keeps the canonical collection readable (only its slashes and
+ * colons are encoded), so one fake can answer all three. */
+static const char *const HYDRATED_ARTICLE =
+   "{\"data\":{\"$type\":\"app.bsky.embed.external#viewArticle\","
+   "\"uri\":\"https://example.com/article\",\"title\":\"AppView article\","
+   "\"description\":\"It names its publication and reading time.\","
+   "\"image\":\"https://127.0.0.1:1/article.jpg\","
+   "\"publisher\":{\"title\":\"Example Press\"},\"readingTime\":6}}";
+
+static const char *const HYDRATED_GALLERY =
+   "{\"data\":{\"$type\":\"app.bsky.embed.external#viewGallery\","
+   "\"title\":\"Grain gallery\","
+   "\"description\":\"Four pictures from one link.\","
+   "\"items\":["
+   "{\"thumbnail\":\"https://127.0.0.1:1/hg1.jpg\",\"alt\":\"Gallery picture one\",\"aspectRatio\":{\"width\":4,\"height\":3}},"
+   "{\"thumbnail\":\"https://127.0.0.1:1/hg2.jpg\",\"alt\":\"Gallery picture two\"},"
+   "{\"thumbnail\":\"https://127.0.0.1:1/hg3.jpg\",\"alt\":\"Gallery picture three\"},"
+   "{\"thumbnail\":\"https://127.0.0.1:1/hg4.jpg\"}]}}";
+
+static const char *const HYDRATED_LIVESTREAM =
+   "{\"data\":{\"$type\":\"app.bsky.embed.external#viewLivestream\","
+   "\"title\":\"Live from the studio\","
+   "\"description\":\"A hydrated livestream card.\","
+   "\"image\":\"https://127.0.0.1:1/live.jpg\",\"active\":true}}";
+
+static int s_external_calls;
+
+static bool
+fake_external_fetch(const char *url, cobalt_http_response *out)
+{
+   s_external_calls++;
+   const char *body = NULL;
+   if (strstr(url, "site.standard.document")) {
+      body = HYDRATED_ARTICLE;
+   } else if (strstr(url, "social.grain.gallery")) {
+      body = HYDRATED_GALLERY;
+   } else if (strstr(url, "app.bsky.video.livestream")) {
+      body = HYDRATED_LIVESTREAM;
+   }
+   if (!body) {
+      return false;
+   }
+   const size_t n = strlen(body);
+   out->data = malloc(n + 1);
+   if (!out->data) {
+      return false;
+   }
+   memcpy(out->data, body, n + 1);
+   out->size = n;
+   out->status = 200;
+   return true;
+}
 
 static const char *
 video_post_json(const char *n, const char *playlist)
@@ -475,6 +530,8 @@ main(int argc, char **argv)
    if (TTF_Init() != 0) { printf("TTF_Init failed\n"); return 1; }
    (void) cobalt_session_init();
    check_video_durations();
+   cobalt_external_card_set_fetcher(fake_external_fetch);
+   cobalt_external_card_reset_for_test();
 
    g_tv = cobalt_render_create(COBALT_SURFACE_TV, font, false);
    g_drc = cobalt_render_create(COBALT_SURFACE_DRC, font, false);
@@ -572,6 +629,15 @@ main(int argc, char **argv)
       CHECK_STR(gallery->images[0].alt, "Gallery one");
       CHECK(gallery->images[0].aspect_w == 4 && gallery->images[0].aspect_h == 3);
       CHECK(gallery->embed_note[0] == '\0');
+
+      /* The first associatedRef is what the hydrated-card request resolves. */
+      CHECK(feed->count >= 11);
+      CHECK_STR(feed->posts[7].link.canonical_uri,
+                "at://did:plc:abc/site.standard.document/article");
+      CHECK_STR(feed->posts[8].link.canonical_uri,
+                "at://did:plc:abc/social.grain.gallery/3g");
+      CHECK_STR(feed->posts[9].link.canonical_uri,
+                "at://did:plc:abc/app.bsky.video.livestream/3live");
    }
    for (int k = 2; k <= 5; k++) {
       frame(COBALT_BTN_DOWN); settle(25);
@@ -586,6 +652,33 @@ main(int argc, char **argv)
    select_timeline(6);
    settle(8);
    shoot("timeline-gallery");
+
+   /* The richer cards are fetched only after their card is drawn, and the
+    * first draw queues rather than waits. Drain the three fixtures, then draw
+    * again so the screenshots show the hydrated form. */
+   select_timeline(7);
+   settle(8);
+   cobalt_external_card_drain();
+   settle(8);
+   CHECK(cobalt_external_card_lookup("https://example.com/article",
+      "at://did:plc:abc/site.standard.document/article") != NULL);
+   shoot("timeline-external-article");
+   select_timeline(8);
+   settle(8);
+   cobalt_external_card_drain();
+   settle(8);
+   CHECK(cobalt_external_card_lookup("https://example.com/gallery",
+      "at://did:plc:abc/social.grain.gallery/3g") != NULL);
+   shoot("timeline-external-gallery");
+   select_timeline(9);
+   settle(8);
+   cobalt_external_card_drain();
+   settle(8);
+   CHECK(cobalt_external_card_lookup("https://example.com/live",
+      "at://did:plc:abc/app.bsky.video.livestream/3live") != NULL);
+   shoot("timeline-external-livestream");
+   CHECK(s_external_calls == 3);
+
    select_timeline(5);
    settle(8);
    /* Backing out of a thread must return to the same card, not the top. */

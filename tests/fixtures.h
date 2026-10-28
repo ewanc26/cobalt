@@ -75,10 +75,43 @@ register_fixtures(wf_mock_pds *pds)
       "{\"thumbnail\":\"https://127.0.0.1:1/g2.jpg\",\"fullsize\":\"https://127.0.0.1:1/g2.jpg\",\"alt\":\"Gallery two\"},"
       "{\"thumbnail\":\"https://127.0.0.1:1/g3.jpg\",\"fullsize\":\"https://127.0.0.1:1/g3.jpg\",\"alt\":\"Gallery three\"}]},"
       "\"likeCount\":2,\"repostCount\":0,\"replyCount\":0,\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}");
-   static char tl[12000];
-   snprintf(tl, sizeof tl, "{\"feed\":[{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s}],\"cursor\":\"c1\"}",
+   /* Links backed by Atmosphere records. Each plain view has the title and
+    * host a post itself carries; the fake getEmbedExternalView response in
+    * snapshot_main.c supplies the richer data the card upgrades to. */
+   static char hy_article[2800];
+   snprintf(hy_article, sizeof hy_article,
+      "{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/8\",\"cid\":\"bafy8\","
+      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\",\"displayName\":\"Ewan Croft\"},"
+      "\"record\":{\"text\":\"An article behind a link\",\"createdAt\":\"2026-10-01T10:00:00.000Z\"},"
+      "\"embed\":{\"$type\":\"app.bsky.embed.external#view\",\"external\":{\"uri\":\"https://example.com/article\","
+      "\"title\":\"A plain article card\",\"description\":\"The post view has only the link title.\","
+      "\"thumb\":\"https://127.0.0.1:1/article.jpg\","
+      "\"associatedRefs\":[{\"uri\":\"at://did:plc:abc/site.standard.document/article\",\"cid\":\"bafyart\"}]}},"
+      "\"likeCount\":5,\"repostCount\":1,\"replyCount\":0,\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}");
+   static char hy_gallery[3000];
+   snprintf(hy_gallery, sizeof hy_gallery,
+      "{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/9\",\"cid\":\"bafy9\","
+      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\",\"displayName\":\"Ewan Croft\"},"
+      "\"record\":{\"text\":\"A gallery behind a link\",\"createdAt\":\"2026-10-01T10:00:00.000Z\"},"
+      "\"embed\":{\"$type\":\"app.bsky.embed.external#view\",\"external\":{\"uri\":\"https://example.com/gallery\","
+      "\"title\":\"A plain gallery card\",\"description\":\"The post view has only the link title.\","
+      "\"thumb\":\"https://127.0.0.1:1/gallery.jpg\","
+      "\"associatedRefs\":[{\"uri\":\"at://did:plc:abc/social.grain.gallery/3g\",\"cid\":\"bafygal\"}]}},"
+      "\"likeCount\":8,\"repostCount\":0,\"replyCount\":0,\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}");
+   static char hy_live[2800];
+   snprintf(hy_live, sizeof hy_live,
+      "{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/10\",\"cid\":\"bafy10\","
+      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\",\"displayName\":\"Ewan Croft\"},"
+      "\"record\":{\"text\":\"A livestream behind a link\",\"createdAt\":\"2026-10-01T10:00:00.000Z\"},"
+      "\"embed\":{\"$type\":\"app.bsky.embed.external#view\",\"external\":{\"uri\":\"https://example.com/live\","
+      "\"title\":\"A plain livestream card\",\"description\":\"The post view has only the link title.\","
+      "\"thumb\":\"https://127.0.0.1:1/live.jpg\","
+      "\"associatedRefs\":[{\"uri\":\"at://did:plc:abc/app.bsky.video.livestream/3live\",\"cid\":\"bafylive\"}]}},"
+      "\"likeCount\":3,\"repostCount\":0,\"replyCount\":0,\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}");
+   static char tl[24000];
+   snprintf(tl, sizeof tl, "{\"feed\":[{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s},{\"post\":%s}],\"cursor\":\"c1\"}",
       post_json("1", "Hello from the Wii U. A longer post that should wrap across several lines on both the television and the GamePad so we can see how the card handles it."),
-      post_json_facets("2", "Hi @bob.test see https://example.com/page and #wiiu rocks", "[{\"index\":{\"byteStart\":3,\"byteEnd\":12},\"features\":[{\"$type\":\"app.bsky.richtext.facet#mention\",\"did\":\"did:plc:bob\"}]},{\"index\":{\"byteStart\":17,\"byteEnd\":41},\"features\":[{\"$type\":\"app.bsky.richtext.facet#link\",\"uri\":\"https://example.com/page\"}]},{\"index\":{\"byteStart\":46,\"byteEnd\":51},\"features\":[{\"$type\":\"app.bsky.richtext.facet#tag\",\"tag\":\"wiiu\"}]}]"), post_json("3", "third post with unicode: caf\u00e9 \u65e5\u672c\u8a9e \\ud83d\\ude00"), longp, imgp, extp, galp);
+      post_json_facets("2", "Hi @bob.test see https://example.com/page and #wiiu rocks", "[{\"index\":{\"byteStart\":3,\"byteEnd\":12},\"features\":[{\"$type\":\"app.bsky.richtext.facet#mention\",\"did\":\"did:plc:bob\"}]},{\"index\":{\"byteStart\":17,\"byteEnd\":41},\"features\":[{\"$type\":\"app.bsky.richtext.facet#link\",\"uri\":\"https://example.com/page\"}]},{\"index\":{\"byteStart\":46,\"byteEnd\":51},\"features\":[{\"$type\":\"app.bsky.richtext.facet#tag\",\"tag\":\"wiiu\"}]}]"), post_json("3", "third post with unicode: caf\u00e9 \u65e5\u672c\u8a9e \\ud83d\\ude00"), longp, imgp, extp, galp, hy_article, hy_gallery, hy_live, post_json("11", "One more post after the hydrated cards, so reaching them does not page."));
    wf_mock_pds_register(pds, "app.bsky.feed.getTimeline", tl);
    char th[6000];
    snprintf(th, sizeof th, "{\"thread\":{\"$type\":\"app.bsky.feed.defs#threadViewPost\",\"post\":%s,"
