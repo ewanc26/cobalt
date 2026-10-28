@@ -1,4 +1,5 @@
 #include "app/app_internal.h"
+#include "app/account_view.h"
 #include "app/settings_view.h"
 #include "app/queue_store.h"
 
