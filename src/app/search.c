@@ -199,12 +199,16 @@ draw_editing(cobalt_search_view *view, cobalt_render *r,
 
    char display[COBALT_SEARCH_QUERY_MAX + 4];
    cobalt_keyboard_display_text(&view->kb, display, sizeof(display));
-   const char *shown = display[0] ? display
-                       : view->posts ? "Search posts..."
-                                     : "Search accounts...";
+   /* The display text is never empty — it always ends in the caret — so the
+    * placeholder is chosen from the buffer, or an empty field shows a bare
+    * underscore and nothing says what to type. */
+   const bool empty = !view->kb.buffer || view->kb.buffer[0] == '\0';
+   const char *shown = empty ? (view->posts ? "Search posts..."
+                                            : "Search accounts...")
+                             : display;
    cobalt_draw_text(r, COBALT_FONT_BODY, shown, box.x + m->pad_tile,
                     box.y + m->pad_tile,
-                    display[0] ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM);
+                    empty ? COBALT_COLOUR_TEXT_DIM : COBALT_COLOUR_TEXT);
 
    SDL_Rect keys = { m->pad_edge, box.y + box.h + m->gap,
                      m->width - 2 * m->pad_edge,

@@ -326,10 +326,13 @@ draw_start(cobalt_messages_view *view, cobalt_render *r, cobalt_surface_id surfa
 
    char display[COBALT_CHAT_TARGET_MAX + 4];
    cobalt_keyboard_display_text(&view->start.kb, display, sizeof(display));
-   const char *shown = display[0] ? display : "Handle or DID...";
+   /* From the buffer, not the display string: the display always ends in the
+    * caret, so it is never empty and the placeholder would never show. */
+   const bool empty = !view->start.kb.buffer || view->start.kb.buffer[0] == '\0';
+   const char *shown = empty ? "Handle or DID..." : display;
    cobalt_draw_text(r, COBALT_FONT_BODY, shown, box.x + m->pad_tile,
                     box.y + m->pad_tile,
-                    display[0] ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM);
+                    empty ? COBALT_COLOUR_TEXT_DIM : COBALT_COLOUR_TEXT);
 
    SDL_Rect keys = { m->pad_edge, box.y + box.h + m->gap,
                      m->width - 2 * m->pad_edge,

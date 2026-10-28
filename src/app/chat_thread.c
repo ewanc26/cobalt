@@ -210,6 +210,18 @@ cobalt_chat_thread_view_update(cobalt_chat_thread_view *view, const cobalt_input
       view->offset--;
    }
 
+   /* Touch: dragging the conversation does what Up and Down do. `shown` is the
+    * bubble at the bottom of the screen counted from the oldest, which is the
+    * direction a list drag already means, so a drag up goes forward in time. */
+   if (thread->count > 0) {
+      int shown = thread->count - 1 - view->offset;
+      cobalt_input_drag_list(in, &shown, thread->count, NULL, 0);
+      view->offset = thread->count - 1 - shown;
+      if (view->offset < 0) {
+         view->offset = 0;
+      }
+   }
+
    return COBALT_CHAT_THREAD_STAY;
 }
 
@@ -225,6 +237,21 @@ bubble_lines(cobalt_render *r, const cobalt_chat_message *msg, int inner_w)
    return lines > BUBBLE_LINES_MAX ? BUBBLE_LINES_MAX : lines;
 }
 
+/*
+ * The box the draft is typed into while the keyboard is up: one line tall,
+ * sitting directly above the keyboard. The bubbles stop above it, so the draft
+ * has a field of its own instead of a caret loose on the background.
+ */
+static SDL_Rect
+draft_field(const cobalt_metrics *m, cobalt_surface_id surface, int body_h)
+{
+   const int h = body_h + m->pad_tile;
+   const SDL_Rect box = { m->pad_edge,
+                          m->height - cobalt_keyboard_height(surface) - h - m->gap,
+                          m->width - 2 * m->pad_edge, h };
+   return box;
+}
+
 static void
 draw_bubbles(cobalt_chat_thread_view *view, cobalt_render *r, const cobalt_metrics *m,
               cobalt_surface_id surface)
@@ -234,14 +261,13 @@ draw_bubbles(cobalt_chat_thread_view *view, cobalt_render *r, const cobalt_metri
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
    const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
 
-   /* The reply line and keyboard take the bottom while the person is writing;
+   /* The draft field and keyboard take the bottom while the person is writing;
     * otherwise the footer hints do. */
-   const int kb_h = cobalt_keyboard_height(surface);
-   const int draft_y = m->height - kb_h - body_h - m->gap;
-   /* Otherwise the bubbles stop a gap above the footer's top edge, which is
-    * drawn at height - pad_edge/2 - one pill tall (render.c). */
+   const SDL_Rect draft = draft_field(m, surface, body_h);
+   /* The bubbles stop a gap above the footer's top edge, which is drawn at
+    * height - pad_edge/2 - one pill tall (render.c). */
    const int footer_top = m->height - m->pad_edge / 2 - cobalt_pill_height(r);
-   const int bottom = view->replying ? draft_y - m->gap : footer_top - m->gap;
+   const int bottom = view->replying ? draft.y - m->gap : footer_top - m->gap;
 
    if (thread->count == 0) {
       SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge, m->font_body * 4 };
@@ -257,13 +283,20 @@ draw_bubbles(cobalt_chat_thread_view *view, cobalt_render *r, const cobalt_metri
    const int newest = thread->count - 1 - view->offset;
    const int content_w = m->width - 2 * m->pad_edge;
    const int bubble_w = content_w * 3 / 4;
-   const int inner_w = bubble_w - 2 * m->pad_tile;
+   /* While typing, the keyboard takes the GamePad's bottom half and there is
+    * room for one line of the conversation at most; the bubbles give up their
+    * padding and their age so that line stays on screen instead of an empty
+    * panel behind the field. */
+   const bool compact = view->replying;
+   const int pad = compact ? m->pad_tile / 2 : m->pad_tile;
+   const int age_h = compact ? 0 : caption_h;
+   const int inner_w = bubble_w - 2 * pad;
    int y = bottom;
 
    for (int i = newest; i >= 0; i--) {
       const cobalt_chat_message *msg = &thread->items[i];
       int lines = bubble_lines(r, msg, inner_w);
-      int h = m->pad_tile + caption_h + lines * body_h + m->pad_tile;
+      int h = pad + age_h + lines * body_h + pad;
 
       if (y - h < top) {
          /* Only the newest message is worth cutting to fit: with the keyboard up
@@ -271,12 +304,12 @@ draw_bubbles(cobalt_chat_thread_view *view, cobalt_render *r, const cobalt_metri
          if (i != newest) {
             break;
          }
-         const int fit = (y - top - 2 * m->pad_tile - caption_h) / body_h;
+         const int fit = (y - top - 2 * pad - age_h) / body_h;
          if (fit < 1) {
             break;
          }
          lines = fit;
-         h = m->pad_tile + caption_h + lines * body_h + m->pad_tile;
+         h = pad + age_h + lines * body_h + pad;
       }
       y -= h;
 
@@ -285,16 +318,16 @@ draw_bubbles(cobalt_chat_thread_view *view, cobalt_render *r, const cobalt_metri
                         y, bubble_w, h };
       cobalt_draw_tile(r, &rect, 0.0f);
 
-      const int text_x = rect.x + m->pad_tile;
-      if (msg->age[0]) {
+      const int text_x = rect.x + pad;
+      if (msg->age[0] && age_h > 0) {
          int age_w = 0;
          cobalt_text_size(r, COBALT_FONT_CAPTION, msg->age, &age_w, NULL);
          cobalt_draw_text(r, COBALT_FONT_CAPTION, msg->age,
-                          rect.x + rect.w - m->pad_tile - age_w, rect.y + m->pad_tile,
+                          rect.x + rect.w - pad - age_w, rect.y + pad,
                           COBALT_COLOUR_TEXT_DIM);
       }
       cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, msg->text, text_x,
-                               rect.y + m->pad_tile + caption_h, inner_w, lines,
+                               rect.y + pad + age_h, inner_w, lines,
                                COBALT_COLOUR_TEXT);
 
       y -= m->gap;
@@ -375,7 +408,7 @@ draw_join_requests(cobalt_chat_thread_view *view, cobalt_render *r,
       cobalt_draw_text(r, COBALT_FONT_BODY, busy ? "Loading..." : "No join requests.",
                        card.x + m->pad_tile, card.y + m->pad_tile, COBALT_COLOUR_TEXT);
       cobalt_listnav_draw_empty(&view->join_nav, touchable);
-      cobalt_draw_hints(r, busy ? "Working..." : "B: back   +: refresh");
+      cobalt_draw_hints(r, busy ? "Working..." : "+: refresh");
       return;
    }
 
@@ -402,7 +435,7 @@ draw_join_requests(cobalt_chat_thread_view *view, cobalt_render *r,
    cobalt_listnav_draw_end(&view->join_nav, touchable, last_fitted);
 
    cobalt_draw_hints(r, busy ? "Working..."
-                             : "A: approve   X: reject   B: back   +: refresh");
+                             : "A: approve   X: reject   +: refresh");
 }
 
 void
@@ -439,11 +472,15 @@ cobalt_chat_thread_view_draw(cobalt_chat_thread_view *view, cobalt_render *r,
    draw_bubbles(view, r, m, surface);
 
    if (view->replying) {
+      const SDL_Rect draft = draft_field(m, surface, body_h);
+      cobalt_draw_tile(r, &draft, 1.0f);
+
       char shown[COBALT_CHAT_REPLY_MAX];
-      const int draft_y = m->height - kb_h - body_h - m->gap;
       cobalt_keyboard_display_text(&view->kb, shown, sizeof(shown));
-      cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, shown, m->pad_edge, draft_y,
-                               m->width - 2 * m->pad_edge, 1, COBALT_COLOUR_TEXT);
+      cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, shown, draft.x + m->pad_tile,
+                               draft.y + (draft.h - body_h) / 2,
+                               draft.w - 2 * m->pad_tile, 1, COBALT_COLOUR_TEXT);
+
       const SDL_Rect keys = { 0, m->height - kb_h, m->width, kb_h };
       cobalt_keyboard_draw(&view->kb, r, surface, &keys);
       return;
@@ -452,11 +489,14 @@ cobalt_chat_thread_view_draw(cobalt_chat_thread_view *view, cobalt_render *r,
    if (cobalt_session_busy()) {
       cobalt_draw_hints(r, "Working...");
    } else if (view->reply[0]) {
-      cobalt_draw_hints(r, "A: edit reply   Y: send   B: back");
+      cobalt_draw_hints(r, "A: edit reply   Y: send");
    } else if (view->group) {
-      cobalt_draw_hints(r, "A: reply   X: join requests   B: back   Up/Down: older   "
+      /* No "B: back": the header's Back pill is the same button, and on the
+       * GamePad a fourth prompt pushes half the footer up into the band, which
+       * is where the duplicate B pill used to end up. */
+      cobalt_draw_hints(r, "A: reply   X: join requests   Up/Down: older   "
                            "+: refresh");
    } else {
-      cobalt_draw_hints(r, "A: reply   B: back   Up/Down: older   +: refresh");
+      cobalt_draw_hints(r, "A: reply   Up/Down: older   +: refresh");
    }
 }
