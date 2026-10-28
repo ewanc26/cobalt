@@ -531,7 +531,12 @@ draw_confirming(cobalt_compose *compose, cobalt_render *r,
    int ids[CONFIRM_COUNT];
    const int nids = confirm_ids(compose, ids);
 
-   const int row_h = m->font_body * 2;
+   /* The confirm buttons are touch targets on the pad, so they are a fingertip
+    * tall there rather than two body lines (42). */
+   int row_h = m->font_body * 2;
+   if (surface == COBALT_SURFACE_DRC && row_h < 44) {
+      row_h = 44;
+   }
    const int gap = m->gap;
    const int button_w = (box.w - gap * (nids - 1)) / nids;
    const int row_y = box.y + box_h + gap * 2;

@@ -176,7 +176,12 @@ cobalt_popup_draw(cobalt_popup *p, cobalt_render *r, cobalt_surface_id surface)
    cobalt_fill_rect(r, &all, scrim);
 
    const int title_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
-   const int row_h = cobalt_font_line_height(r, COBALT_FONT_BODY) + m->pad_tile;
+   int row_h = cobalt_font_line_height(r, COBALT_FONT_BODY) + m->pad_tile;
+   /* Every row is a touch target, so on the pad each is at least a fingertip
+    * tall — 40 was two pixels short of the rest of the controls. */
+   if (touchable && row_h < 44) {
+      row_h = 44;
+   }
    const int pill_h = cobalt_pill_height(r);
    const int pad = m->pad_tile;
 
@@ -221,7 +226,9 @@ cobalt_popup_draw(cobalt_popup *p, cobalt_render *r, cobalt_surface_id surface)
          draw_qr(r, p, qr_px, p->panel.x + (w - qr_side) / 2, y + 2 * row_h + pad / 2);
       }
    } else {
+      const int line = cobalt_font_line_height(r, COBALT_FONT_BODY);
       for (int i = first; i < p->count && i < first + shown; i++) {
+         const int text_y = y + (row_h - line) / 2;
          SDL_Rect row = { p->panel.x + pad / 2, y, w - pad, row_h };
          if (i == p->selected) {
             SDL_Color sel = COBALT_COLOUR_ACCENT;
@@ -230,9 +237,9 @@ cobalt_popup_draw(cobalt_popup *p, cobalt_render *r, cobalt_surface_id surface)
          }
          const int icon_w = cobalt_draw_text(
             r, COBALT_FONT_ICON, icon_for(p->items[i].kind), row.x + pad,
-            y + pad / 2, i == p->selected ? COBALT_COLOUR_ACCENT : COBALT_COLOUR_TEXT_DIM);
+            text_y, i == p->selected ? COBALT_COLOUR_ACCENT : COBALT_COLOUR_TEXT_DIM);
          cobalt_draw_text(r, COBALT_FONT_BODY, p->items[i].label,
-                          row.x + pad + icon_w + pad, y + pad / 2, COBALT_COLOUR_TEXT);
+                          row.x + pad + icon_w + pad, text_y, COBALT_COLOUR_TEXT);
          if (touchable) {
             p->hit[i] = row;
             p->hit_valid = true;
