@@ -4,6 +4,10 @@ This is what each screen does and which buttons do it, written from the code (`s
 
 With both screens on, they divide the work. The TV shows the screen in full — every line of a post, its pictures, its quoted post — and the GamePad is the remote: the same items as a short touch list, one line of text each, with the actions on its footer and the keyboards on the pad. While you are typing, the TV shows the draft, not a second copy of the keys. Choosing Off-TV Play gives the GamePad the whole interface on its own, pictures and all; nothing is trimmed there.
 
+![The GamePad as a remote](screenshots/gamepad-home.png)
+
+The rest of the screenshots here are the TV's layout, since that is the one with the words in it; the GamePad's is the compact list above.
+
 I have not walked through all of this on my console since I wrote it down, so if a button here does something else on yours, [open an issue](https://github.com/ewanc26/cobalt/issues).
 
 ## Buttons
@@ -76,7 +80,11 @@ On a new post, choose **Save for later** in the confirm list to keep the text on
 
 ![New post](screenshots/compose.png)
 
-You type on Cobalt's own keyboard on the GamePad: move with the D-pad or tap the keys. The TV shows the draft at reading size while you type. **Ret** starts a new line, and a post keeps the breaks you type — the cards on the timeline and in a thread show them too. Posting asks before it sends, and B from that screen goes back to editing rather than throwing the text away. A new post (not a reply) also lets you choose who can reply: everyone, people you follow and mention, or nobody. You can attach one picture from the SD card to a new post or quote and type its description. The picker lists the images in Cobalt's own folder (`sd:/wiiu/apps/cobalt/images`) and the console's camera folder (`sd:/DCIM`, with photos one folder down), and each row says which one it came from.
+You type on Cobalt's own keyboard on the GamePad: move with the D-pad or tap the keys. The TV shows the draft at reading size while you type. **Ret** starts a new line, and a post keeps the breaks you type — the cards on the timeline and in a thread show them too.
+
+![Typing on the GamePad](screenshots/gamepad-compose.png)
+
+Posting asks before it sends, and B from that screen goes back to editing rather than throwing the text away. A new post (not a reply) also lets you choose who can reply: everyone, people you follow and mention, or nobody. You can attach one picture from the SD card to a new post or quote and type its description. The picker lists the images in Cobalt's own folder (`sd:/wiiu/apps/cobalt/images`) and the console's camera folder (`sd:/DCIM`, with photos one folder down), and each row says which one it came from.
 
 ## Notifications
 
