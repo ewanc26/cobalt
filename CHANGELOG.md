@@ -29,6 +29,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Fixed
 
+- `tools/check-parity.sh` works on a Mac. Its state regex used `\b`, which is a GNU extension BSD `regexec` does not implement, so every cell in `docs/PARITY.md` failed on macOS while Linux CI stayed green — the check was silently only running in one place. It now matches a word end with a trailing group instead, and the selftest that proves it still catches a bad state word passes on both.
 - A menu's rows on the GamePad are 44 pixels tall rather than 40, and their text is centred in the row instead of sitting at its top — both were just short of a fingertip, and the rows are tapped. The compose screen's confirm buttons are 44 too, up from 42.
 - A conversation's reply has a field. The draft was drawn straight onto the background, so an empty one was a lone caret under the last message; it now gets the same rounded box the compose screen gives its text.
 - The GamePad's conversation screen no longer stacks two B pills in its header. The footer's "B: back" duplicated the header's Back button and the hint splitter moved it into the band beside it; conversations now name only reply, older/newer and refresh.
