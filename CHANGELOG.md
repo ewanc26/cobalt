@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-28
+
 ### Added
 
 - A post's draft can hold line breaks. The keyboard a post is typed on now has a **Ret** key, which it did not before — the only way to start a new line was missing, so every draft came out as one paragraph. Ret is paid for out of the space bar rather than out of every key, so the rest of the grid is the size it was and a handle, password or search box (one-line fields) is unchanged. Cards, the compose box, the TV's draft panel and the confirm preview already broke on `\n`; only getting one into the buffer was missing. ([#256](https://github.com/ewanc26/cobalt/pull/256))
@@ -285,7 +287,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/ewanc26/cobalt/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/ewanc26/cobalt/compare/v0.11.1...v0.12.0
 [0.10.0]: https://github.com/ewanc26/cobalt/compare/v0.9.1...v0.10.0
 [0.9.0]: https://github.com/ewanc26/cobalt/compare/v0.8.1...v0.9.0
