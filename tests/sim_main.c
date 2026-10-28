@@ -136,12 +136,12 @@ main(int argc, char **argv)
       int port = 0;
       if (wf_mock_pds_start(&pds, &port) != WF_OK) return 1;
       wf_mock_pds_register(pds, "com.atproto.server.createSession",
-         "{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\","
+         "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\","
          "\"accessJwt\":\"a.b.c\",\"refreshJwt\":\"d.e.f\",\"active\":true}");
       register_fixtures(pds);
       char svc[64];
       snprintf(svc, sizeof svc, "http://127.0.0.1:%d", port);
-      (void) cobalt_session_begin_login(svc, "alice.test", "app-pass");
+      (void) cobalt_session_begin_login(svc, "ewancroft.test", "app-pass");
    }
 
    printf("Cobalt sim: arrows, Return=A, Esc=B, Tab=+, X, Y, click GamePad to touch, F5 screenshots\n");

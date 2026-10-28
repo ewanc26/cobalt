@@ -12,8 +12,8 @@ post_json(const char *n, const char *text)
    char *b = buf[k++ & 3];
    snprintf(b, 2000,
       "{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/%s\",\"cid\":\"bafy%s\","
-      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\","
-      "\"displayName\":\"Alice Example\"},\"record\":{\"$type\":\"app.bsky.feed.post\","
+      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\","
+      "\"displayName\":\"Ewan Croft\"},\"record\":{\"$type\":\"app.bsky.feed.post\","
       "\"text\":\"%s\",\"createdAt\":\"2026-10-01T10:00:00.000Z\"},"
       "\"likeCount\":12,\"repostCount\":3,\"replyCount\":2,"
       "\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}", n, n, text);
@@ -28,8 +28,8 @@ post_json_facets(const char *n, const char *text, const char *facets)
    char *b = buf[k++ & 1];
    snprintf(b, 2400,
       "{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/%s\",\"cid\":\"bafy%s\","
-      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\","
-      "\"displayName\":\"Alice Example\"},\"record\":{\"$type\":\"app.bsky.feed.post\","
+      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\","
+      "\"displayName\":\"Ewan Croft\"},\"record\":{\"$type\":\"app.bsky.feed.post\","
       "\"text\":\"%s\",\"facets\":%s,\"createdAt\":\"2026-10-01T10:00:00.000Z\"},"
       "\"likeCount\":1,\"repostCount\":0,\"replyCount\":0,"
       "\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}", n, n, text, facets);
@@ -40,14 +40,14 @@ static void
 register_fixtures(wf_mock_pds *pds)
 {
    wf_mock_pds_register(pds, "com.atproto.server.createSession",
-      "{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\","
+      "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\","
       "\"accessJwt\":\"a.b.c\",\"refreshJwt\":\"d.e.f\",\"active\":true}");
    static char longp[1600];
    snprintf(longp, sizeof longp, "%s", post_json("4", "A very long post that keeps going and going so the card has to clip or wrap it sensibly: lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ut enim ad minim veniam quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat duis aute irure dolor in reprehenderit."));
    static char imgp[2200];
    snprintf(imgp, sizeof imgp,
       "{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/5\",\"cid\":\"bafy5\","
-      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\",\"displayName\":\"Alice Example\"},"
+      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\",\"displayName\":\"Ewan Croft\"},"
       "\"record\":{\"text\":\"Photos and a link\",\"createdAt\":\"2026-10-01T10:00:00.000Z\"},"
       "\"embed\":{\"$type\":\"app.bsky.embed.images#view\",\"images\":[{\"thumb\":\"https://127.0.0.1:1/a.jpg\","
       "\"fullsize\":\"https://127.0.0.1:1/a.jpg\",\"alt\":\"A cat on a sofa\"},{\"thumb\":\"https://127.0.0.1:1/b.jpg\","
@@ -56,7 +56,7 @@ register_fixtures(wf_mock_pds *pds)
    static char extp[2200];
    snprintf(extp, sizeof extp,
       "{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/6\",\"cid\":\"bafy6\","
-      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\",\"displayName\":\"Alice Example\"},"
+      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\",\"displayName\":\"Ewan Croft\"},"
       "\"record\":{\"text\":\"A link card\",\"createdAt\":\"2026-10-01T10:00:00.000Z\"},"
       "\"embed\":{\"$type\":\"app.bsky.embed.external#view\",\"external\":{\"uri\":\"https://example.com/some/very/long/path/to/an/article\","
       "\"title\":\"An article with a rather long title that needs truncating somewhere\",\"description\":\"A description that is also long enough to need clipping in the card.\","
@@ -73,12 +73,12 @@ register_fixtures(wf_mock_pds *pds)
       post_json("1", "Line 1 of a long thread post that must scroll. Line 2 of a long thread post that must scroll. Line 3 of a long thread post that must scroll. Line 4 of a long thread post that must scroll. Line 5 of a long thread post that must scroll. Line 6 of a long thread post that must scroll. Line 7 of a long thread post that must scroll. Line 8 of a long thread post that must scroll. Line 9 of a long thread post that must scroll. Line 10 of a long thread post that must scroll. Line 11 of a long thread post that must scroll. Line 12 of a long thread post that must scroll. Line 13 of a long thread post that must scroll. Line 14 of a long thread post that must scroll. Line 15 of a long thread post that must scroll. Line 16 of a long thread post that must scroll."), post_json("9", "A reply in the thread."));
    wf_mock_pds_register(pds, "app.bsky.feed.getPostThread", th);
    wf_mock_pds_register(pds, "app.bsky.actor.getProfile",
-      "{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\",\"displayName\":\"Alice Example\","
+      "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\",\"displayName\":\"Ewan Croft\","
       "\"description\":\"Poet, developer, Wii U enjoyer.\",\"followersCount\":120,\"followsCount\":80,\"postsCount\":456}");
    wf_mock_pds_register(pds, "app.bsky.feed.getAuthorFeed", tl);
    wf_mock_pds_register(pds, "app.bsky.notification.listNotifications",
       "{\"notifications\":[{\"uri\":\"at://did:plc:abc/app.bsky.feed.like/1\",\"cid\":\"c1\","
-      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\",\"displayName\":\"Alice Example\"},"
+      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\",\"displayName\":\"Ewan Croft\"},"
       "\"reason\":\"like\",\"reasonSubject\":\"at://did:plc:abc/app.bsky.feed.post/1\",\"record\":{},"
       "\"isRead\":false,\"indexedAt\":\"2026-10-01T10:00:00.000Z\"},"
       "{\"uri\":\"at://did:plc:abc/app.bsky.graph.follow/2\",\"cid\":\"c2\","
@@ -88,7 +88,7 @@ register_fixtures(wf_mock_pds *pds)
     * thread itself, newest first as the server sends it. */
    wf_mock_pds_register(pds, "chat.bsky.convo.listConvos",
       "{\"convos\":[{\"id\":\"convo-bob\",\"rev\":\"3\","
-      "\"members\":[{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\",\"displayName\":\"Alice Example\"},"
+      "\"members\":[{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\",\"displayName\":\"Ewan Croft\"},"
       "{\"did\":\"did:plc:bob\",\"handle\":\"bob.test\",\"displayName\":\"Bob\"}],"
       "\"lastMessage\":{\"$type\":\"chat.bsky.convo.defs#messageView\",\"id\":\"m3\",\"rev\":\"3\","
       "\"text\":\"See you Saturday. Bring the good scissors.\",\"sender\":{\"did\":\"did:plc:bob\"},"
@@ -103,7 +103,7 @@ register_fixtures(wf_mock_pds *pds)
       "\"text\":\"Hello! Did you get my note about the hedge?\",\"sender\":{\"did\":\"did:plc:bob\"},\"sentAt\":\"2026-10-01T09:00:00.000Z\"}"
       "]}");
    char sr[2048];
-   snprintf(sr, sizeof sr, "{\"actors\":[{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\",\"displayName\":\"Alice Example\"}]}");
+   snprintf(sr, sizeof sr, "{\"actors\":[{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\",\"displayName\":\"Ewan Croft\"}]}");
    wf_mock_pds_register(pds, "app.bsky.actor.searchActors", sr);
 
    wf_mock_pds_register(pds, "app.bsky.feed.getFeed", tl);
@@ -120,6 +120,6 @@ register_fixtures(wf_mock_pds *pds)
       "{\"lists\":[{\"uri\":\"at://did:plc:abc/app.bsky.graph.list/1\",\"cid\":\"l1\","
       "\"name\":\"Friends\",\"purpose\":\"app.bsky.graph.defs#curatelist\","
       "\"description\":\"People worth following\",\"listItemCount\":3,"
-      "\"creator\":{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\"}}]}");
+      "\"creator\":{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\"}}]}");
 
 }

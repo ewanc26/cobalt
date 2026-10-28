@@ -1858,11 +1858,11 @@ test_messages_start(void)
    CHECK(view.start.target[0] == '\0');
 
    /* While the keyboard is open, B is its backspace, not back out of the screen. */
-   snprintf(view.start.target, sizeof(view.start.target), "%s", "alice.test");
+   snprintf(view.start.target, sizeof(view.start.target), "%s", "ewancroft.uk");
    cobalt_input b = tap(COBALT_BTN_BACK);
    CHECK(cobalt_messages_view_update(&view, &b) == COBALT_MESSAGES_STAY);
    CHECK(view.start.editing);
-   CHECK_STR(view.start.target, "alice.tes");
+   CHECK_STR(view.start.target, "ewancroft.u");
 
    /* OK on nothing stays on the keyboard. */
    snprintf(view.start.target, sizeof(view.start.target), "%s", "");
@@ -1873,7 +1873,7 @@ test_messages_start(void)
    CHECK(view.start.editing);
 
    /* OK on a handle hands it to the caller to begin the job, and closes the keyboard. */
-   snprintf(view.start.target, sizeof(view.start.target), "%s", "@alice.test");
+   snprintf(view.start.target, sizeof(view.start.target), "%s", "@ewancroft.uk");
    view.start.kb.row = KB_FN_ROW;
    view.start.kb.col = KB_OK_COL;
    CHECK(cobalt_messages_view_update(&view, &ok) == COBALT_MESSAGES_START);
@@ -1885,20 +1885,20 @@ test_messages_start(void)
    CHECK(view.start.pending);
    char name[COBALT_CHAT_TARGET_MAX];
    CHECK(cobalt_messages_start_name(&view.start, name, sizeof(name)));
-   CHECK_STR(name, "alice.test");
+   CHECK_STR(name, "ewancroft.uk");
    CHECK(cobalt_messages_view_update(&view, &x) == COBALT_MESSAGES_STAY);
    CHECK(!view.start.editing);
 
    /* A finish with no id is a failure: the typed handle stays for another try. */
    CHECK(cobalt_messages_start_finished(&view.start, true, "") == COBALT_MESSAGES_START_FAILED);
    CHECK(!view.start.pending);
-   CHECK_STR(view.start.target, "@alice.test");
+   CHECK_STR(view.start.target, "@ewancroft.uk");
 
    /* A failed job is a failure whatever id it names. */
    cobalt_messages_start_began(&view.start, true);
    CHECK(cobalt_messages_start_finished(&view.start, false, "convo-1") ==
          COBALT_MESSAGES_START_FAILED);
-   CHECK_STR(view.start.target, "@alice.test");
+   CHECK_STR(view.start.target, "@ewancroft.uk");
 
    /* A finish with an id opens that conversation, and the field is clear for next time. */
    cobalt_messages_start_began(&view.start, true);
@@ -2226,7 +2226,7 @@ test_quote_compose(void)
    memset(&post, 0, sizeof(post));
    snprintf(post.uri, sizeof(post.uri), "at://did:plc:abc/app.bsky.feed.post/1");
    snprintf(post.cid, sizeof(post.cid), "bafycid");
-   snprintf(post.handle, sizeof(post.handle), "@alice.test");
+   snprintf(post.handle, sizeof(post.handle), "@ewancroft.uk");
 
    static cobalt_compose c;
    cobalt_compose_quote(&c, &post);
@@ -2234,7 +2234,7 @@ test_quote_compose(void)
    CHECK(!cobalt_compose_is_reply(&c));
    CHECK(strcmp(c.quote_uri, post.uri) == 0);
    CHECK(strcmp(c.quote_cid, "bafycid") == 0);
-   CHECK(strcmp(c.quote_handle, "@alice.test") == 0);
+   CHECK(strcmp(c.quote_handle, "@ewancroft.uk") == 0);
 
    /* A placeholder with no refs cannot be quoted. */
    post.cid[0] = '\0';

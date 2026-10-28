@@ -45,8 +45,8 @@ post_json(const char *n, const char *text)
    char *b = buf[k++ & 3];
    snprintf(b, 1024,
       "{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/%s\",\"cid\":\"bafy%s\","
-      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\","
-      "\"displayName\":\"Alice\"},\"record\":{\"$type\":\"app.bsky.feed.post\","
+      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\","
+      "\"displayName\":\"Ewan\"},\"record\":{\"$type\":\"app.bsky.feed.post\","
       "\"text\":\"%s\",\"createdAt\":\"2026-10-01T10:00:00.000Z\"},"
       "\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}", n, n, text);
    return b;
@@ -346,7 +346,7 @@ convo_json(const char *id, const char *name, int unread)
    char *b = buf[k++ & 3];
    snprintf(b, 512,
       "{\"id\":\"%s\",\"rev\":\"1\",\"unreadCount\":%d,\"members\":["
-      "{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\"},"
+      "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\"},"
       "{\"did\":\"did:plc:%s\",\"handle\":\"%s.test\",\"displayName\":\"%s\"}]}",
       id, unread, name, name, name);
    return b;
@@ -381,7 +381,7 @@ test_message_requests(void)
    snprintf(svc, sizeof svc, "http://127.0.0.1:%d", s.port);
 
    cs_set(&s, "com.atproto.server.createSession", 200,
-      "{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\","
+      "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\","
       "\"accessJwt\":\"a.b.c\",\"refreshJwt\":\"d.e.f\",\"active\":true}");
    cs_set(&s, "chat.bsky.convo.listConvos", 200, "{\"convos\":[]}");
    cs_set(&s, "chat.bsky.convo.acceptConvo", 200, "{\"rev\":\"r1\"}");
@@ -393,13 +393,13 @@ test_message_requests(void)
    cs_set(&s, "chat.bsky.convo.listConvoRequests", 200, two);
 
    cobalt_job_result r;
-   CHECK(cobalt_session_begin_login(svc, "alice.test", "app-pass"));
+   CHECK(cobalt_session_begin_login(svc, "ewancroft.test", "app-pass"));
    CHECK(wait_job(&r) && r.ok);
 
    /* One accepted conversation, so an accepted request has an inbox to join. */
    cs_set(&s, "chat.bsky.convo.listConvos", 200,
           "{\"convos\":[" "{\"id\":\"c9\",\"rev\":\"1\",\"unreadCount\":0,\"members\":["
-          "{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\"},"
+          "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\"},"
           "{\"did\":\"did:plc:carol\",\"handle\":\"carol.test\",\"displayName\":\"carol\"}]}]}");
    CHECK(cobalt_session_begin_chat_inbox(false));
    CHECK(wait_job(&r) && r.ok);
@@ -494,7 +494,7 @@ test_message_requests(void)
    /* A failure keeps the request, says why, and is not retried by itself. */
    cs_set(&s, "chat.bsky.convo.listConvoRequests", 200,
           "{\"requests\":[" "{\"id\":\"c3\",\"rev\":\"1\",\"unreadCount\":0,\"members\":["
-          "{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\"},"
+          "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\"},"
           "{\"did\":\"did:plc:dave\",\"handle\":\"dave.test\",\"displayName\":\"dave\"}]}]}");
    cs_set(&s, "chat.bsky.convo.acceptConvo", 500,
           "{\"error\":\"InternalServerError\",\"message\":\"try later\"}");
@@ -561,7 +561,7 @@ group_convo_json(const char *id)
    static char buf[640];
    snprintf(buf, sizeof buf,
       "{\"id\":\"%s\",\"rev\":\"1\",\"unreadCount\":0,\"members\":["
-      "{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\"},"
+      "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\"},"
       "{\"did\":\"did:plc:bob\",\"handle\":\"bob.test\",\"displayName\":\"bob\"},"
       "{\"did\":\"did:plc:carol\",\"handle\":\"carol.test\",\"displayName\":\"carol\"}]}",
       id);
@@ -592,7 +592,7 @@ test_group_join_requests(void)
    snprintf(svc, sizeof svc, "http://127.0.0.1:%d", s.port);
 
    cs_set(&s, "com.atproto.server.createSession", 200,
-      "{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\","
+      "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\","
       "\"accessJwt\":\"a.b.c\",\"refreshJwt\":\"d.e.f\",\"active\":true}");
    char convos[700];
    snprintf(convos, sizeof convos, "{\"convos\":[%s]}", group_convo_json("g1"));
@@ -605,7 +605,7 @@ test_group_join_requests(void)
    cs_set(&s, "chat.bsky.group.rejectJoinRequest", 200, "{}");
 
    cobalt_job_result r;
-   CHECK(cobalt_session_begin_login(svc, "alice.test", "app-pass"));
+   CHECK(cobalt_session_begin_login(svc, "ewancroft.test", "app-pass"));
    CHECK(wait_job(&r) && r.ok);
 
    cobalt_chat_thread_view view;
@@ -718,7 +718,7 @@ main(int argc, char **argv)
    CHECK(wf_mock_pds_start(&pds, &port) == WF_OK);
 
    wf_mock_pds_register(pds, "com.atproto.server.createSession",
-      "{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\","
+      "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\","
       "\"accessJwt\":\"a.b.c\",\"refreshJwt\":\"d.e.f\",\"active\":true}");
 
    char tl[2048];
@@ -728,7 +728,7 @@ main(int argc, char **argv)
 
    char sr[1024];
    snprintf(sr, sizeof sr, "{\"posts\":[{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/3\","
-      "\"cid\":\"bafy3\",\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"alice.test\"},"
+      "\"cid\":\"bafy3\",\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\"},"
       "\"record\":{\"text\":\"found by search\",\"createdAt\":\"2026-10-01T10:00:00.000Z\","
       "\"facets\":[{\"index\":{\"byteStart\":9,\"byteEnd\":15},\"features\":"
       "[{\"$type\":\"app.bsky.richtext.facet#link\",\"uri\":\"https://x.io\"}]},"
@@ -758,7 +758,7 @@ main(int argc, char **argv)
       char bad_svc[64];
       CHECK(wf_mock_pds_start(&bad, &bad_port) == WF_OK);
       snprintf(bad_svc, sizeof bad_svc, "http://127.0.0.1:%d", bad_port);
-      CHECK(cobalt_session_begin_login(bad_svc, "alice.test", "nope"));
+      CHECK(cobalt_session_begin_login(bad_svc, "ewancroft.test", "nope"));
       CHECK(wait_job(&r));
       CHECK(!r.ok);
       printf("failed login message: %s\n", r.message);
@@ -780,7 +780,7 @@ main(int argc, char **argv)
          "{\"pair_code\":\"abc123\",\"pair_url\":\"https://auth.example.com/pair/abc123\"}");
       wf_mock_pds_register(node, "uk.ewancroft.oauth.poll",
          "{\"status\":\"error\",\"message\":\"This pairing request expired.\"}");
-      CHECK(cobalt_session_begin_oauth(node_url, "alice.test"));
+      CHECK(cobalt_session_begin_oauth(node_url, "ewancroft.uk"));
       CHECK(wait_job(&r));
       CHECK(!r.ok);
       CHECK(strstr(r.message, "expired") != NULL);
@@ -788,21 +788,21 @@ main(int argc, char **argv)
 
       char done[512];
       snprintf(done, sizeof done,
-         "{\"status\":\"complete\",\"token\":\"node-bearer\",\"handle\":\"alice.test\","
+         "{\"status\":\"complete\",\"token\":\"node-bearer\",\"handle\":\"ewancroft.uk\","
          "\"did\":\"did:plc:abcdefghijklmnopqrstuvwx\",\"service\":\"%s\"}", node_url);
       wf_mock_pds_register(node, "uk.ewancroft.oauth.poll", done);
-      CHECK(cobalt_session_begin_oauth(node_url, "alice.test"));
+      CHECK(cobalt_session_begin_oauth(node_url, "ewancroft.uk"));
       CHECK(wait_job(&r));
       if (!r.ok) printf("oauth failed: %s\n", r.message);
       CHECK(r.ok);
       CHECK(cobalt_session_state() == COBALT_AUTH_SIGNED_IN);
-      CHECK(strcmp(cobalt_session_handle(), "alice.test") == 0);
+      CHECK(strcmp(cobalt_session_handle(), "ewancroft.uk") == 0);
       CHECK(cobalt_session_pair_code()[0] == '\0');
       wf_mock_pds_stop(node);
       wf_mock_pds_free(node);
    }
 
-   CHECK(cobalt_session_begin_login(svc, "alice.test", "app-pass"));
+   CHECK(cobalt_session_begin_login(svc, "ewancroft.test", "app-pass"));
    CHECK(wait_job(&r));
    if (!r.ok) printf("login failed: %s\n", r.message);
    CHECK(r.ok);
