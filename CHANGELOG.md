@@ -11,6 +11,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 - A group conversation has its join requests. On the conversation, X opens the group's pending requests; A approves the highlighted one, which lets that person in, and X rejects it. B returns to the conversation. Only a group's owner can list them, nothing is approved or rejected until a button is pressed, and a failure is shown and not retried. (#107)
 
+### Changed
+
+- Text is laid out once and remembered. The renderer keeps where each string broke into lines at the width it was drawn, so a card no longer wraps its own text twice a frame, and the walk that finds the breaks goes word by word rather than byte by byte, so it no longer costs the square of the line's length. On the development machine a timeline frame's text work fell from about 2.7 ms to 2.3 ms and a thread's from 3.2 ms to 2.2 ms; `make -C tests bench` measures it.
+
 ### Removed
 
 - Cobalt no longer updates itself. The Updates entry is gone from the Home menu, and with it the in-app download, the signature check and the replacement of the running `.wuhb` on quit; the screenshots and the entry indices that pointed at it are gone too. Updates come from the Homebrew App Store, which carries each release's file, or from a `.wuhb` you copy across yourself. ([#252](https://github.com/ewanc26/cobalt/pull/252))
