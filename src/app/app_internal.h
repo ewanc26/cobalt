@@ -6,9 +6,10 @@
  * The public interface is app/app.h.
  *
  * app.c owns the lifecycle, the job results and the per-frame dispatch;
- * app_home.c the home menu and the small menu screens (account, feeds, sign
- * in); settings_view.c the Settings screen; app_menus.c the More menus and
- * what choosing from them does; app_diag.c the diagnostics screen.
+ * app_home.c the home menu and the small menu screens (feeds, sign in);
+ * account_view.c the Account screen; settings_view.c the Settings screen;
+ * app_menus.c the More menus and what choosing from them does; app_diag.c
+ * the diagnostics screen.
  */
 
 #include "app/post_queue.h"
@@ -139,12 +140,10 @@ void cobalt_app_draw_notice(const cobalt_app *app, cobalt_render *r, int y, int 
 
 /* app_home.c */
 void cobalt_app_update_home(cobalt_app *app, const cobalt_input *in);
-void cobalt_app_update_account(cobalt_app *app, const cobalt_input *in);
 void cobalt_app_update_feeds(cobalt_app *app, const cobalt_input *in);
 void cobalt_app_update_signin(cobalt_app *app, const cobalt_input *in);
 void cobalt_app_draw_home_tv(cobalt_app *app, cobalt_render *r);
 void cobalt_app_draw_home_drc(cobalt_app *app, cobalt_render *r);
-void cobalt_app_draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface);
 void cobalt_app_draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface);
 void cobalt_app_draw_tv_idle(cobalt_render *r);
 
