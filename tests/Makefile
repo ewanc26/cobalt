@@ -30,6 +30,17 @@ else
    CURL_LIBS    := $(shell pkg-config --libs libcurl 2>/dev/null || echo -lcurl)
 endif
 
+# A pkg-config that exists but cannot resolve SDL2 is worse than none: the flags come
+# back empty, and the sweep then fails on `SDL_version.h' with a message that points at
+# host_sdl_compat.h rather than at the missing package. common causes are SDL2 not
+# installed, and a devkitPro pkg-config earlier on PATH than Homebrew's, whose SDL2_ttf
+# needs a keg-only zlib.pc. Fail here, where the cause is obvious.
+ifeq ($(strip $(SDL_CFLAGS)),)
+   ifeq ($(wildcard /usr/include/SDL2/SDL_version.h),)
+$(error SDL2 development files were not found (pkg-config gave no --cflags for sdl2/SDL2_ttf). Install the SDL2 and SDL2_ttf headers, or point PKG_CONFIG_PATH at their .pc files — on macOS put Homebrew's pkg-config first on PATH and include /opt/homebrew/opt/zlib/lib/pkgconfig)
+   endif
+endif
+
 # SDL2_image is how ui/imagecache.c decodes. Without it the module still builds
 # and is still swept and tested — decoding compiles out and every load reports
 # failure — so a checkout that lacks the package loses coverage of one call
