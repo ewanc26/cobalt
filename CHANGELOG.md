@@ -15,6 +15,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Changed
 
+- Release tag checks call Wolfram's reusable release-check workflow, pinned to v0.44.1. Cobalt still reads `COBALT_VERSION` itself, but the tag/version/changelog, on-main and `CI gate` checks are now shared rather than a second implementation. ([wolfram#232](https://github.com/ewanc26/wolfram/pull/232))
+
 - Wolfram is pinned to v0.43.2. The follower and following lists are populated again, because the typed calls now read the arrays the endpoints send, and its public headers compile under `-Wpedantic -Werror` on Clang 16 and older. ([wolfram#226](https://github.com/ewanc26/wolfram/pull/226))
 
 ## [0.14.0] - 2026-10-28
