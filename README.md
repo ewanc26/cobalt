@@ -49,7 +49,7 @@ replace testing on the console.
 - A Credits screen with the full repository address for every project in the stack
 - Diagnostics covering paths, networking, TLS, Wolfram and session state
 - App-password sign-in with an on-screen keyboard
-- Browser-based OAuth sign-in through a hosted Wolfram OAuth node: Cobalt shows a pairing link, you open it on a phone or computer, and the PDS handles your password and MFA
+- Browser-based OAuth sign-in through the shared hosted Wolfram OAuth node at [https://oauth.croft.click](https://oauth.croft.click): Cobalt shows a pairing link, you open it on a phone or computer, and the PDS handles your password and MFA. Platinum and Indigo use the same node.
 - Persistent encrypted sessions and sign-out
 - Updates through the Homebrew App Store, which Cobalt is published in
 - Home timeline with paging, reposts and threads
@@ -97,8 +97,10 @@ For networked AT Protocol features, you need one of two ways to sign in:
 - An OAuth sign-in through a hosted
   [Wolfram OAuth node](https://github.com/ewanc26/wolfram/blob/main/docs/oauth-node.md).
   Put the node's URL in the service field, leave the app password empty, and
-  open the pairing link Cobalt shows on another device. Someone has to run the
-  node; Cobalt does not do OAuth on the console itself.
+  open the pairing link Cobalt shows on another device. The shared node runs at
+  [https://oauth.croft.click](https://oauth.croft.click) in the croft stack
+  behind cloudflared; Platinum and Indigo use the same one. Cobalt does not do
+  OAuth on the console itself.
 
 ## Installing
 
