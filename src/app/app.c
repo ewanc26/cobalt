@@ -484,6 +484,56 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          }
          break;
 
+      case COBALT_JOB_CHAT_GROUP_INFO:
+         if (!result->ok) {
+            set_notice(app, result->message, true);
+         }
+         break;
+
+      case COBALT_JOB_CHAT_GROUP_RENAME:
+      case COBALT_JOB_CHAT_GROUP_ADD:
+      case COBALT_JOB_CHAT_GROUP_REMOVE:
+      case COBALT_JOB_CHAT_JOIN_LINK: {
+         const bool ours = cobalt_chat_thread_group_finished(&app->chat_view, result->ok);
+         if (!result->ok) {
+            set_notice(app, result->message[0] ? result->message
+                                               : "Could not update that group.",
+                       true);
+         } else if (ours) {
+            set_notice(app, result->kind == COBALT_JOB_CHAT_JOIN_LINK
+                                ? "Join link updated."
+                                : "Group updated.",
+                       false);
+         }
+         break;
+      }
+
+      case COBALT_JOB_CHAT_GROUP_CREATE: {
+         char name[COBALT_CHAT_GROUP_NAME_MAX];
+         snprintf(name, sizeof(name), "%s", app->messages.group.name);
+         const cobalt_messages_group_outcome outcome =
+            cobalt_messages_group_finished(&app->messages.group, result->ok,
+                                           cobalt_session_chat_group_started());
+         if (outcome == COBALT_MESSAGES_GROUP_CREATED) {
+            const char *convo = cobalt_session_chat_group_started();
+            if (app->screen != COBALT_SCREEN_MESSAGES) {
+               set_notice(app, "Group created. Open Messages to see it.", false);
+            } else if (cobalt_session_begin_chat_messages(convo)) {
+               cobalt_chat_thread_view_open(&app->chat_view, name, convo, true);
+               app->screen = COBALT_SCREEN_CHAT_THREAD;
+               COBALT_LOGI("messages: opened a new group");
+            } else {
+               set_notice(app, "Group created, but it could not be opened. "
+                               "Refresh Messages, then open it.", true);
+            }
+         } else if (outcome == COBALT_MESSAGES_GROUP_FAILED) {
+            set_notice(app, result->message[0] ? result->message
+                                               : "Could not create that group.",
+                       true);
+         }
+         break;
+      }
+
       case COBALT_JOB_CHAT_START: {
          /* The name is read first: a finished start clears the field. */
          char name[COBALT_CHAT_TARGET_MAX];
@@ -884,6 +934,16 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                }
                break;
             }
+            case COBALT_MESSAGES_GROUP_CREATE: {
+               const bool began = cobalt_session_begin_chat_group_create(
+                  app->messages.group.name, app->messages.group.members);
+               cobalt_messages_group_began(&app->messages.group, began);
+               if (!began) {
+                  set_notice(app, "Could not create that group. Check the name and members.",
+                             true);
+               }
+               break;
+            }
             case COBALT_MESSAGES_ACCEPT:
             case COBALT_MESSAGES_DECLINE: {
                /* The view has filled in the target. A refused begin changes
@@ -910,6 +970,52 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
             case COBALT_CHAT_THREAD_BACK:
                app->screen = COBALT_SCREEN_MESSAGES;
                break;
+            case COBALT_CHAT_THREAD_GROUP_RENAME: {
+               const bool began = cobalt_session_begin_chat_group_rename(
+                  app->chat_view.convo_id, app->chat_view.edit_text);
+               cobalt_chat_thread_group_began(&app->chat_view, began);
+               if (!began) {
+                  set_notice(app, "Could not rename the group. Wait for the last request to finish.",
+                             true);
+               }
+               break;
+            }
+            case COBALT_CHAT_THREAD_GROUP_ADD: {
+               const bool began = cobalt_session_begin_chat_group_add(
+                  app->chat_view.convo_id, app->chat_view.edit_text);
+               cobalt_chat_thread_group_began(&app->chat_view, began);
+               if (!began) {
+                  set_notice(app, "Could not add those members. Check the handles or DIDs.",
+                             true);
+               }
+               break;
+            }
+            case COBALT_CHAT_THREAD_GROUP_REMOVE: {
+               const cobalt_chat_group *group = cobalt_session_chat_group();
+               const int sel = (int) app->chat_view.member_nav.selected;
+               const bool began = sel < group->member_count &&
+                  cobalt_session_begin_chat_group_remove(app->chat_view.convo_id,
+                                                         group->members[sel].did);
+               cobalt_chat_thread_group_began(&app->chat_view, began);
+               if (!began) {
+                  set_notice(app, "Could not remove that member. Wait for the last request to finish.",
+                             true);
+               }
+               break;
+            }
+            case COBALT_CHAT_THREAD_JOIN_LINK: {
+               const cobalt_chat_group *group = cobalt_session_chat_group();
+               const bool began = group->join_link_code[0]
+                  ? cobalt_session_begin_chat_join_link_toggle(
+                       app->chat_view.convo_id, group->join_link_enabled)
+                  : cobalt_session_begin_chat_join_link_create(app->chat_view.convo_id);
+               cobalt_chat_thread_group_began(&app->chat_view, began);
+               if (!began) {
+                  set_notice(app, "Could not update the join link. Wait for the last request to finish.",
+                             true);
+               }
+               break;
+            }
             case COBALT_CHAT_THREAD_JOIN_APPROVE:
             case COBALT_CHAT_THREAD_JOIN_REJECT: {
                /* The view has filled in the target. A refused begin changes

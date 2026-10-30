@@ -13,8 +13,11 @@
  * The inbox and the request inbox's list live here, with accepting and
  * declining a request. A group's pending join requests are here too: the same
  * flattening, for the same reason, but only a group's owner can list them, so
- * a screen reaches them from a conversation rather than the inbox. Groups
- * themselves — creating one, editing it — are still later steps (cobalt#107).
+ * a screen reaches them from a conversation rather than the inbox.
+ *
+ * Group management is flattened here as well, from Wolfram's typed
+ * `wf_chat_convo` and `wf_chat_convo_members`. The parsing stays in Wolfram;
+ * this layer only copies the fields a screen draws into fixed buffers.
  */
 
 #include "atproto/feed.h"
@@ -167,6 +170,63 @@ bool cobalt_chat_convo_id_copy(char *out, size_t cap, const char *id);
  * not the name could be read.
  */
 #define COBALT_CHAT_JOIN_REQUESTS_MAX 50
+
+/* --- a group's name, members and join link --- */
+
+#define COBALT_CHAT_GROUP_MEMBERS_MAX 50
+#define COBALT_CHAT_GROUP_NAME_MAX 96
+/* The member list as typed, before it is split into handles and DIDs. Enough
+ * for every entry at the maximum target length plus separators. */
+#define COBALT_CHAT_GROUP_MEMBERS_TEXT_MAX 2048
+#define COBALT_CHAT_JOIN_LINK_CODE_MAX 128
+#define COBALT_CHAT_JOIN_LINK_URL_MAX 256
+
+typedef struct {
+   char did[COBALT_CHAT_TARGET_MAX];
+   char name[COBALT_POST_NAME_MAX];    /* display name, or the handle */
+   char handle[COBALT_POST_NAME_MAX];  /* with a leading @ */
+} cobalt_chat_member;
+
+/*
+ * One group conversation's management state. `loaded` is false until the
+ * detail request has answered. `member_count` is the full list once
+ * getConvoMembers has answered; until then it holds the important members
+ * from convoView. The join link is empty until one exists or the detail
+ * response carried one.
+ */
+typedef struct {
+   bool loaded;
+   char convo_id[COBALT_CHAT_ID_MAX];
+   char name[COBALT_CHAT_GROUP_NAME_MAX];
+   cobalt_chat_member members[COBALT_CHAT_GROUP_MEMBERS_MAX];
+   int member_count;                 /* held members, not the group total */
+   int total_members;                /* the server's memberCount */
+   bool join_link_enabled;
+   char join_link_code[COBALT_CHAT_JOIN_LINK_CODE_MAX];
+   char join_link_url[COBALT_CHAT_JOIN_LINK_URL_MAX];
+} cobalt_chat_group;
+
+void cobalt_chat_group_reset(cobalt_chat_group *group);
+
+/* Index of `did` in the group, or -1. */
+int cobalt_chat_group_member_index(const cobalt_chat_group *group, const char *did);
+
+#ifdef COBALT_HAS_WOLFRAM
+struct wf_chat_convo;
+struct wf_chat_convo_members;
+
+/* Fill the name, counts, join link and important members from a convoView. */
+void cobalt_chat_group_from_convo(cobalt_chat_group *group,
+                                  const struct wf_chat_convo *convo,
+                                  const char *convo_id);
+
+/* Replace the held members with the full getConvoMembers list. */
+void cobalt_chat_group_from_members(cobalt_chat_group *group,
+                                    const struct wf_chat_convo_members *members);
+#endif
+
+/* Replace the group's display name, keeping it inside the field size. */
+void cobalt_chat_group_set_name(cobalt_chat_group *group, const char *name);
 
 typedef struct {
    char did[COBALT_CHAT_TARGET_MAX];   /* who asked, for the decision */
