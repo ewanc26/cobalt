@@ -11,8 +11,9 @@ permissions:
 
 jobs:
   flow:
-    uses: ewanc26/wolfram/.github/workflows/flow-reusable.yml@main
+    uses: ewanc26/wolfram/.github/workflows/flow-reusable.yml@v0.43.2
     with:
+      canon_ref: v0.43.2
       macos9_c89: false
 
   extras:
