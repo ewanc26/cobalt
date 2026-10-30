@@ -339,6 +339,7 @@ Protocol, OAuth, moderation, parsing, muted words, pagination of protocol result
 - **Reply gates.** `wf_agent_set_reply_gate` (`wolfram/threadgate_postgate.h`, v0.34.0); `apply_reply_gate` in `session_post.c` only logs a failure.
 - **Saved feeds.** `wf_agent_get_saved_feeds` (`wolfram/saved_feeds.h`, v0.35.0); `cobalt_session_run_saved_feeds` only copies the result.
 - **Profile tabs.** `wolfram/profile_tab.h` (v0.37.0): names, filters, cycle and the fetch.
+- **Groups.** `wolfram/chat_group.h` decides whether a convo is a group, builds a join link's `https://bsky.app/chat/<code>` URL and names its enabled state; `wf_agent_chat_resolve_member_list` (`wolfram/chat_typed.h`) splits, validates, resolves and de-duplicates the member list a person types. `src/atproto/chat.c` only copies their results into the fixed buffers a screen draws, so do not re-derive the group kind, the URL or the member list locally.
 - **Failure kinds.** `wolfram/failure.h`; `cobalt_session_describe_failure` in `session.c` only chooses the wording.
 
 `tools/check-shared-logic.sh` (CI job `shared-logic`) fails if the old matcher grows back or the pairing method names appear in `src/` at all. Its self-test has a deliberate violation per rule. When Wolfram takes something over, delete the local copy and tighten the allow-list in the same PR.
@@ -871,7 +872,7 @@ written here. Under OAuth the console talks to the node instead, and the node
 does not forward `chat.bsky.*` yet, so DMs need an app-password session; that is
 a Wolfram node-side gap, not something to paper over in Cobalt.
 
-Four rules the DM screens share with the rest of the client, worth knowing
+Five rules the DM screens share with the rest of the client, worth knowing
 before adding to them:
 
 - **A decision is one press and one job, never on entry.** Accepting or
@@ -881,11 +882,18 @@ begin (one job already in flight) changes nothing.
 - **A successful decision is applied locally.** An accepted request moves to
 the front of the inbox, and a settled join request leaves the loaded list,
 without a refetch.
-- **A group is `others > 1` by member count**, which is what the inbox's `group`
-flag already meant, so a group with exactly one other member reads as
-one-to-one and does not offer join requests. Wolfram's convo type carries no
-`name` (only an opaque `type` tag), so the inbox labels every group "Group" and
-nothing can draw its name; that is a Wolfram-side gap, not a Cobalt one.
+- **A group is what its `kind` says.** `wf_chat_convo_is_group` decides it for
+the inbox and the thread screen, with more than one other member only as the
+fallback for a server that sends no kind. The same kind carries the group's
+name, member counts and join link, and a group is created from the list
+`wf_agent_chat_resolve_member_list` resolves; no screen or parser re-derives the
+kind or splits a member list itself.
+- **A group edit is one press, one job, then the group is read back.** R opens
+the settings, A renames, Y adds members, X removes the selected one and R
+creates or enables/disables the join link. Each success answers with the convo
+and the screen refetches `getConvo`/`getConvoMembers`, so the server is the state
+drawn. A refused begin changes nothing and sends nothing, and a failed edit
+keeps the last known group state.
 - **Join requests are reachable only from a conversation.**
 `chat.bsky.group.listJoinRequests` takes a conversation id and only a group's
 owner may call it, so `chat_thread.c`'s X offers them only for a group, and a
@@ -894,7 +902,12 @@ one-to-one leaves X inert rather than offering a list that can only be refused.
 **Verification note:** host sweep (both configurations), `linkcheck`, the unit
 tests, `make -C tests e2e` (a new `test_group_join_requests`: fetch, approve,
 reject, a one-to-one X being inert, and a failed approve keeping the request and
-not retrying) and the snapshot suite all pass, and `make -j4` builds
+not retrying; `test_group_create_and_join_link`: a refused member list sending
+nothing, the resolved list carrying DIDs rather than what was typed, the join
+link created and toggled one request per press, and a failed toggle kept and not
+retried; `test_group_management`: reading a group, rename/add/remove each as one
+request with the group read back afterwards, and a refused edit sending nothing)
+and the snapshot suite all pass, and `make -j4` builds
 `cobalt.elf`/`.rpx`/`.wuhb` with no warnings. Still no hardware pass: nothing
 here has run on a console, so the console flow remains a `needs-owner` check.
 
