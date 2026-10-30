@@ -2,6 +2,7 @@
 #include "util/log.h"
 
 #ifdef COBALT_HAS_WOLFRAM
+#include <wolfram/chat_group.h>
 #include <wolfram/chat_typed.h>
 #include <wolfram/time.h>
 #endif
@@ -325,6 +326,131 @@ cobalt_chat_thread_reset(cobalt_chat_thread *thread)
    }
 }
 
+/* --- a group's name, members and join link --- */
+
+void
+cobalt_chat_group_reset(cobalt_chat_group *group)
+{
+   if (group) {
+      memset(group, 0, sizeof(*group));
+   }
+}
+
+int
+cobalt_chat_group_member_index(const cobalt_chat_group *group, const char *did)
+{
+   if (!group || !did) {
+      return -1;
+   }
+   for (int i = 0; i < group->member_count; i++) {
+      if (strcmp(group->members[i].did, did) == 0) {
+         return i;
+      }
+   }
+   return -1;
+}
+
+static void
+copy_field(char *out, size_t cap, const char *text)
+{
+   if (cap == 0) {
+      return;
+   }
+   out[0] = '\0';
+   if (!text || !text[0]) {
+      return;
+   }
+   cobalt_feed_copy_text(out, cap, text);
+}
+
+void
+cobalt_chat_group_set_name(cobalt_chat_group *group, const char *name)
+{
+   if (group) {
+      copy_field(group->name, sizeof(group->name), name ? name : "");
+   }
+}
+
+#ifdef COBALT_HAS_WOLFRAM
+
+static void
+group_add_member(cobalt_chat_group *group, const wf_agent_profile_view *who)
+{
+   cobalt_chat_member *member;
+
+   if (!group || !who || !who->did || !who->did[0] ||
+       group->member_count >= COBALT_CHAT_GROUP_MEMBERS_MAX ||
+       cobalt_chat_group_member_index(group, who->did) >= 0) {
+      return;
+   }
+
+   member = &group->members[group->member_count];
+   memset(member, 0, sizeof(*member));
+   snprintf(member->did, sizeof(member->did), "%s", who->did);
+   if (who->handle && who->handle[0]) {
+      snprintf(member->handle, sizeof(member->handle), "@%s", who->handle);
+   }
+   copy_field(member->name, sizeof(member->name),
+              who->display_name && who->display_name[0]
+                 ? who->display_name
+                 : who->handle && who->handle[0] ? who->handle : who->did);
+   group->member_count++;
+}
+
+void
+cobalt_chat_group_from_convo(cobalt_chat_group *group,
+                              const struct wf_chat_convo *convo,
+                              const char *convo_id)
+{
+   if (!group || !convo) {
+      return;
+   }
+
+   cobalt_chat_group_reset(group);
+   if (!cobalt_chat_convo_id_copy(group->convo_id, sizeof(group->convo_id), convo_id)) {
+      return;
+   }
+
+   if (convo->group_name) {
+      copy_field(group->name, sizeof(group->name), convo->group_name);
+   }
+   for (size_t i = 0; i < convo->member_count; i++) {
+      group_add_member(group, &convo->members[i]);
+   }
+   group->total_members = convo->has_group_member_count
+                             ? convo->group_member_count
+                             : group->member_count;
+   if (convo->has_join_link && convo->join_link_code) {
+      snprintf(group->join_link_code, sizeof(group->join_link_code), "%s",
+               convo->join_link_code);
+      group->join_link_enabled =
+         wf_chat_join_link_is_enabled(convo->join_link_status);
+      wf_chat_join_link_url(group->join_link_code, group->join_link_url,
+                            sizeof(group->join_link_url));
+   }
+   group->loaded = true;
+}
+
+void
+cobalt_chat_group_from_members(cobalt_chat_group *group,
+                               const struct wf_chat_convo_members *members)
+{
+   if (!group || !members) {
+      return;
+   }
+
+   group->member_count = 0;
+   for (size_t i = 0; i < members->member_count; i++) {
+      group_add_member(group, &members->members[i]);
+   }
+   if (group->total_members < group->member_count) {
+      group->total_members = group->member_count;
+   }
+   group->loaded = true;
+}
+
+#endif
+
 /* --- a group's pending join requests --- */
 
 void
@@ -454,7 +580,9 @@ cobalt_chat_inbox_append_from_wolfram(cobalt_chat_inbox *out,
       memset(item, 0, sizeof(*item));
       snprintf(item->id, sizeof(item->id), "%s", src->id ? src->id : "");
 
-      if (others > 1) {
+      /* A group is what its `kind` says it is; more than one other member is
+       * only a fallback for a server that did not send the kind. */
+      if (wf_chat_convo_is_group(src) || others > 1) {
          item->group = true;
          snprintf(item->name, sizeof(item->name), "Group");
       } else {

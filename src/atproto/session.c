@@ -306,6 +306,16 @@ cobalt_session_describe_failure(cobalt_job_result *r, wf_status status, cobalt_j
                     kind == COBALT_JOB_CHAT_JOIN_REJECT) {
             cobalt_session_set_message(r, "The server did not update that group's join "
                            "requests. Only a group's owner can see them; try again.");
+         } else if (kind == COBALT_JOB_CHAT_GROUP_INFO ||
+                    kind == COBALT_JOB_CHAT_GROUP_CREATE ||
+                    kind == COBALT_JOB_CHAT_GROUP_RENAME ||
+                    kind == COBALT_JOB_CHAT_GROUP_ADD ||
+                    kind == COBALT_JOB_CHAT_GROUP_REMOVE) {
+            cobalt_session_set_message(r, "The server did not update that group. Only a "
+                           "group's owner can change it; try again.");
+         } else if (kind == COBALT_JOB_CHAT_JOIN_LINK) {
+            cobalt_session_set_message(r, "The server did not update that invite link. "
+                           "Only a group's owner can change it; try again.");
          } else {
             cobalt_session_set_message(r, "The server refused that request. The post may be gone, or the "
                            "session may have expired - try again, then sign in "
@@ -471,6 +481,24 @@ run_job(cobalt_job_kind kind, const cobalt_job_input *in, cobalt_auth_state *sta
          break;
       case COBALT_JOB_CHAT_JOIN_REJECT:
          cobalt_session_run_chat_join_reject(in, &r, state);
+         break;
+      case COBALT_JOB_CHAT_GROUP_INFO:
+         cobalt_session_run_chat_group_info(in, &r, state);
+         break;
+      case COBALT_JOB_CHAT_GROUP_CREATE:
+         cobalt_session_run_chat_group_create(in, &r, state);
+         break;
+      case COBALT_JOB_CHAT_GROUP_RENAME:
+         cobalt_session_run_chat_group_rename(in, &r, state);
+         break;
+      case COBALT_JOB_CHAT_GROUP_ADD:
+         cobalt_session_run_chat_group_add(in, &r, state);
+         break;
+      case COBALT_JOB_CHAT_GROUP_REMOVE:
+         cobalt_session_run_chat_group_remove(in, &r, state);
+         break;
+      case COBALT_JOB_CHAT_JOIN_LINK:
+         cobalt_session_run_chat_join_link(in, &r, state);
          break;
       case COBALT_JOB_PROFILE:  cobalt_session_run_profile(in, &r, state);   break;
       case COBALT_JOB_FOLLOW:   cobalt_session_run_follow(in, &r, state);    break;

@@ -32,6 +32,7 @@
 #include <wolfram/actor_typed.h>
 #include <wolfram/agent.h>
 #include <wolfram/attach.h>
+#include <wolfram/chat_group.h>
 #include <wolfram/embed.h>
 #include <wolfram/failure.h>
 #include <wolfram/feed_gen_typed.h>
@@ -104,6 +105,14 @@ typedef struct {
    /* Group join requests: the requester's DID, alongside `uri` = the convo id
     * of the group. Empty for everything else. */
    char member_did[COBALT_CHAT_TARGET_MAX];
+
+   /* Group creation: the group's name. Member handles and DIDs travel in
+    * `text`; rename and add use `text` for the new name or member list. */
+   char name[COBALT_CHAT_GROUP_NAME_MAX];
+
+   /* Join-link jobs: create a new link, or toggle the existing one off/on. */
+   bool link_create;
+   bool link_disable;
 } cobalt_job_input;
 
 typedef struct {
@@ -159,8 +168,12 @@ typedef struct {
    cobalt_chat_thread chat_thread;
    /* A group's pending join requests, for the conversation last opened. */
    cobalt_chat_join_requests join_requests;
+   /* The group whose management screen is open, or reset. */
+   cobalt_chat_group group;
    /* Set by a successful CHAT_START, read by the app once it has ok. */
    char chat_started[COBALT_CHAT_ID_MAX];
+   /* Set by a successful CHAT_GROUP_CREATE, read the same way. */
+   char chat_group_started[COBALT_CHAT_ID_MAX];
    cobalt_profile profile;
    cobalt_feed author_feed;
    int profile_tab;
@@ -226,6 +239,12 @@ void cobalt_session_run_interaction(const cobalt_job_input *in, cobalt_job_resul
 void cobalt_session_run_likes(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_list_members(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_lists(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_chat_group_info(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_chat_group_create(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_chat_group_rename(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_chat_group_add(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_chat_group_remove(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_chat_join_link(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_mute(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_muted_list(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_notifications(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);

@@ -36,6 +36,10 @@ typedef enum {
    /* A handle or DID was accepted from the keyboard. The caller begins the
     * start job with the target, then reports whether it began. */
    COBALT_MESSAGES_START,
+   /* The group form was completed. The name is in view->group.name and the
+    * members in view->group.members; the caller begins the create job and
+    * reports whether it began. */
+   COBALT_MESSAGES_GROUP_CREATE,
    /* A request was accepted or declined. The target is in view->decision; the
     * caller begins the job and reports whether it began. */
    COBALT_MESSAGES_ACCEPT,
@@ -85,11 +89,38 @@ typedef enum {
    COBALT_MESSAGES_START_FAILED,     /* the job failed, or answered without an id */
 } cobalt_messages_start_outcome;
 
+/*
+ * Creating a group is two fields, because a group needs both a name and at
+ * least one member and the console keyboard edits one line at a time. The name
+ * is typed first, then the members; the second keyboard starts empty so the
+ * name cannot be edited by accident while the member list is on screen.
+ */
+typedef enum {
+   COBALT_MESSAGES_GROUP_NONE = 0,
+   COBALT_MESSAGES_GROUP_NAME,
+   COBALT_MESSAGES_GROUP_MEMBERS,
+} cobalt_messages_group_stage;
+
+typedef struct {
+   cobalt_messages_group_stage stage;
+   char name[COBALT_CHAT_GROUP_NAME_MAX];
+   char members[COBALT_CHAT_GROUP_MEMBERS_TEXT_MAX];
+   cobalt_keyboard kb;
+   bool pending;   /* the create job is in flight */
+} cobalt_messages_group;
+
+typedef enum {
+   COBALT_MESSAGES_GROUP_NONE_OUTCOME = 0,   /* no create was in flight */
+   COBALT_MESSAGES_GROUP_CREATED,            /* a convo id came back: open it */
+   COBALT_MESSAGES_GROUP_FAILED,             /* the job failed, or had no id */
+} cobalt_messages_group_outcome;
+
 typedef struct {
    cobalt_listnav nav;
    cobalt_listnav requests_nav;
    cobalt_messages_mode mode;
    cobalt_messages_start start;
+   cobalt_messages_group group;
    cobalt_messages_decision decision;
 } cobalt_messages_view;
 
@@ -120,6 +151,23 @@ cobalt_messages_start_outcome cobalt_messages_start_finished(cobalt_messages_sta
 
 /* The target as a display name: no leading '@' and no surrounding spaces. */
 bool cobalt_messages_start_name(const cobalt_messages_start *s, char *out, size_t cap);
+
+/* Open the group form on its name field, clearing anything typed before. */
+void cobalt_messages_group_open(cobalt_messages_group *g);
+
+/* The create job was begun (`began`). A refusal opens the member field again
+ * on the same text, so it can be corrected. */
+void cobalt_messages_group_began(cobalt_messages_group *g, bool began);
+
+/*
+ * The create job finished. Only a finish that follows a began create counts;
+ * otherwise NONE. A conversation id clears the form and opens the new group;
+ * anything else is a failure, and returns to the member field with both fields
+ * kept for another try.
+ */
+cobalt_messages_group_outcome cobalt_messages_group_finished(cobalt_messages_group *g,
+                                                             bool ok,
+                                                             const char *convo_id);
 
 /* The accept or decline job began (`began`). A refusal changes nothing, so an
  * accept already in flight keeps its state. */

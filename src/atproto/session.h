@@ -101,6 +101,12 @@ typedef enum {
    COBALT_JOB_CHAT_JOIN_REQUESTS,
    COBALT_JOB_CHAT_JOIN_APPROVE,
    COBALT_JOB_CHAT_JOIN_REJECT,
+   COBALT_JOB_CHAT_GROUP_INFO,
+   COBALT_JOB_CHAT_GROUP_CREATE,
+   COBALT_JOB_CHAT_GROUP_RENAME,
+   COBALT_JOB_CHAT_GROUP_ADD,
+   COBALT_JOB_CHAT_GROUP_REMOVE,
+   COBALT_JOB_CHAT_JOIN_LINK,
 } cobalt_job_kind;
 
 typedef struct {
@@ -360,6 +366,39 @@ const cobalt_chat_join_requests *cobalt_session_chat_join_requests(void);
  */
 bool cobalt_session_begin_chat_join_approve(const char *convo_id, const char *did);
 bool cobalt_session_begin_chat_join_reject(const char *convo_id, const char *did);
+
+/* --- a group's name, members and join link --- */
+
+/* Fetch the group's name, join link and full member list. Refused for an empty
+ * or malformed convo id, or while another request is in flight. */
+bool cobalt_session_begin_chat_group_info(const char *convo_id);
+
+/* The group state as last fetched or changed; never NULL. `loaded` is false
+ * until the first info request answers. */
+const cobalt_chat_group *cobalt_session_chat_group(void);
+
+/*
+ * Create a group named `name` with the accounts in `members` — a comma or
+ * newline separated list of handles and DIDs. At least one member has to
+ * resolve. On success cobalt_session_chat_group_started() holds the new convo
+ * id until the next group job. Refused, without a job, for an empty name or
+ * member list, or while another request is in flight.
+ */
+bool cobalt_session_begin_chat_group_create(const char *name, const char *members);
+
+/* The convo id of the last group created, or "" while none is. */
+const char *cobalt_session_chat_group_started(void);
+
+/* Rename a group, add members (same list syntax as create), or remove one
+ * member by DID. Each updates the held group state on success. */
+bool cobalt_session_begin_chat_group_rename(const char *convo_id, const char *name);
+bool cobalt_session_begin_chat_group_add(const char *convo_id, const char *members);
+bool cobalt_session_begin_chat_group_remove(const char *convo_id, const char *did);
+
+/* Create, disable or enable the group's join link. `disable` chooses which way
+ * an existing link is toggled; a new link is created for anyone to join. */
+bool cobalt_session_begin_chat_join_link_create(const char *convo_id);
+bool cobalt_session_begin_chat_join_link_toggle(const char *convo_id, bool disable);
 
 /*
  * Fetch the newest messages of one conversation, by its convo id. Read-only.

@@ -630,6 +630,370 @@ cobalt_session_run_chat_start(const cobalt_job_input *in, cobalt_job_result *r,
    r->ok = true;
 }
 
+/* --- a group's name, members and join link --- */
+
+/* Split, validate, resolve and de-duplicate a member list through Wolfram. On
+ * failure sets the message in `r` and frees `out`; on success the caller owns
+ * `out` and must free it after the request. */
+static bool
+resolve_group_members(const char *list, wf_chat_member_list *out,
+                      cobalt_job_result *r)
+{
+   const wf_status status = wf_agent_chat_resolve_member_list(
+      g_session.wf, list, g_session.did, out);
+
+   if (status == WF_OK) {
+      return true;
+   }
+   if (out->invalid) {
+      if (status == WF_ERR_HTTP) {
+         cobalt_session_set_message(r, "No account has the handle @%s.", out->invalid);
+      } else if (status == WF_ERR_INVALID_ARG) {
+         cobalt_session_set_message(r, "That is not a handle or DID: %s", out->invalid);
+      } else {
+         COBALT_LOGW("session: resolve member list failed (%d)", (int) status);
+         cobalt_session_describe_failure(r, status, COBALT_JOB_CHAT_GROUP_CREATE);
+      }
+   } else {
+      cobalt_session_set_message(r, "Enter someone else to put in the group.");
+   }
+   wf_chat_member_list_free(out);
+   return false;
+}
+
+/* Read a group's detail and full member list. The typed parsers do the JSON
+ * work; this only copies their results into the screen's fixed buffers. */
+static bool
+fetch_group_detail(const char *convo_id, cobalt_chat_group *out,
+                   cobalt_job_result *r, cobalt_job_kind kind)
+{
+   wf_chat_convo convo;
+   wf_chat_convo_members members;
+   wf_status status;
+
+   memset(&convo, 0, sizeof(convo));
+   memset(&members, 0, sizeof(members));
+
+   COBALT_LOGI("session: getConvo");
+   status = wf_agent_chat_get_convo(g_session.wf, convo_id, &convo);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: getConvo failed (%d)", (int) status);
+      cobalt_session_describe_failure(r, status, kind);
+      return false;
+   }
+   cobalt_chat_group_from_convo(out, &convo, convo_id);
+   wf_chat_convo_free(&convo);
+
+   COBALT_LOGI("session: getConvoMembers");
+   status = wf_agent_chat_get_convo_members_typed(g_session.wf, convo_id, &members);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: getConvoMembers failed (%d)", (int) status);
+      cobalt_session_describe_failure(r, status, kind);
+      return false;
+   }
+   cobalt_chat_group_from_members(out, &members);
+   wf_chat_convo_members_free(&members);
+   return true;
+}
+
+static void
+publish_group(const cobalt_chat_group *group)
+{
+   SDL_LockMutex(g_session.lock);
+   g_session.group = *group;
+   SDL_UnlockMutex(g_session.lock);
+}
+
+void
+cobalt_session_run_chat_group_info(const cobalt_job_input *in, cobalt_job_result *r,
+                                   cobalt_auth_state *state)
+{
+   cobalt_chat_group group;
+
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in to see messages.");
+      return;
+   }
+   cobalt_chat_group_reset(&group);
+   if (!cobalt_chat_convo_id_copy(group.convo_id, sizeof(group.convo_id), in->uri)) {
+      cobalt_session_set_message(r, "That group is not valid.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   if (!fetch_group_detail(in->uri, &group, r, COBALT_JOB_CHAT_GROUP_INFO)) {
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   publish_group(&group);
+   cobalt_session_publish();
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+void
+cobalt_session_run_chat_group_create(const cobalt_job_input *in, cobalt_job_result *r,
+                                     cobalt_auth_state *state)
+{
+   wf_chat_member_list members;
+   wf_chat_convo convo;
+   cobalt_chat_group group;
+   char id[COBALT_CHAT_ID_MAX];
+
+   SDL_LockMutex(g_session.lock);
+   g_session.chat_group_started[0] = '\0';
+   SDL_UnlockMutex(g_session.lock);
+
+   if (!g_session.wf || !g_session.did[0]) {
+      cobalt_session_set_message(r, "Sign in to send messages.");
+      return;
+   }
+   if (!in->name[0]) {
+      cobalt_session_set_message(r, "Give the group a name.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   if (!resolve_group_members(in->text, &members, r)) {
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   memset(&convo, 0, sizeof(convo));
+   COBALT_LOGI("session: createGroup");
+   wf_status status = wf_agent_chat_create_group_typed(
+      g_session.wf, (const char *const *) members.dids, members.count, in->name,
+      &convo);
+   wf_chat_member_list_free(&members);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: createGroup failed (%d)", (int) status);
+      cobalt_session_describe_failure(r, status, COBALT_JOB_CHAT_GROUP_CREATE);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   if (!cobalt_chat_convo_id_copy(id, sizeof(id), convo.id)) {
+      cobalt_session_set_message(r, "The server did not return the new group.");
+      wf_chat_convo_free(&convo);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   cobalt_chat_group_from_convo(&group, &convo, id);
+   cobalt_chat_group_set_name(&group, in->name);
+   wf_chat_convo_free(&convo);
+
+   SDL_LockMutex(g_session.lock);
+   snprintf(g_session.chat_group_started, sizeof(g_session.chat_group_started),
+            "%s", id);
+   SDL_UnlockMutex(g_session.lock);
+
+   /* The create response carries only the important members; the detail fetch
+    * fills the rest. If it fails, the group still exists and is usable. */
+   fetch_group_detail(id, &group, r, COBALT_JOB_CHAT_GROUP_INFO);
+   publish_group(&group);
+   cobalt_session_publish();
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+void
+cobalt_session_run_chat_group_rename(const cobalt_job_input *in, cobalt_job_result *r,
+                                     cobalt_auth_state *state)
+{
+   wf_chat_convo convo;
+   cobalt_chat_group group;
+
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in to see messages.");
+      return;
+   }
+   if (!in->uri[0] || !in->text[0]) {
+      cobalt_session_set_message(r, "Give the group a name.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   memset(&convo, 0, sizeof(convo));
+   COBALT_LOGI("session: editGroup");
+   wf_status status = wf_agent_chat_edit_group_typed(g_session.wf, in->uri, in->text, &convo);
+   wf_chat_convo_free(&convo);
+   if (status != WF_OK) {
+      cobalt_session_describe_failure(r, status, COBALT_JOB_CHAT_GROUP_RENAME);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(g_session.lock);
+   group = g_session.group;
+   SDL_UnlockMutex(g_session.lock);
+   if (!cobalt_chat_convo_id_copy(group.convo_id, sizeof(group.convo_id), in->uri)) {
+      cobalt_session_set_message(r, "That group is not valid.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   cobalt_chat_group_set_name(&group, in->text);
+   fetch_group_detail(in->uri, &group, r, COBALT_JOB_CHAT_GROUP_INFO);
+   publish_group(&group);
+   cobalt_session_publish();
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+void
+cobalt_session_run_chat_group_add(const cobalt_job_input *in, cobalt_job_result *r,
+                                  cobalt_auth_state *state)
+{
+   wf_chat_member_list members;
+   wf_chat_convo convo;
+   cobalt_chat_group group;
+
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in to see messages.");
+      return;
+   }
+   if (!in->uri[0]) {
+      cobalt_session_set_message(r, "That group is not valid.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   if (!resolve_group_members(in->text, &members, r)) {
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   memset(&convo, 0, sizeof(convo));
+   COBALT_LOGI("session: addGroupMembers");
+   wf_status status = wf_agent_chat_add_members_typed(
+      g_session.wf, in->uri, (const char *const *) members.dids, members.count,
+      &convo);
+   wf_chat_member_list_free(&members);
+   if (status != WF_OK) {
+      wf_chat_convo_free(&convo);
+      cobalt_session_describe_failure(r, status, COBALT_JOB_CHAT_GROUP_ADD);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(g_session.lock);
+   group = g_session.group;
+   SDL_UnlockMutex(g_session.lock);
+   if (!cobalt_chat_convo_id_copy(group.convo_id, sizeof(group.convo_id), in->uri)) {
+      wf_chat_convo_free(&convo);
+      cobalt_session_set_message(r, "That group is not valid.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   cobalt_chat_group_from_convo(&group, &convo, in->uri);
+   wf_chat_convo_free(&convo);
+   fetch_group_detail(in->uri, &group, r, COBALT_JOB_CHAT_GROUP_INFO);
+   publish_group(&group);
+   cobalt_session_publish();
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+void
+cobalt_session_run_chat_group_remove(const cobalt_job_input *in, cobalt_job_result *r,
+                                     cobalt_auth_state *state)
+{
+   const char *dids[1];
+   wf_chat_convo convo;
+   cobalt_chat_group group;
+
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in to see messages.");
+      return;
+   }
+   if (!in->uri[0] || !in->member_did[0]) {
+      cobalt_session_set_message(r, "Choose a member to remove.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   dids[0] = in->member_did;
+   memset(&convo, 0, sizeof(convo));
+   COBALT_LOGI("session: removeGroupMembers");
+   wf_status status = wf_agent_chat_remove_members_typed(g_session.wf, in->uri, dids, 1, &convo);
+   if (status != WF_OK) {
+      wf_chat_convo_free(&convo);
+      cobalt_session_describe_failure(r, status, COBALT_JOB_CHAT_GROUP_REMOVE);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(g_session.lock);
+   group = g_session.group;
+   SDL_UnlockMutex(g_session.lock);
+   if (!cobalt_chat_convo_id_copy(group.convo_id, sizeof(group.convo_id), in->uri)) {
+      wf_chat_convo_free(&convo);
+      cobalt_session_set_message(r, "That group is not valid.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   cobalt_chat_group_from_convo(&group, &convo, in->uri);
+   wf_chat_convo_free(&convo);
+   fetch_group_detail(in->uri, &group, r, COBALT_JOB_CHAT_GROUP_INFO);
+   publish_group(&group);
+   cobalt_session_publish();
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+void
+cobalt_session_run_chat_join_link(const cobalt_job_input *in, cobalt_job_result *r,
+                                  cobalt_auth_state *state)
+{
+   wf_chat_join_link link;
+   cobalt_chat_group group;
+   wf_status status;
+
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in to see messages.");
+      return;
+   }
+   if (!in->uri[0]) {
+      cobalt_session_set_message(r, "That group is not valid.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   memset(&link, 0, sizeof(link));
+   COBALT_LOGI("session: %s", in->link_create ? "createJoinLink"
+                                               : in->link_disable ? "disableJoinLink"
+                                                                  : "enableJoinLink");
+   status = in->link_create
+               ? wf_agent_chat_create_join_link_typed(
+                    g_session.wf, in->uri, false, WF_CHAT_JOIN_RULE_ANYONE, &link)
+               : in->link_disable
+                    ? wf_agent_chat_disable_join_link_typed(g_session.wf, in->uri, &link)
+                    : wf_agent_chat_enable_join_link_typed(g_session.wf, in->uri, &link);
+   if (status != WF_OK) {
+      wf_chat_join_link_free(&link);
+      cobalt_session_describe_failure(r, status, COBALT_JOB_CHAT_JOIN_LINK);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(g_session.lock);
+   group = g_session.group;
+   SDL_UnlockMutex(g_session.lock);
+   if (!cobalt_chat_convo_id_copy(group.convo_id, sizeof(group.convo_id), in->uri)) {
+      wf_chat_join_link_free(&link);
+      cobalt_session_set_message(r, "That group is not valid.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   if (link.code) {
+      snprintf(group.join_link_code, sizeof(group.join_link_code), "%s", link.code);
+      group.join_link_enabled = wf_chat_join_link_is_enabled(link.enabled_status);
+      wf_chat_join_link_url(group.join_link_code, group.join_link_url,
+                            sizeof(group.join_link_url));
+   }
+   wf_chat_join_link_free(&link);
+
+   fetch_group_detail(in->uri, &group, r, COBALT_JOB_CHAT_GROUP_INFO);
+   publish_group(&group);
+   cobalt_session_publish();
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
 /* Accept or decline one request. Both come through here: the call differs, and
  * the list change is the same. The convo id is in `in->uri`. */
 static void
@@ -1079,6 +1443,115 @@ const char *
 cobalt_session_chat_started_convo(void)
 {
    return g_session.chat_started;
+}
+
+bool
+cobalt_session_begin_chat_group_info(const char *convo_id)
+{
+   if (!convo_id || !convo_id[0]) {
+      return false;
+   }
+
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", convo_id);
+   return cobalt_session_submit(COBALT_JOB_CHAT_GROUP_INFO, &in);
+}
+
+const cobalt_chat_group *
+cobalt_session_chat_group(void)
+{
+   return &g_session.group;
+}
+
+bool
+cobalt_session_begin_chat_group_create(const char *name, const char *members)
+{
+   if (!name || !name[0] || !members || !members[0]) {
+      return false;
+   }
+
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.name, sizeof(in.name), "%s", name);
+   snprintf(in.text, sizeof(in.text), "%s", members);
+   return cobalt_session_submit(COBALT_JOB_CHAT_GROUP_CREATE, &in);
+}
+
+const char *
+cobalt_session_chat_group_started(void)
+{
+   return g_session.chat_group_started;
+}
+
+bool
+cobalt_session_begin_chat_group_rename(const char *convo_id, const char *name)
+{
+   if (!convo_id || !convo_id[0] || !name || !name[0]) {
+      return false;
+   }
+
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", convo_id);
+   snprintf(in.text, sizeof(in.text), "%s", name);
+   return cobalt_session_submit(COBALT_JOB_CHAT_GROUP_RENAME, &in);
+}
+
+bool
+cobalt_session_begin_chat_group_add(const char *convo_id, const char *members)
+{
+   if (!convo_id || !convo_id[0] || !members || !members[0]) {
+      return false;
+   }
+
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", convo_id);
+   snprintf(in.text, sizeof(in.text), "%s", members);
+   return cobalt_session_submit(COBALT_JOB_CHAT_GROUP_ADD, &in);
+}
+
+bool
+cobalt_session_begin_chat_group_remove(const char *convo_id, const char *did)
+{
+   if (!convo_id || !convo_id[0] || !did || !did[0]) {
+      return false;
+   }
+
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", convo_id);
+   snprintf(in.member_did, sizeof(in.member_did), "%s", did);
+   return cobalt_session_submit(COBALT_JOB_CHAT_GROUP_REMOVE, &in);
+}
+
+bool
+cobalt_session_begin_chat_join_link_create(const char *convo_id)
+{
+   if (!convo_id || !convo_id[0]) {
+      return false;
+   }
+
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", convo_id);
+   in.link_create = true;
+   return cobalt_session_submit(COBALT_JOB_CHAT_JOIN_LINK, &in);
+}
+
+bool
+cobalt_session_begin_chat_join_link_toggle(const char *convo_id, bool disable)
+{
+   if (!convo_id || !convo_id[0]) {
+      return false;
+   }
+
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", convo_id);
+   in.link_disable = disable;
+   return cobalt_session_submit(COBALT_JOB_CHAT_JOIN_LINK, &in);
 }
 
 /* How many thread requests were accepted, so a test can see a conversation was

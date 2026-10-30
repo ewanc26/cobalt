@@ -34,12 +34,25 @@ typedef enum {
     * began. */
    COBALT_CHAT_THREAD_JOIN_APPROVE,
    COBALT_CHAT_THREAD_JOIN_REJECT,
+   /* Group settings: rename, add or remove a member, or create/toggle the join
+    * link. The caller begins the matching job and reports whether it began. */
+   COBALT_CHAT_THREAD_GROUP_RENAME,
+   COBALT_CHAT_THREAD_GROUP_ADD,
+   COBALT_CHAT_THREAD_GROUP_REMOVE,
+   COBALT_CHAT_THREAD_JOIN_LINK,
 } cobalt_chat_thread_action;
 
 typedef enum {
    COBALT_CHAT_THREAD_MODE_MESSAGES = 0,
    COBALT_CHAT_THREAD_MODE_JOIN_REQUESTS,
+   COBALT_CHAT_THREAD_MODE_GROUP_INFO,
 } cobalt_chat_thread_mode;
+
+typedef enum {
+   COBALT_CHAT_THREAD_EDIT_NONE = 0,
+   COBALT_CHAT_THREAD_EDIT_NAME,
+   COBALT_CHAT_THREAD_EDIT_MEMBERS,
+} cobalt_chat_thread_edit;
 
 /*
  * The one approve or reject in flight, or the one last pressed. Set when a
@@ -76,6 +89,15 @@ typedef struct {
    cobalt_chat_thread_mode mode;
    cobalt_listnav join_nav;
    cobalt_chat_thread_decision join_decision;
+
+   /* Group settings, on a third sub-mode. The member list has its own cursor;
+    * the editor is the name or member field the keyboard is pointed at. */
+   cobalt_listnav member_nav;
+   char edit_text[COBALT_CHAT_GROUP_MEMBERS_TEXT_MAX];
+   cobalt_keyboard edit_kb;
+   bool editing;
+   cobalt_chat_thread_edit edit_kind;
+   bool group_pending;   /* a group settings job is in flight */
 } cobalt_chat_thread_view;
 
 void cobalt_chat_thread_view_init(cobalt_chat_thread_view *view);
@@ -100,6 +122,16 @@ void cobalt_chat_thread_decision_began(cobalt_chat_thread_view *view, bool began
  */
 cobalt_chat_thread_decision_outcome cobalt_chat_thread_decision_finished(
    cobalt_chat_thread_view *view, bool ok);
+
+/*
+ * A group settings job was begun (`began`). A refusal opens the name or member
+ * field again on the same text, so it can be corrected.
+ */
+void cobalt_chat_thread_group_began(cobalt_chat_thread_view *view, bool began);
+
+/* The group settings job finished. True when it followed a begun job, so a
+ * stray result cannot clear a later one's pending state. */
+bool cobalt_chat_thread_group_finished(cobalt_chat_thread_view *view, bool ok);
 
 cobalt_chat_thread_action cobalt_chat_thread_view_update(cobalt_chat_thread_view *view,
                                                          const cobalt_input *in);
