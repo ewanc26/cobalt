@@ -12,6 +12,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 - A Credits screen, reached from the home menu, lists the repositories behind the stack: Cobalt, Indigo, Wolfram, Platinum and Channel Blue. Each `https://github.com/ewanc26/...` address is printed in full and the screen is passive, because the console cannot open a browser; B or the Back pill leaves it. The home menu gained a fourteenth entry.
 - A link whose external view carries `associatedRefs` is hydrated through the public AppView into the card its record describes: an article with its publication and reading time, a gallery with up to four pictures, or a livestream marked live or ended. The request runs once, only when the card is first drawn, and is cached for the session; a link without a usable record, or a failed request, keeps the plain card. ([#102](https://github.com/ewanc26/cobalt/issues/102))
 
+### Changed
+
+- Wolfram is pinned to v0.43.2. The follower and following lists are populated again, because the typed calls now read the arrays the endpoints send, and its public headers compile under `-Wpedantic -Werror` on Clang 16 and older. ([wolfram#226](https://github.com/ewanc26/wolfram/pull/226))
+
 ## [0.14.0] - 2026-10-28
 
 ### Added
