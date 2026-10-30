@@ -170,6 +170,84 @@ cobalt_messages_start_name(const cobalt_messages_start *s, char *out, size_t cap
    return cobalt_chat_target_normalise(s->target, out, cap);
 }
 
+/* --- creating a group --- */
+
+void
+cobalt_messages_group_open(cobalt_messages_group *g)
+{
+   if (!g) {
+      return;
+   }
+   memset(g, 0, sizeof(*g));
+   g->stage = COBALT_MESSAGES_GROUP_NAME;
+   cobalt_keyboard_open(&g->kb, g->name, sizeof(g->name), false, false);
+}
+
+void
+cobalt_messages_group_began(cobalt_messages_group *g, bool began)
+{
+   if (!g || g->stage == COBALT_MESSAGES_GROUP_NONE) {
+      return;
+   }
+   g->pending = began;
+   if (!began && g->stage == COBALT_MESSAGES_GROUP_MEMBERS) {
+      /* The form was complete but no job started; put the member field back so
+       * the person can correct it without retyping the name. */
+      cobalt_keyboard_open(&g->kb, g->members, sizeof(g->members), false, false);
+   }
+}
+
+cobalt_messages_group_outcome
+cobalt_messages_group_finished(cobalt_messages_group *g, bool ok, const char *convo_id)
+{
+   if (!g || !g->pending) {
+      return COBALT_MESSAGES_GROUP_NONE_OUTCOME;
+   }
+   g->pending = false;
+   if (ok && convo_id && convo_id[0]) {
+      memset(g, 0, sizeof(*g));
+      return COBALT_MESSAGES_GROUP_CREATED;
+   }
+   g->stage = COBALT_MESSAGES_GROUP_MEMBERS;
+   cobalt_keyboard_open(&g->kb, g->members, sizeof(g->members), false, false);
+   return COBALT_MESSAGES_GROUP_FAILED;
+}
+
+static cobalt_messages_action
+update_group(cobalt_messages_group *g, const cobalt_input *in)
+{
+   if (g->pending) {
+      return COBALT_MESSAGES_STAY;
+   }
+
+   switch (cobalt_keyboard_update(&g->kb, in)) {
+      case COBALT_KB_ACCEPTED:
+         if (g->stage == COBALT_MESSAGES_GROUP_NAME) {
+            if (g->name[0] == '\0') {
+               return COBALT_MESSAGES_STAY;
+            }
+            g->stage = COBALT_MESSAGES_GROUP_MEMBERS;
+            cobalt_keyboard_open(&g->kb, g->members, sizeof(g->members), false, false);
+            return COBALT_MESSAGES_STAY;
+         }
+         if (g->members[0] == '\0') {
+            return COBALT_MESSAGES_STAY;
+         }
+         COBALT_LOGI("messages: creating a group");
+         return COBALT_MESSAGES_GROUP_CREATE;
+      case COBALT_KB_CANCELLED:
+         /* Cancel leaves the whole form, not just the field: the name is still
+          * there if the person opens it again, but no half-made group can be
+          * submitted by accident. */
+         memset(g, 0, sizeof(*g));
+         break;
+      case COBALT_KB_IDLE:
+      default:
+         break;
+   }
+   return COBALT_MESSAGES_STAY;
+}
+
 /* --- input --- */
 
 cobalt_messages_action
@@ -201,6 +279,10 @@ cobalt_messages_view_update(cobalt_messages_view *view, const cobalt_input *in)
       return COBALT_MESSAGES_STAY;
    }
 
+   if (view->group.stage != COBALT_MESSAGES_GROUP_NONE) {
+      return update_group(&view->group, in);
+   }
+
    if (view->mode == COBALT_MESSAGES_MODE_REQUESTS) {
       return update_requests(view, in);
    }
@@ -221,6 +303,15 @@ cobalt_messages_view_update(cobalt_messages_view *view, const cobalt_input *in)
 
    if (cobalt_input_pressed(in, COBALT_BTN_ALT_Y) && !busy) {
       enter_requests(view);
+      return COBALT_MESSAGES_STAY;
+   }
+
+   /* Shoulder R opens the group form; it is free on this screen, where the
+    * shoulder buttons have no detail column to scroll. */
+   if (cobalt_input_pressed(in, COBALT_BTN_SHOULDER_R) && !busy &&
+       !view->start.pending) {
+      COBALT_LOGI("messages: opening the new-group form");
+      cobalt_messages_group_open(&view->group);
       return COBALT_MESSAGES_STAY;
    }
 
@@ -353,6 +444,55 @@ draw_start(cobalt_messages_view *view, cobalt_render *r, cobalt_surface_id surfa
     * be wrong anyway — on this screen it is the keyboard's backspace. */
 }
 
+/* The two-field group form takes the list's place, like the new-conversation
+ * keyboard. The field names above the box say which half is being typed. */
+static void
+draw_group_create(cobalt_messages_view *view, cobalt_render *r,
+                   cobalt_surface_id surface)
+{
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const int top = cobalt_content_top(r);
+   cobalt_messages_group *g = &view->group;
+   const bool name_stage = (g->stage == COBALT_MESSAGES_GROUP_NAME);
+   const char *label = name_stage ? "Group name"
+                                  : "Members (handles or DIDs, comma separated)";
+   const char *empty_text = name_stage ? "Group name..." : "@handle, did:plc:...";
+   const char *field = name_stage ? g->name : g->members;
+
+   if (cobalt_render_reader(r)) {
+      const SDL_Rect panel = cobalt_typing_area(r);
+      cobalt_draw_typing_panel(r, &panel, "Typing a group on the GamePad",
+                               g->pending ? "Creating group..." : field);
+      return;
+   }
+
+   cobalt_draw_text(r, COBALT_FONT_CAPTION, label, m->pad_edge, top,
+                    COBALT_COLOUR_TEXT_DIM);
+   const int label_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+   SDL_Rect box = { m->pad_edge, top + label_h + m->line_gap,
+                    m->width - 2 * m->pad_edge,
+                    m->pad_tile * 2 + cobalt_font_line_height(r, COBALT_FONT_BODY) };
+   cobalt_draw_tile(r, &box, 1.0f);
+
+   if (g->pending) {
+      cobalt_draw_text(r, COBALT_FONT_BODY, "Creating group...",
+                       box.x + m->pad_tile, box.y + m->pad_tile, COBALT_COLOUR_TEXT);
+      return;
+   }
+
+   char display[COBALT_CHAT_GROUP_MEMBERS_TEXT_MAX + 4];
+   cobalt_keyboard_display_text(&g->kb, display, sizeof(display));
+   const bool empty = field[0] == '\0';
+   cobalt_draw_text(r, COBALT_FONT_BODY, empty ? empty_text : display,
+                    box.x + m->pad_tile, box.y + m->pad_tile,
+                    empty ? COBALT_COLOUR_TEXT_DIM : COBALT_COLOUR_TEXT);
+
+   SDL_Rect keys = { m->pad_edge, box.y + box.h + m->gap,
+                     m->width - 2 * m->pad_edge,
+                     cobalt_keyboard_height(surface) };
+   cobalt_keyboard_draw(&g->kb, r, surface, &keys);
+}
+
 /* One list of rows, as the inbox and the request list both draw it. An empty
  * list shows `empty` on a card. */
 static void
@@ -466,6 +606,11 @@ cobalt_messages_view_draw(cobalt_messages_view *view, cobalt_render *r,
       return;
    }
 
+   if (view->group.stage != COBALT_MESSAGES_GROUP_NONE) {
+      draw_group_create(view, r, surface);
+      return;
+   }
+
    draw_list(r, surface, &view->nav, inbox, "No messages yet.",
-             "X: new message   Y: requests   +: refresh");
+             "X: new message   R: new group   Y: requests   +: refresh");
 }

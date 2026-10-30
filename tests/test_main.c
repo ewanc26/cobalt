@@ -2217,12 +2217,96 @@ test_chat_thread_state(void)
    CHECK(view.mode == COBALT_CHAT_THREAD_MODE_MESSAGES);
 }
 
-/* --- starting a conversation from the inbox --- */
+/* --- creating a group from the inbox --- */
 
 /* Keyboard OK is the function row's fifth key, Cancel the sixth. */
 #define KB_FN_ROW  4
 #define KB_OK_COL  4
 #define KB_CANCEL_COL 5
+
+static void
+test_messages_group(void)
+{
+   begin("creating a group from the inbox");
+
+   cobalt_messages_view view;
+   cobalt_messages_view_init(&view);
+   CHECK(view.group.stage == COBALT_MESSAGES_GROUP_NONE);
+
+   /* R opens the form on the name field; nothing is sent yet. */
+   cobalt_input r = tap(COBALT_BTN_SHOULDER_R);
+   CHECK(cobalt_messages_view_update(&view, &r) == COBALT_MESSAGES_STAY);
+   CHECK(view.group.stage == COBALT_MESSAGES_GROUP_NAME);
+   CHECK(view.group.name[0] == '\0');
+   CHECK(view.group.members[0] == '\0');
+
+   /* OK on an empty name stays on the field; the members field is not reached. */
+   view.group.kb.row = KB_FN_ROW;
+   view.group.kb.col = KB_OK_COL;
+   cobalt_input ok = tap(COBALT_BTN_CONFIRM);
+   CHECK(cobalt_messages_view_update(&view, &ok) == COBALT_MESSAGES_STAY);
+   CHECK(view.group.stage == COBALT_MESSAGES_GROUP_NAME);
+
+   /* A name moves on to members, and the name is kept. */
+   snprintf(view.group.name, sizeof(view.group.name), "%s", "Weekend crew");
+   view.group.kb.row = KB_FN_ROW;
+   view.group.kb.col = KB_OK_COL;
+   CHECK(cobalt_messages_view_update(&view, &ok) == COBALT_MESSAGES_STAY);
+   CHECK(view.group.stage == COBALT_MESSAGES_GROUP_MEMBERS);
+   CHECK_STR(view.group.name, "Weekend crew");
+
+   /* An empty member list stays put rather than asking the server for a group
+    * nobody can join. */
+   view.group.kb.row = KB_FN_ROW;
+   view.group.kb.col = KB_OK_COL;
+   CHECK(cobalt_messages_view_update(&view, &ok) == COBALT_MESSAGES_STAY);
+   CHECK(view.group.stage == COBALT_MESSAGES_GROUP_MEMBERS);
+
+   /* Members complete the form; the caller begins the job. */
+   snprintf(view.group.members, sizeof(view.group.members), "%s", "@alice.test, did:plc:bob");
+   view.group.kb.row = KB_FN_ROW;
+   view.group.kb.col = KB_OK_COL;
+   CHECK(cobalt_messages_view_update(&view, &ok) == COBALT_MESSAGES_GROUP_CREATE);
+   CHECK(view.group.stage == COBALT_MESSAGES_GROUP_MEMBERS);
+
+   /* A refused job reopens the member field with both fields kept. */
+   cobalt_messages_group_began(&view.group, false);
+   CHECK(view.group.stage == COBALT_MESSAGES_GROUP_MEMBERS);
+   CHECK_STR(view.group.name, "Weekend crew");
+   CHECK_STR(view.group.members, "@alice.test, did:plc:bob");
+
+   /* A failed job also keeps both fields, and the form is editable again. */
+   cobalt_messages_group_began(&view.group, true);
+   CHECK(view.group.pending);
+   CHECK(cobalt_messages_group_finished(&view.group, false, "convo-x") ==
+         COBALT_MESSAGES_GROUP_FAILED);
+   CHECK(!view.group.pending);
+   CHECK_STR(view.group.name, "Weekend crew");
+   CHECK_STR(view.group.members, "@alice.test, did:plc:bob");
+
+   /* A created group clears the form and reports the id to open. */
+   cobalt_messages_group_began(&view.group, true);
+   CHECK(cobalt_messages_group_finished(&view.group, true, "convo-group") ==
+         COBALT_MESSAGES_GROUP_CREATED);
+   CHECK(view.group.stage == COBALT_MESSAGES_GROUP_NONE);
+   CHECK(view.group.name[0] == '\0');
+   CHECK(view.group.members[0] == '\0');
+
+   /* A finish that was not ours is ignored. */
+   CHECK(cobalt_messages_group_finished(&view.group, true, "convo-group") ==
+         COBALT_MESSAGES_GROUP_NONE_OUTCOME);
+   CHECK(cobalt_messages_group_finished(NULL, true, "convo-group") ==
+         COBALT_MESSAGES_GROUP_NONE_OUTCOME);
+
+   /* Cancel leaves the whole form, so a half-made group cannot be sent. */
+   cobalt_messages_group_open(&view.group);
+   snprintf(view.group.name, sizeof(view.group.name), "%s", "Half a group");
+   view.group.kb.row = KB_FN_ROW;
+   view.group.kb.col = KB_CANCEL_COL;
+   cobalt_input cancel = tap(COBALT_BTN_CONFIRM);
+   CHECK(cobalt_messages_view_update(&view, &cancel) == COBALT_MESSAGES_STAY);
+   CHECK(view.group.stage == COBALT_MESSAGES_GROUP_NONE);
+}
 
 static void
 test_messages_start(void)
@@ -3786,6 +3870,7 @@ main(int argc, char **argv)
    test_message_decision_states();
    test_chat_thread_decision_states();
    test_chat_thread_state();
+   test_messages_group();
    test_messages_start();
    test_chat_start_target();
    test_paging_stops_when_the_window_fills();

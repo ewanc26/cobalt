@@ -1,8 +1,10 @@
 /*
- * Host end-to-end: drives the real session worker and Wolfram against a mock
- * PDS on localhost. Covers sign-in, timeline, post search and custom-feed
- * refresh through the same entry points the UI uses. Not run by `make test`;
- * see `make e2e`.
+ * Host end-to-end: drives the real session worker and Wolfram against mock PDS
+ * servers on localhost, through the same entry points the UI uses. Covers
+ * sign-in (app password and OAuth), the timeline, post search and custom feeds,
+ * notifications and their paging, direct messages, groups and their join
+ * requests, and the failure paths that keep the last good page. Not run by
+ * `make test`; see `make e2e`.
  */
 #include "app/chat_thread.h"
 #include "app/messages.h"
@@ -104,6 +106,8 @@ typedef struct {
    char nsid[80];
    int status;
    char body[1024];
+   char request[1024];   /* the last request body, for argument checks */
+   char path[256];       /* its path and query, where a GET cursor arrives */
    int hits;
    bool hold;
 } cs_route;
@@ -182,6 +186,29 @@ cs_hits(cs_server *s, const char *nsid)
    return hits;
 }
 
+/* True when the last request to an NSID carried `needle` in its body. */
+static bool
+cs_request_contains(cs_server *s, const char *nsid, const char *needle)
+{
+   SDL_LockMutex(s->lock);
+   const cs_route *rt = cs_find_locked(s, nsid);
+   const bool found = rt && strstr(rt->request, needle) != NULL;
+   SDL_UnlockMutex(s->lock);
+   return found;
+}
+
+/* True when its path or query carried `needle` (GET parameters such as a page
+ * cursor arrive there, not in a body). */
+static bool
+cs_request_path_contains(cs_server *s, const char *nsid, const char *needle)
+{
+   SDL_LockMutex(s->lock);
+   const cs_route *rt = cs_find_locked(s, nsid);
+   const bool found = rt && strstr(rt->path, needle) != NULL;
+   SDL_UnlockMutex(s->lock);
+   return found;
+}
+
 /* Wait until an NSID has been requested `n` times, or give up after two seconds. */
 static bool
 cs_wait_hits(cs_server *s, const char *nsid, int n)
@@ -220,6 +247,9 @@ cs_handle(cs_server *s, int fd)
    }
    buf[len] = '\0';
 
+   const char *hdr_end = strstr(buf, "\r\n\r\n");
+   const char *req_body = hdr_end ? hdr_end + 4 : "";
+
    char method[8], path[256];
    if (sscanf(buf, "%7s %255s", method, path) != 2) {
       return;
@@ -244,6 +274,8 @@ cs_handle(cs_server *s, int fd)
       rt->hits++;
       status = rt->status;
       snprintf(body, sizeof(body), "%s", rt->body);
+      snprintf(rt->request, sizeof(rt->request), "%s", req_body);
+      snprintf(rt->path, sizeof(rt->path), "%s", path);
       hold = rt->hold;
    }
    SDL_UnlockMutex(s->lock);
@@ -370,6 +402,102 @@ press(cobalt_button btn)
    in.pressed[btn] = true;
    in.held[btn] = true;
    return in;
+}
+
+/* Notifications: the wording and the URI each row opens (a like points at
+ * reasonSubject, a reply at itself), the unread marks, paging by cursor, the
+ * seen mark sent once for the first page only, and failures that keep what is
+ * readable. */
+static void
+test_notifications(void)
+{
+   cs_server s;
+   CHECK(cs_start(&s));
+   char svc[64];
+   snprintf(svc, sizeof svc, "http://127.0.0.1:%d", s.port);
+
+   cs_set(&s, "com.atproto.server.createSession", 200,
+      "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\","
+      "\"accessJwt\":\"a.b.c\",\"refreshJwt\":\"d.e.f\",\"active\":true}");
+   cs_set(&s, "app.bsky.notification.listNotifications", 200,
+      "{\"notifications\":["
+      "{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/n1\",\"cid\":\"c1\","
+      "\"author\":{\"did\":\"did:plc:bob\",\"handle\":\"bob.test\",\"displayName\":\"bob\"},"
+      "\"reason\":\"like\",\"reasonSubject\":\"at://did:plc:abc/app.bsky.feed.post/p1\","
+      "\"record\":{},\"isRead\":false,\"indexedAt\":\"2026-10-01T10:00:00.000Z\"},"
+      "{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/n2\",\"cid\":\"c2\","
+      "\"author\":{\"did\":\"did:plc:carol\",\"handle\":\"carol.test\"},"
+      "\"reason\":\"reply\",\"record\":{\"$type\":\"app.bsky.feed.post\","
+      "\"text\":\"nice post\",\"createdAt\":\"2026-10-01T10:00:00.000Z\"},\"isRead\":true},"
+      "{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/n3\",\"cid\":\"c3\","
+      "\"author\":{\"did\":\"did:plc:dave\",\"handle\":\"dave.test\"},"
+      "\"reason\":\"follow\",\"record\":{},\"isRead\":true}],"
+      "\"cursor\":\"n2\"}");
+   cs_set(&s, "app.bsky.notification.updateSeen", 200, "{}");
+
+   cobalt_job_result r;
+   CHECK(cobalt_session_begin_login(svc, "ewancroft.test", "app-pass"));
+   CHECK(wait_job(&r) && r.ok);
+
+   CHECK(cobalt_session_begin_notifications(false));
+   CHECK(wait_job(&r) && r.ok);
+   const cobalt_notifications *n = cobalt_session_notifications();
+   CHECK(n->count == 3);
+   CHECK(n->unread == 1);
+   CHECK_STR(n->items[0].summary, "liked your post");
+   CHECK_STR(n->items[0].subject_uri, "at://did:plc:abc/app.bsky.feed.post/p1");
+   CHECK_STR(n->items[0].actor_did, "did:plc:bob");
+   CHECK(n->items[0].unread);
+   CHECK_STR(n->items[1].summary, "replied to you");
+   CHECK_STR(n->items[1].text, "nice post");
+   CHECK_STR(n->items[1].subject_uri, "at://did:plc:abc/app.bsky.feed.post/n2");
+   CHECK(!n->items[1].unread);
+   CHECK_STR(n->items[2].summary, "followed you");
+   CHECK(n->items[2].subject_uri[0] == '\0');
+   CHECK(n->has_more);
+   CHECK(cs_hits(&s, "app.bsky.notification.listNotifications") == 1);
+   /* Seen once, for the first page, with the time in the body. */
+   CHECK(cs_hits(&s, "app.bsky.notification.updateSeen") == 1);
+   CHECK(cs_request_contains(&s, "app.bsky.notification.updateSeen", "\"seenAt\":\""));
+
+   /* The next page appends, is asked for by the cursor it was given, and is
+    * not marked seen. */
+   cs_set(&s, "app.bsky.notification.listNotifications", 200,
+      "{\"notifications\":["
+      "{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/n4\",\"cid\":\"c4\","
+      "\"author\":{\"did\":\"did:plc:erin\",\"handle\":\"erin.test\"},"
+      "\"reason\":\"mention\",\"record\":{\"$type\":\"app.bsky.feed.post\","
+      "\"text\":\"hey you\",\"createdAt\":\"2026-10-01T09:00:00.000Z\"},\"isRead\":true}]}");
+   CHECK(cobalt_session_begin_notifications(true));
+   CHECK(wait_job(&r) && r.ok);
+   n = cobalt_session_notifications();
+   CHECK(n->count == 4);
+   CHECK_STR(n->items[3].text, "hey you");
+   CHECK(!n->has_more);
+   CHECK(cs_request_path_contains(&s, "app.bsky.notification.listNotifications",
+                                  "cursor=n2"));
+   CHECK(cs_hits(&s, "app.bsky.notification.listNotifications") == 2);
+   CHECK(cs_hits(&s, "app.bsky.notification.updateSeen") == 1);
+
+   /* With no cursor left, a paging job finishes without a request rather than
+    * asking for the same page again. */
+   CHECK(cobalt_session_begin_notifications(true));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cs_hits(&s, "app.bsky.notification.listNotifications") == 2);
+   CHECK(cobalt_session_notifications()->count == 4);
+
+   /* A failed fetch surfaces the failure, keeps the list and is not marked
+    * seen. */
+   cs_set(&s, "app.bsky.notification.listNotifications", 500,
+      "{\"error\":\"InternalServerError\",\"message\":\"try later\"}");
+   CHECK(cobalt_session_begin_notifications(false));
+   CHECK(wait_job(&r));
+   CHECK(!r.ok);
+   CHECK(r.message[0] != '\0');
+   CHECK(cobalt_session_notifications()->count == 4);
+   CHECK(cs_hits(&s, "app.bsky.notification.updateSeen") == 1);
+
+   cs_stop(&s);
 }
 
 static void
@@ -702,6 +830,286 @@ test_group_join_requests(void)
    cs_stop(&s);
 }
 
+/* The createGroup/getConvo answer: a group convo, with `code` NULL while it has
+ * no join link. */
+static const char *
+group_view_json(const char *id, const char *name, int member_count,
+                const char *code, const char *status)
+{
+   static char buf[4][1024];
+   static int k;
+   char *b = buf[k++ & 3];
+   char link[192] = "";
+
+   if (code) {
+      snprintf(link, sizeof link,
+         ",\"joinLink\":{\"code\":\"%s\",\"enabledStatus\":\"%s\","
+         "\"requireApproval\":false,\"joinRule\":\"anyone\"}",
+         code, status ? status : "enabled");
+   }
+   snprintf(b, 1024,
+      "{\"convo\":{\"id\":\"%s\",\"rev\":\"1\",\"unreadCount\":0,"
+      "\"members\":[{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\"},"
+      "{\"did\":\"did:plc:bob\",\"handle\":\"bob.test\",\"displayName\":\"bob\"},"
+      "{\"did\":\"did:plc:carol\",\"handle\":\"carol.test\",\"displayName\":\"carol\"}],"
+      "\"kind\":{\"$type\":\"chat.bsky.convo.defs#groupConvo\",\"name\":\"%s\","
+      "\"memberCount\":%d,\"memberLimit\":50,\"joinRequestCount\":0%s}}}",
+      id, name, member_count, link);
+   return b;
+}
+
+/* The full member list getConvoMembers returns. */
+static const char *
+group_members_json(void)
+{
+   return "{\"members\":["
+      "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\"},"
+      "{\"did\":\"did:plc:bob\",\"handle\":\"bob.test\",\"displayName\":\"bob\"},"
+      "{\"did\":\"did:plc:carol\",\"handle\":\"carol.test\",\"displayName\":\"carol\"}]}";
+}
+
+/* A join-link answer with the given state. */
+static const char *
+join_link_json(const char *status)
+{
+   static char buf[2][256];
+   static int k;
+   char *b = buf[k++ & 1];
+
+   snprintf(b, 256,
+      "{\"joinLink\":{\"code\":\"join-code\",\"enabledStatus\":\"%s\","
+      "\"requireApproval\":false,\"joinRule\":\"anyone\","
+      "\"createdAt\":\"2026-10-01T10:00:00.000Z\"}}",
+      status);
+   return b;
+}
+
+/* Creating a group resolves its member list through Wolfram, and its join link
+ * is created and toggled from the conversation, one request per press. */
+static void
+test_group_create_and_join_link(void)
+{
+   cs_server s;
+   CHECK(cs_start(&s));
+   char svc[64];
+   snprintf(svc, sizeof svc, "http://127.0.0.1:%d", s.port);
+
+   cs_set(&s, "com.atproto.server.createSession", 200,
+      "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\","
+      "\"accessJwt\":\"a.b.c\",\"refreshJwt\":\"d.e.f\",\"active\":true}");
+   cs_set(&s, "com.atproto.identity.resolveHandle", 200,
+          "{\"did\":\"did:plc:alice\"}");
+   cs_set(&s, "chat.bsky.group.createGroup", 200,
+          group_view_json("g1", "Weekend crew", 3, NULL, NULL));
+   cs_set(&s, "chat.bsky.convo.getConvo", 200,
+          group_view_json("g1", "Weekend crew", 3, NULL, NULL));
+   cs_set(&s, "chat.bsky.convo.getConvoMembers", 200, group_members_json());
+   cs_set(&s, "chat.bsky.group.createJoinLink", 200, join_link_json("enabled"));
+   cs_set(&s, "chat.bsky.group.disableJoinLink", 200, join_link_json("disabled"));
+   cs_set(&s, "chat.bsky.group.enableJoinLink", 200, join_link_json("enabled"));
+
+   cobalt_job_result r;
+   CHECK(cobalt_session_begin_login(svc, "ewancroft.test", "app-pass"));
+   CHECK(wait_job(&r) && r.ok);
+
+   /* An entry that is neither a handle nor a DID stops before any request:
+    * Wolfram's resolver names it back and the group is not created. */
+   CHECK(cobalt_session_begin_chat_group_create("Weekend crew", "not a handle"));
+   CHECK(wait_job(&r));
+   CHECK(!r.ok);
+   CHECK(strstr(r.message, "not a handle") != NULL);
+   CHECK(cs_hits(&s, "chat.bsky.group.createGroup") == 0);
+
+   /* The handle is resolved to a DID, the viewer and a duplicate are dropped,
+    * and the request carries DIDs rather than the text that was typed. */
+   CHECK(cobalt_session_begin_chat_group_create(
+      "Weekend crew", "@alice.test, did:plc:bob, did:plc:abc, did:plc:bob"));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cs_hits(&s, "com.atproto.identity.resolveHandle") == 1);
+   CHECK(cs_hits(&s, "chat.bsky.group.createGroup") == 1);
+   CHECK(cs_request_contains(&s, "chat.bsky.group.createGroup",
+      "{\"members\":[\"did:plc:alice\",\"did:plc:bob\"],\"name\":\"Weekend crew\"}"));
+   CHECK(!cs_request_contains(&s, "chat.bsky.group.createGroup", "alice.test"));
+   CHECK(!cs_request_contains(&s, "chat.bsky.group.createGroup", "did:plc:abc"));
+   CHECK_STR(cobalt_session_chat_group_started(), "g1");
+
+   const cobalt_chat_group *g = cobalt_session_chat_group();
+   CHECK(g->loaded);
+   CHECK_STR(g->name, "Weekend crew");
+   CHECK(g->total_members == 3);
+   CHECK(g->member_count == 3);
+   CHECK(g->join_link_code[0] == '\0');
+   CHECK(g->join_link_url[0] == '\0');
+   CHECK(cs_hits(&s, "chat.bsky.convo.getConvo") == 1);
+   CHECK(cs_hits(&s, "chat.bsky.convo.getConvoMembers") == 1);
+
+   /* Creating the link makes it, reads the group back and shows the public URL. */
+   cs_set(&s, "chat.bsky.convo.getConvo", 200,
+          group_view_json("g1", "Weekend crew", 3, "join-code", "enabled"));
+   CHECK(cobalt_session_begin_chat_join_link_create("g1"));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cs_hits(&s, "chat.bsky.group.createJoinLink") == 1);
+   g = cobalt_session_chat_group();
+   CHECK(g->join_link_enabled);
+   CHECK_STR(g->join_link_code, "join-code");
+   CHECK_STR(g->join_link_url, "https://bsky.app/chat/join-code");
+   CHECK(cs_hits(&s, "chat.bsky.convo.getConvo") == 2);
+
+   /* Disabling toggles the existing link; it never creates a second one. */
+   cs_set(&s, "chat.bsky.convo.getConvo", 200,
+          group_view_json("g1", "Weekend crew", 3, "join-code", "disabled"));
+   CHECK(cobalt_session_begin_chat_join_link_toggle("g1", true));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cs_hits(&s, "chat.bsky.group.disableJoinLink") == 1);
+   CHECK(cs_hits(&s, "chat.bsky.group.createJoinLink") == 1);
+   CHECK(!cobalt_session_chat_group()->join_link_enabled);
+   CHECK_STR(cobalt_session_chat_group()->join_link_url,
+             "https://bsky.app/chat/join-code");
+
+   /* A failed toggle keeps the last known state and is not retried. */
+   cs_set(&s, "chat.bsky.group.enableJoinLink", 500,
+          "{\"error\":\"InternalServerError\",\"message\":\"try later\"}");
+   CHECK(cobalt_session_begin_chat_join_link_toggle("g1", false));
+   CHECK(wait_job(&r));
+   CHECK(!r.ok);
+   CHECK(!cobalt_session_chat_group()->join_link_enabled);
+   CHECK_STR(cobalt_session_chat_group()->join_link_code, "join-code");
+   CHECK(cs_hits(&s, "chat.bsky.group.enableJoinLink") == 1);
+
+   /* The next press enables it, one request, and the URL is unchanged. */
+   cs_set(&s, "chat.bsky.group.enableJoinLink", 200, join_link_json("enabled"));
+   cs_set(&s, "chat.bsky.convo.getConvo", 200,
+          group_view_json("g1", "Weekend crew", 3, "join-code", "enabled"));
+   CHECK(cobalt_session_begin_chat_join_link_toggle("g1", false));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cobalt_session_chat_group()->join_link_enabled);
+   CHECK_STR(cobalt_session_chat_group()->join_link_url,
+             "https://bsky.app/chat/join-code");
+   CHECK(cs_hits(&s, "chat.bsky.group.enableJoinLink") == 2);
+
+   cs_stop(&s);
+}
+
+/* A member list with alice added, for the step after addMembers. */
+static const char *
+group_members_four_json(void)
+{
+   return "{\"members\":["
+      "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\"},"
+      "{\"did\":\"did:plc:bob\",\"handle\":\"bob.test\",\"displayName\":\"bob\"},"
+      "{\"did\":\"did:plc:carol\",\"handle\":\"carol.test\",\"displayName\":\"carol\"},"
+      "{\"did\":\"did:plc:alice\",\"handle\":\"alice.test\"}]}";
+}
+
+/* ...and without carol, for the step after removeMembers. */
+static const char *
+group_members_three_json(void)
+{
+   return "{\"members\":["
+      "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\"},"
+      "{\"did\":\"did:plc:bob\",\"handle\":\"bob.test\",\"displayName\":\"bob\"},"
+      "{\"did\":\"did:plc:alice\",\"handle\":\"alice.test\"}]}";
+}
+
+/* A group's settings are read, renamed and edited one member at a time, each
+ * change one request and the group read back afterwards. A refused edit sends
+ * nothing. */
+static void
+test_group_management(void)
+{
+   cs_server s;
+   CHECK(cs_start(&s));
+   char svc[64];
+   snprintf(svc, sizeof svc, "http://127.0.0.1:%d", s.port);
+
+   cs_set(&s, "com.atproto.server.createSession", 200,
+      "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\","
+      "\"accessJwt\":\"a.b.c\",\"refreshJwt\":\"d.e.f\",\"active\":true}");
+   cs_set(&s, "com.atproto.identity.resolveHandle", 200,
+          "{\"did\":\"did:plc:alice\"}");
+   cs_set(&s, "chat.bsky.convo.getConvo", 200,
+          group_view_json("g1", "Weekend crew", 3, "join-code", "enabled"));
+   cs_set(&s, "chat.bsky.convo.getConvoMembers", 200, group_members_json());
+   cs_set(&s, "chat.bsky.group.editGroup", 200,
+          group_view_json("g1", "Friday crew", 3, "join-code", "enabled"));
+   cs_set(&s, "chat.bsky.group.addMembers", 200,
+          group_view_json("g1", "Friday crew", 4, "join-code", "enabled"));
+   cs_set(&s, "chat.bsky.group.removeMembers", 200,
+          group_view_json("g1", "Friday crew", 3, "join-code", "enabled"));
+
+   cobalt_job_result r;
+   CHECK(cobalt_session_begin_login(svc, "ewancroft.test", "app-pass"));
+   CHECK(wait_job(&r) && r.ok);
+
+   /* Opening the settings reads the conversation and its full member list. */
+   CHECK(cobalt_session_begin_chat_group_info("g1"));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cs_hits(&s, "chat.bsky.convo.getConvo") == 1);
+   CHECK(cs_hits(&s, "chat.bsky.convo.getConvoMembers") == 1);
+   const cobalt_chat_group *g = cobalt_session_chat_group();
+   CHECK(g->loaded);
+   CHECK_STR(g->convo_id, "g1");
+   CHECK_STR(g->name, "Weekend crew");
+   CHECK(g->member_count == 3);
+   CHECK(g->total_members == 3);
+   CHECK(g->join_link_enabled);
+   CHECK_STR(g->join_link_url, "https://bsky.app/chat/join-code");
+   CHECK(cobalt_chat_group_member_index(g, "did:plc:bob") == 1);
+   CHECK(cobalt_chat_group_member_index(g, "did:plc:nobody") == -1);
+
+   /* A rename is one editGroup with the new name, then the group read back. */
+   cs_set(&s, "chat.bsky.convo.getConvo", 200,
+          group_view_json("g1", "Friday crew", 3, "join-code", "enabled"));
+   CHECK(cobalt_session_begin_chat_group_rename("g1", "Friday crew"));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cs_hits(&s, "chat.bsky.group.editGroup") == 1);
+   CHECK(cs_request_contains(&s, "chat.bsky.group.editGroup", "\"convoId\":\"g1\""));
+   CHECK(cs_request_contains(&s, "chat.bsky.group.editGroup", "\"name\":\"Friday crew\""));
+   g = cobalt_session_chat_group();
+   CHECK_STR(g->name, "Friday crew");
+   CHECK(cs_hits(&s, "chat.bsky.convo.getConvo") == 2);
+   CHECK(cs_hits(&s, "chat.bsky.convo.getConvoMembers") == 2);
+
+   /* Adding resolves the typed handle and sends a DID, never the text. */
+   cs_set(&s, "chat.bsky.convo.getConvo", 200,
+          group_view_json("g1", "Friday crew", 4, "join-code", "enabled"));
+   cs_set(&s, "chat.bsky.convo.getConvoMembers", 200, group_members_four_json());
+   CHECK(cobalt_session_begin_chat_group_add("g1", "@alice.test"));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cs_hits(&s, "com.atproto.identity.resolveHandle") == 1);
+   CHECK(cs_hits(&s, "chat.bsky.group.addMembers") == 1);
+   CHECK(cs_request_contains(&s, "chat.bsky.group.addMembers", "\"members\":[\"did:plc:alice\"]"));
+   CHECK(!cs_request_contains(&s, "chat.bsky.group.addMembers", "alice.test"));
+   g = cobalt_session_chat_group();
+   CHECK(g->member_count == 4);
+   CHECK(g->total_members == 4);
+   CHECK(cobalt_chat_group_member_index(g, "did:plc:alice") == 3);
+
+   /* Removing sends the selected DID and the list loses it. */
+   cs_set(&s, "chat.bsky.convo.getConvo", 200,
+          group_view_json("g1", "Friday crew", 3, "join-code", "enabled"));
+   cs_set(&s, "chat.bsky.convo.getConvoMembers", 200, group_members_three_json());
+   CHECK(cobalt_session_begin_chat_group_remove("g1", "did:plc:carol"));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cs_hits(&s, "chat.bsky.group.removeMembers") == 1);
+   CHECK(cs_request_contains(&s, "chat.bsky.group.removeMembers", "\"did:plc:carol\""));
+   g = cobalt_session_chat_group();
+   CHECK(g->member_count == 3);
+   CHECK(cobalt_chat_group_member_index(g, "did:plc:carol") == -1);
+
+   /* A refused edit changes nothing and sends nothing: no member chosen, and a
+    * list with nothing usable in it. */
+   CHECK(!cobalt_session_begin_chat_group_remove("g1", ""));
+   CHECK(cobalt_session_begin_chat_group_add("g1", "not a handle"));
+   CHECK(wait_job(&r));
+   CHECK(!r.ok);
+   CHECK(cs_hits(&s, "chat.bsky.group.removeMembers") == 1);
+   CHECK(cs_hits(&s, "chat.bsky.group.addMembers") == 1);
+   CHECK(cobalt_session_chat_group()->member_count == 3);
+
+   cs_stop(&s);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -842,8 +1250,11 @@ main(int argc, char **argv)
    CHECK(wait_job(&r) && r.ok);
    CHECK(cobalt_session_feed()->count == 2);
 
+   test_notifications();
    test_message_requests();
    test_group_join_requests();
+   test_group_create_and_join_link();
+   test_group_management();
 
    wf_mock_pds_free(pds);
    printf("%d checks, %d failures\n", checks, failures);
