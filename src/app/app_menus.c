@@ -95,6 +95,9 @@ cobalt_app_open_profile_menu(cobalt_app *app)
    }
    const cobalt_profile *profile = cobalt_session_profile();
    char label[COBALT_POPUP_LABEL_MAX];
+   if (profile->is_self) {
+      cobalt_popup_add(&app->popup, COBALT_POPUP_EDIT_PROFILE, "Edit profile", "");
+   }
    if (profile->did[0]) {
       cobalt_popup_add(&app->popup, COBALT_POPUP_FOLLOWERS, "Followers", "");
       cobalt_popup_add(&app->popup, COBALT_POPUP_FOLLOWING, "Following", "");
@@ -129,6 +132,13 @@ cobalt_app_popup_choose(cobalt_app *app, int index)
    const cobalt_popup_item *it = &app->popup.items[index];
    char outer[COBALT_POST_URI_MAX];
    switch (it->kind) {
+      case COBALT_POPUP_EDIT_PROFILE:
+         cobalt_popup_close(&app->popup);
+         if (!cobalt_session_busy() && cobalt_session_profile()->loaded) {
+            cobalt_profile_edit_open(&app->profile_edit, cobalt_session_profile());
+            app->screen = COBALT_SCREEN_PROFILE_EDIT;
+         }
+         break;
       case COBALT_POPUP_PROFILE:
       case COBALT_POPUP_MENTION:
          if (cobalt_session_begin_profile(it->arg)) {

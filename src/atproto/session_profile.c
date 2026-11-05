@@ -302,6 +302,42 @@ cobalt_session_run_block(const cobalt_job_input *in, cobalt_job_result *r, cobal
    r->ok = true;
 }
 
+void
+cobalt_session_run_profile_update(const cobalt_job_input *in, cobalt_job_result *r,
+                                   cobalt_auth_state *state)
+{
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in first.");
+      return;
+   }
+
+   wf_agent_profile_update update;
+   memset(&update, 0, sizeof(update));
+   update.display_name = in->display_name;
+   update.description = in->description;
+
+   COBALT_LOGI("session: updateProfile");
+   const wf_status status = wf_agent_update_profile(g_session.wf, &update);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: updateProfile failed (%d)", (int) status);
+      cobalt_session_set_message(r, "Could not update your profile (wolfram status %d).",
+                                 (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(g_session.lock);
+   snprintf(g_session.profile.display_name, sizeof(g_session.profile.display_name),
+            "%s", in->display_name);
+   snprintf(g_session.profile.description, sizeof(g_session.profile.description),
+            "%s", in->description);
+   SDL_UnlockMutex(g_session.lock);
+
+   cobalt_session_publish();
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
 #endif /* COBALT_HAS_WOLFRAM */
 
 const cobalt_profile *
@@ -331,6 +367,22 @@ cobalt_session_begin_profile(const char *actor)
    g_session.profile_tab = WF_PROFILE_TAB_POSTS;
    SDL_UnlockMutex(g_session.lock);
    return cobalt_session_submit(COBALT_JOB_PROFILE, &in);
+}
+
+bool
+cobalt_session_begin_profile_update(const char *display_name, const char *description)
+{
+   if (!display_name || !description ||
+       strlen(display_name) > COBALT_PROFILE_NAME_MAX ||
+       strlen(description) >= COBALT_PROFILE_BIO_MAX) {
+      return false;
+   }
+
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.display_name, sizeof(in.display_name), "%s", display_name);
+   snprintf(in.description, sizeof(in.description), "%s", description);
+   return cobalt_session_submit(COBALT_JOB_PROFILE_UPDATE, &in);
 }
 
 bool

@@ -25,6 +25,10 @@ extern "C" {
 
 #define COBALT_PROFILE_BIO_MAX 512
 
+/* Server limit for displayName, in bytes as this client bounds it. The bio is
+ * bounded by COBALT_PROFILE_BIO_MAX above. */
+#define COBALT_PROFILE_NAME_MAX 64
+
 typedef struct {
    char did[COBALT_DID_MAX];
    char handle[COBALT_POST_NAME_MAX];       /* with a leading @ */

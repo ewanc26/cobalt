@@ -7,6 +7,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <stdio.h>
+#include <string.h>
+
 #define TEXT_LINES 2
 
 /* Row 0 is the header card; posts start at 1. */
@@ -366,4 +369,147 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
                "A: thread   Left: like   Right: repost   Y: more");
    }
    cobalt_draw_hints(r, cobalt_session_busy() ? "Working..." : hint_text);
+}
+
+/* --- editing your own profile --- */
+
+void
+cobalt_profile_edit_open(cobalt_profile_edit *edit, const cobalt_profile *profile)
+{
+   if (!edit) {
+      return;
+   }
+   memset(edit, 0, sizeof(*edit));
+   edit->field = 0;
+   if (profile) {
+      snprintf(edit->display_name, sizeof(edit->display_name), "%s",
+               profile->display_name);
+      snprintf(edit->description, sizeof(edit->description), "%s",
+               profile->description);
+   }
+}
+
+bool
+cobalt_profile_edit_valid(const char *display_name, const char *description)
+{
+   if (!display_name || !description) {
+      return false;
+   }
+   return strlen(display_name) <= COBALT_PROFILE_NAME_MAX &&
+          strlen(description) < COBALT_PROFILE_BIO_MAX;
+}
+
+cobalt_profile_edit_action
+cobalt_profile_edit_update(cobalt_profile_edit *edit, const cobalt_input *in)
+{
+   if (!edit || !in) {
+      return COBALT_PROFILE_EDIT_STAY;
+   }
+
+   if (edit->editing) {
+      const cobalt_kb_result r = cobalt_keyboard_update(&edit->kb, in);
+      if (r != COBALT_KB_IDLE) {
+         edit->editing = false;
+      }
+      return COBALT_PROFILE_EDIT_STAY;
+   }
+
+   /* A save owns the screen until its result arrives, so a failure can put
+    * the reason next to the text it is about. */
+   if (edit->saving) {
+      return COBALT_PROFILE_EDIT_STAY;
+   }
+
+   if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
+      return COBALT_PROFILE_EDIT_BACK;
+   }
+
+   if (cobalt_input_pressed(in, COBALT_BTN_DOWN) ||
+       cobalt_input_pressed(in, COBALT_BTN_UP)) {
+      edit->field = edit->field == 0 ? 1 : 0;
+      return COBALT_PROFILE_EDIT_STAY;
+   }
+
+   if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
+      edit->editing = true;
+      if (edit->field == 0) {
+         cobalt_keyboard_open(&edit->kb, edit->display_name,
+                              sizeof(edit->display_name), false, false);
+      } else {
+         cobalt_keyboard_open(&edit->kb, edit->description,
+                              sizeof(edit->description), false, true);
+      }
+      return COBALT_PROFILE_EDIT_STAY;
+   }
+
+   if (cobalt_input_pressed(in, COBALT_BTN_ALT_Y) && !edit->saving &&
+       cobalt_profile_edit_valid(edit->display_name, edit->description)) {
+      return COBALT_PROFILE_EDIT_SAVE;
+   }
+
+   return COBALT_PROFILE_EDIT_STAY;
+}
+
+void
+cobalt_profile_edit_draw(cobalt_profile_edit *edit, cobalt_render *r,
+                         cobalt_surface_id surface)
+{
+   if (!edit || !r) {
+      return;
+   }
+
+   const cobalt_metrics *m = cobalt_render_metrics(r);
+   const int top = cobalt_content_top(r);
+   const int bottom = cobalt_content_bottom(r);
+   const int width = m->width - 2 * m->pad_edge;
+
+   if (edit->editing) {
+      /* One field at a time while the keyboard is up. The keyboard takes the
+       * bottom of the panel, so the active value stays visible above it. */
+      SDL_Rect field = { m->pad_edge, top, width,
+                         m->pad_tile + cobalt_font_line_height(r, COBALT_FONT_CAPTION) +
+                            cobalt_font_line_height(r, COBALT_FONT_BODY) };
+      cobalt_draw_tile(r, &field, 1.0f);
+      cobalt_draw_text(r, COBALT_FONT_CAPTION,
+                       edit->field == 0 ? "Display name" : "Bio",
+                       field.x + m->pad_tile, field.y + m->pad_tile,
+                       COBALT_COLOUR_TEXT_DIM);
+      cobalt_draw_text_wrapped(r, COBALT_FONT_BODY,
+                               edit->field == 0 ? edit->display_name
+                                                : edit->description,
+                               field.x + m->pad_tile,
+                               field.y + m->pad_tile +
+                                  cobalt_font_line_height(r, COBALT_FONT_CAPTION),
+                               field.w - 2 * m->pad_tile, 1, COBALT_COLOUR_TEXT);
+
+      const int kb_h = cobalt_keyboard_height(surface);
+      SDL_Rect keys = { m->pad_edge, bottom - kb_h, width, kb_h };
+      cobalt_keyboard_draw(&edit->kb, r, surface, &keys);
+      cobalt_draw_hints(r, "OK: keep   B: cancel");
+      return;
+   }
+
+   const int label_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+   int y = top;
+   for (int i = 0; i < 2; i++) {
+      const bool bio = i == 1;
+      const char *value = bio ? edit->description : edit->display_name;
+      const int lines = bio ? 3 : 1;
+      SDL_Rect tile = { m->pad_edge, y, width,
+                        m->pad_tile + label_h + lines *
+                           cobalt_font_line_height(r, COBALT_FONT_BODY) };
+      cobalt_draw_tile(r, &tile, edit->field == i ? 1.0f : 0.0f);
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, bio ? "Bio" : "Display name",
+                       tile.x + m->pad_tile, tile.y + m->pad_tile,
+                       COBALT_COLOUR_TEXT_DIM);
+      cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, value[0] ? value : "(not set)",
+                               tile.x + m->pad_tile, tile.y + m->pad_tile + label_h,
+                               tile.w - 2 * m->pad_tile, lines,
+                               value[0] ? COBALT_COLOUR_TEXT
+                                        : COBALT_COLOUR_TEXT_DIM);
+      y += tile.h + m->gap;
+   }
+
+   cobalt_draw_hints(r, edit->saving ? "Saving..."
+                                     : "A: edit   Y: save   B: cancel");
 }

@@ -623,6 +623,16 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          break;
       }
 
+      case COBALT_JOB_PROFILE_UPDATE:
+         app->profile_edit.saving = false;
+         if (result->ok) {
+            set_notice(app, "Profile updated.", false);
+            app->screen = COBALT_SCREEN_PROFILE;
+         } else {
+            set_notice(app, result->message, true);
+         }
+         break;
+
       case COBALT_JOB_NOTIFICATIONS:
       case COBALT_JOB_CHAT_INBOX:
       case COBALT_JOB_CHAT_MESSAGES:
@@ -792,6 +802,26 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
       case COBALT_SCREEN_DIAGNOSTICS:
          if (cobalt_input_pressed(in, COBALT_BTN_BACK)) {
             app->screen = COBALT_SCREEN_HOME;
+         }
+         break;
+
+      case COBALT_SCREEN_PROFILE_EDIT:
+         switch (cobalt_profile_edit_update(&app->profile_edit, in)) {
+            case COBALT_PROFILE_EDIT_BACK:
+               app->screen = COBALT_SCREEN_PROFILE;
+               break;
+            case COBALT_PROFILE_EDIT_SAVE:
+               if (cobalt_session_begin_profile_update(
+                      app->profile_edit.display_name,
+                      app->profile_edit.description)) {
+                  app->profile_edit.saving = true;
+               } else {
+                  set_notice(app, "Could not start the profile update.", true);
+               }
+               break;
+            case COBALT_PROFILE_EDIT_STAY:
+            default:
+               break;
          }
          break;
 
@@ -1394,6 +1424,11 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_PROFILE:
          cobalt_profile_view_draw(&app->profile, r, surface);
+         break;
+
+      case COBALT_SCREEN_PROFILE_EDIT:
+         cobalt_app_draw_header(r, "Edit profile");
+         cobalt_profile_edit_draw(&app->profile_edit, r, surface);
          break;
 
       case COBALT_SCREEN_SIGN_IN:
