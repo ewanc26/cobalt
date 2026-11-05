@@ -85,6 +85,7 @@ typedef enum {
    COBALT_JOB_LIST_MEMBERS,
    COBALT_JOB_DELETE_POST,
    COBALT_JOB_THREAD_MUTE,
+   COBALT_JOB_PROFILE_UPDATE,
    COBALT_JOB_PROFILE_TAB,
    COBALT_JOB_FOLLOWERS,
    COBALT_JOB_FOLLOWING,
@@ -435,6 +436,15 @@ const char *cobalt_session_chat_started_convo(void);
  * one request at a time would serialise them anyway.
  */
 bool cobalt_session_begin_profile(const char *actor);
+
+/*
+ * Replace the signed-in account's display name and bio. Both are required;
+ * pass "" to clear one. Text only — avatar and banner uploads are separate.
+ * Succeeds locally only after the service accepts the record, and the loaded
+ * profile is updated from the same values so returning to it shows the edit.
+ */
+bool cobalt_session_begin_profile_update(const char *display_name,
+                                         const char *description);
 
 /* The profile and author feed as last fetched; never NULL. */
 const cobalt_profile *cobalt_session_profile(void);

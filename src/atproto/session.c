@@ -501,6 +501,7 @@ run_job(cobalt_job_kind kind, const cobalt_job_input *in, cobalt_auth_state *sta
          cobalt_session_run_chat_join_link(in, &r, state);
          break;
       case COBALT_JOB_PROFILE:  cobalt_session_run_profile(in, &r, state);   break;
+      case COBALT_JOB_PROFILE_UPDATE: cobalt_session_run_profile_update(in, &r, state); break;
       case COBALT_JOB_FOLLOW:   cobalt_session_run_follow(in, &r, state);    break;
       case COBALT_JOB_MUTE:     cobalt_session_run_mute(in, &r, state);      break;
       case COBALT_JOB_THREAD_MUTE: cobalt_session_run_thread_mute(in, &r, state); break;

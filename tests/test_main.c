@@ -14,6 +14,7 @@
 #include "app/graph.h"
 #include "app/search.h"
 #include "app/timeline.h"
+#include "app/profile.h"
 #include "app/signin.h"
 #include "app/entropyview.h"
 #include "util/entropy_gather.h"
@@ -3800,6 +3801,51 @@ test_thread_root_selection(void)
 }
 
 static void
+test_profile_edit_validation(void)
+{
+   begin("editing your profile checks the field limits");
+   char name[COBALT_PROFILE_NAME_MAX + 2];
+   char bio[COBALT_PROFILE_BIO_MAX + 2];
+
+   CHECK(cobalt_profile_edit_valid("", ""));
+
+   memset(name, 'a', sizeof(name));
+   name[COBALT_PROFILE_NAME_MAX] = '\0';
+   CHECK(cobalt_profile_edit_valid(name, ""));
+   name[COBALT_PROFILE_NAME_MAX] = 'a';
+   name[COBALT_PROFILE_NAME_MAX + 1] = '\0';
+   CHECK(!cobalt_profile_edit_valid(name, ""));
+
+   memset(bio, 'b', sizeof(bio));
+   bio[COBALT_PROFILE_BIO_MAX - 1] = '\0';
+   CHECK(cobalt_profile_edit_valid("", bio));
+   bio[COBALT_PROFILE_BIO_MAX - 1] = 'b';
+   bio[COBALT_PROFILE_BIO_MAX] = '\0';
+   CHECK(!cobalt_profile_edit_valid("", bio));
+   CHECK(!cobalt_profile_edit_valid(NULL, ""));
+
+   cobalt_profile profile;
+   cobalt_profile_edit edit;
+   cobalt_input in;
+   memset(&profile, 0, sizeof(profile));
+   snprintf(profile.display_name, sizeof(profile.display_name), "Ewan");
+   snprintf(profile.description, sizeof(profile.description), "Writes C.");
+   cobalt_profile_edit_open(&edit, &profile);
+   CHECK(strcmp(edit.display_name, "Ewan") == 0);
+   CHECK(strcmp(edit.description, "Writes C.") == 0);
+   CHECK(edit.field == 0);
+
+   memset(&in, 0, sizeof(in));
+   in.pressed[COBALT_BTN_DOWN] = true;
+   CHECK(cobalt_profile_edit_update(&edit, &in) == COBALT_PROFILE_EDIT_STAY);
+   CHECK(edit.field == 1);
+
+   memset(&in, 0, sizeof(in));
+   in.pressed[COBALT_BTN_BACK] = true;
+   CHECK(cobalt_profile_edit_update(&edit, &in) == COBALT_PROFILE_EDIT_BACK);
+}
+
+static void
 test_popup_link_qr(void)
 {
    begin("a link's text page carries a QR code");
@@ -3879,6 +3925,7 @@ main(int argc, char **argv)
    test_touch_drag_scrolls_a_list();
    test_popup_touch();
    test_thread_root_selection();
+   test_profile_edit_validation();
    test_popup_link_qr();
    test_listnav();
    test_listnav_restore();

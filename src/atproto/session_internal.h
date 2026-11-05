@@ -95,6 +95,10 @@ typedef struct {
    /* Profile tab switches: a cobalt_profile_tab. */
    int tab;
 
+   /* Profile editing: the two text fields. Empty strings clear them. */
+   char display_name[COBALT_PROFILE_NAME_MAX + 1];
+   char description[COBALT_PROFILE_BIO_MAX];
+
    /* Composing a quote post: `uri`/`cid` name the quoted post, not a parent. */
    bool quote;
 
@@ -273,6 +277,7 @@ void cobalt_session_run_chat_send(const cobalt_job_input *in, cobalt_job_result 
 void cobalt_session_run_chat_start(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_post(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_profile(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_profile_update(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_profile_tab(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_reposted_by(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_saved_feeds(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);

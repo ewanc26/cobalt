@@ -75,6 +75,7 @@ struct cobalt_app {
    cobalt_messages_view messages;
    cobalt_chat_thread_view chat_view;
    cobalt_profile_view profile;
+   cobalt_profile_edit profile_edit;
    cobalt_graph_view graph;
    cobalt_search_view search;
    cobalt_lists_view lists;
