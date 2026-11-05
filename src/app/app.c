@@ -88,6 +88,7 @@ cobalt_app_create(void)
       }
    }
    cobalt_timeline_init(&app->timeline);
+   cobalt_timeline_init(&app->bookmarks);
    cobalt_thread_view_init(&app->thread);
    cobalt_notify_view_init(&app->notify);
    cobalt_messages_view_init(&app->messages);
@@ -198,6 +199,10 @@ cobalt_app_view_position(const cobalt_app *app, cobalt_screen screen, int *selec
             sel = app->timeline.nav.selected;
             scr = app->timeline.nav.scroll;
             break;
+         case COBALT_SCREEN_BOOKMARKS:
+            sel = app->bookmarks.nav.selected;
+            scr = app->bookmarks.nav.scroll;
+            break;
          case COBALT_SCREEN_NOTIFICATIONS:
             sel = app->notify.nav.selected;
             scr = app->notify.nav.scroll;
@@ -268,6 +273,12 @@ set_notice(cobalt_app *app, const char *message, bool is_error)
 {
    snprintf(app->notice, sizeof(app->notice), "%s", message ? message : "");
    app->notice_is_error = is_error;
+}
+
+void
+cobalt_app_set_notice(cobalt_app *app, const char *message, bool is_error)
+{
+   set_notice(app, message, is_error);
 }
 
 /* --- session plumbing --- */
@@ -393,6 +404,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          set_notice(app, "Signed out.", false);
          cobalt_signin_init(&app->signin);
          cobalt_timeline_init(&app->timeline);
+   cobalt_timeline_init(&app->bookmarks);
    cobalt_thread_view_init(&app->thread);
    cobalt_notify_view_init(&app->notify);
    cobalt_messages_view_init(&app->messages);
@@ -446,10 +458,15 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
                 * the cursor stays where it was and lands past the end. */
                cobalt_thread_view_reset(&app->thread);
                cobalt_session_begin_thread(app->compose.parent_uri);
+            } else if (app->compose_return == COBALT_SCREEN_BOOKMARKS) {
+               /* A new post does not go into the bookmarks list, but returning
+                * to it must not silently replace it with the home timeline. */
+               cobalt_session_begin_bookmarks(false);
+               cobalt_timeline_rewind(&app->bookmarks);
             } else {
                cobalt_session_begin_timeline(false);
                app->viewing_custom_feed = false;
-            app->viewing_search = false;
+               app->viewing_search = false;
                cobalt_timeline_rewind(&app->timeline);
             }
             cobalt_compose_init(&app->compose);
@@ -662,6 +679,24 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          }
          break;
 
+      case COBALT_JOB_BOOKMARKS:
+         if (!result->ok) {
+            set_notice(app, result->message, true);
+         } else {
+            set_notice(app, result->message, result->message[0] != '\0');
+         }
+         break;
+
+      case COBALT_JOB_BOOKMARK:
+         if (!result->ok) {
+            set_notice(app, result->message, true);
+         } else {
+            app->bookmark_target = result->bookmarked;
+            set_notice(app, result->bookmarked ? "Bookmark saved."
+                                               : "Bookmark removed.", false);
+         }
+         break;
+
       case COBALT_JOB_NONE:
       default:
          break;
@@ -869,6 +904,37 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                const cobalt_feed *feed = cobalt_session_feed();
                if (app->timeline.nav.selected < feed->count) {
                   cobalt_app_open_post_menu(app, &feed->posts[app->timeline.nav.selected], false);
+               }
+               break;
+            }
+            case COBALT_TIMELINE_STAY:
+            default:
+               break;
+         }
+         break;
+
+      case COBALT_SCREEN_BOOKMARKS:
+         switch (cobalt_timeline_update_feed(&app->bookmarks, in,
+                                             cobalt_session_bookmarks(),
+                                             cobalt_session_begin_bookmarks)) {
+            case COBALT_TIMELINE_BACK:
+               app->screen = COBALT_SCREEN_HOME;
+               break;
+            case COBALT_TIMELINE_OPEN_THREAD:
+               cobalt_thread_view_reset(&app->thread);
+               cobalt_app_push_return(app, COBALT_SCREEN_BOOKMARKS, NULL);
+               app->screen = COBALT_SCREEN_THREAD;
+               break;
+            case COBALT_TIMELINE_COMPOSE:
+               cobalt_compose_init(&app->compose);
+               app->compose_return = COBALT_SCREEN_BOOKMARKS;
+               app->screen = COBALT_SCREEN_COMPOSE;
+               break;
+            case COBALT_TIMELINE_MENU: {
+               const cobalt_feed *feed = cobalt_session_bookmarks();
+               if (app->bookmarks.nav.selected < feed->count) {
+                  cobalt_app_open_post_menu(
+                     app, &feed->posts[app->bookmarks.nav.selected], false);
                }
                break;
             }
@@ -1400,6 +1466,15 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_TIMELINE:
          cobalt_timeline_draw(&app->timeline, r, surface);
+         break;
+
+      case COBALT_SCREEN_BOOKMARKS:
+         cobalt_timeline_draw_feed(
+            &app->bookmarks, r, surface, cobalt_session_bookmarks(), "Bookmarks",
+            "No bookmarks yet",
+            "Open a post's More menu and choose Bookmark to save it here.",
+            "A: thread  Y: more  Left: like  Right: repost",
+            "A: thread  Y: more  Left: like  Right: repost  L/R: scroll text");
          break;
 
       case COBALT_SCREEN_THREAD:

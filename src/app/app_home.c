@@ -4,6 +4,7 @@
 
 typedef enum {
    ACTION_TIMELINE = 0,
+   ACTION_BOOKMARKS,
    ACTION_COMPOSE,
    ACTION_SEARCH,
    ACTION_FEEDS,
@@ -27,6 +28,7 @@ typedef enum {
  */
 static const menu_action MENU[] = {
    ACTION_TIMELINE,
+   ACTION_BOOKMARKS,
    ACTION_COMPOSE,
    ACTION_SEARCH,
    ACTION_FEEDS,
@@ -123,6 +125,7 @@ menu_label(int index)
 {
    switch (MENU[index]) {
       case ACTION_TIMELINE:       return "Timeline";
+      case ACTION_BOOKMARKS:      return "Bookmarks";
       case ACTION_COMPOSE:        return "New post";
       case ACTION_SEARCH:         return "Search";
       case ACTION_FEEDS:          return "Feeds";
@@ -147,6 +150,9 @@ menu_hint(int index)
       case ACTION_TIMELINE:
          return signed_in() ? "Your Bluesky home feed"
                             : "Sign in to read your feed";
+      case ACTION_BOOKMARKS:
+         return signed_in() ? "Posts you saved for later"
+                            : "Sign in to see your bookmarks";
       case ACTION_COMPOSE:
          return signed_in() ? "Write something" : "Sign in to post";
       case ACTION_SEARCH:
@@ -189,6 +195,7 @@ menu_enabled(int index)
 {
    switch (MENU[index]) {
       case ACTION_TIMELINE:
+      case ACTION_BOOKMARKS:
       case ACTION_COMPOSE:
       case ACTION_SEARCH:
       case ACTION_FEEDS:
@@ -225,6 +232,13 @@ activate(cobalt_app *app, int index)
             app->viewing_search = false;
          }
          COBALT_LOGI("menu: opened timeline");
+         break;
+
+      case ACTION_BOOKMARKS:
+         cobalt_timeline_rewind(&app->bookmarks);
+         cobalt_session_begin_bookmarks(false);
+         app->screen = COBALT_SCREEN_BOOKMARKS;
+         COBALT_LOGI("menu: opened bookmarks");
          break;
 
       case ACTION_COMPOSE:

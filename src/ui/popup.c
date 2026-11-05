@@ -152,6 +152,7 @@ icon_for(cobalt_popup_kind kind)
       case COBALT_POPUP_IMAGE:   return COBALT_ICON_IMAGE;
       case COBALT_POPUP_LIKES:   return COBALT_ICON_LIKE;
       case COBALT_POPUP_REPOSTS: return COBALT_ICON_REPOST;
+      case COBALT_POPUP_BOOKMARK: return COBALT_ICON_PIN;
       case COBALT_POPUP_COMPOSE: return COBALT_ICON_PENCIL;
       case COBALT_POPUP_REFRESH: return COBALT_ICON_HOUSE;
       case COBALT_POPUP_FOLLOWERS:
