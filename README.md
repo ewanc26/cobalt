@@ -57,7 +57,7 @@ replace testing on the console.
 - Threads: write up to eight posts in a row and publish them as one thread
 - Likes and reposts, including undo
 - Notifications and mark-as-seen
-- Profiles, follows and unfollows
+- Profiles, follows and unfollows, and editing your own display name and bio
 - Followers, following and profile tabs
 - Pinned posts
 - Links shown as a QR code (Wolfram's encoder), so a phone can open what the console cannot

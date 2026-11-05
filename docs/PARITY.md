@@ -39,6 +39,7 @@ OAuth on a console is not the AT Protocol browser flow running on the console. T
 | Home timeline, paging | implemented | implemented | implemented | Platinum pages with the cursor the last page returned (`platinum_timeline_load_older`). |
 | Thread view | implemented | implemented | implemented | Platinum: `platinum_thread_load` |
 | Profiles | implemented | implemented | implemented | Platinum reads your own profile and other people's (`platinum_profile_load`). |
+| Edit your own profile | implemented | implemented | n/a | Cobalt: the own-profile More menu opens an editor for the display name and bio; `src/atproto/session_profile.c` calls `wf_agent_update_profile` and the profile is refreshed only on success. Indigo: A on your own profile opens the same two fields. Both are text-only; avatar and banner uploads are follow-up work. Host tests cover limits and failure state, and snapshots cover the editors. Not run on hardware. |
 | Follow, unfollow, followers, following | implemented | implemented | implemented | Platinum: `platinum_profile_set_follow`, `platinum_people_load` |
 | Profile tabs | implemented | implemented | partial, issue platinum#98 | Cobalt: posts, replies, media, likes (`src/atproto/actor_profile.h`). Indigo: the same four, cycled from the header box on a person's posts (likes on the signed-in account only). Platinum has the posts tab; replies, media and likes are part of its remaining parity gap. |
 | Pinned posts | implemented | implemented | implemented | Platinum shows a profile's pinned post (`macos9/profile_feed.c`). |

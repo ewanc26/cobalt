@@ -960,6 +960,21 @@ main(int argc, char **argv)
    }
    shoot("profile");
 
+   /* The profile editor on the host, with the write not yet sent. */
+   {
+      cobalt_profile own;
+
+      memset(&own, 0, sizeof own);
+      snprintf(own.display_name, sizeof own.display_name, "Ewan Croft");
+      snprintf(own.description, sizeof own.description,
+               "Writes C for the Wii U and the 3DS. Sometimes both at once.");
+      cobalt_profile_edit_open(&g_app->profile_edit, &own);
+      g_app->screen = COBALT_SCREEN_PROFILE_EDIT;
+      settle(3);
+      shoot("profile-edit");
+      g_app->screen = COBALT_SCREEN_PROFILE;
+   }
+
    frame(COBALT_BTN_BACK); settle(10);
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
    go_home();
