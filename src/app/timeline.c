@@ -33,10 +33,23 @@ cobalt_timeline_rewind(cobalt_timeline *view)
 
 /* --- input --- */
 
+static bool
+load_current_feed(bool paging)
+{
+   return cobalt_session_begin_feed_current(paging);
+}
+
 cobalt_timeline_action
 cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
 {
-   if (!view || !in) {
+   return cobalt_timeline_update_feed(view, in, cobalt_session_feed(), load_current_feed);
+}
+
+cobalt_timeline_action
+cobalt_timeline_update_feed(cobalt_timeline *view, const cobalt_input *in,
+                            const cobalt_feed *feed, cobalt_timeline_load_fn load)
+{
+   if (!view || !in || !feed) {
       return COBALT_TIMELINE_STAY;
    }
 
@@ -44,14 +57,13 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
       return COBALT_TIMELINE_BACK;
    }
 
-   const cobalt_feed *feed = cobalt_session_feed();
    const bool busy = cobalt_session_busy();
 
    /* Start refreshes even with an empty feed — that is exactly the state where
     * someone wants one. */
    if (cobalt_input_pressed(in, COBALT_BTN_MENU) && !busy) {
       COBALT_LOGI("timeline: refresh requested");
-      if (cobalt_session_begin_feed_current(false)) {
+      if (load && load(false)) {
          cobalt_timeline_rewind(view);
       }
       return COBALT_TIMELINE_STAY;
@@ -115,9 +127,10 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
     * the request is already asynchronous, and a D-pad is a slow way to reach a
     * button that exists only to say "yes, continue".
     */
-   if (!busy && cobalt_feed_can_page(feed) && view->nav.selected >= feed->count - 1) {
+   if (!busy && load && cobalt_feed_can_page(feed) &&
+       view->nav.selected >= feed->count - 1) {
       COBALT_LOGI("timeline: reached the end, fetching the next page");
-      cobalt_session_begin_feed_current(true);
+      load(true);
    }
 
    return COBALT_TIMELINE_STAY;
@@ -126,14 +139,11 @@ cobalt_timeline_update(cobalt_timeline *view, const cobalt_input *in)
 /* --- drawing --- */
 
 static void
-draw_empty(cobalt_render *r, const cobalt_metrics *m, int top)
+draw_empty(cobalt_render *r, const cobalt_metrics *m, int top,
+                const char *empty_headline, const char *empty_detail)
 {
-   const char *headline = cobalt_session_busy() ? "Loading your timeline..."
-                                                : "Nothing here yet";
-   const char *detail = cobalt_session_busy()
-                           ? ""
-                           : "Press + to refresh. If this stays empty, follow "
-                             "some accounts and they will show up here.";
+   const char *headline = cobalt_session_busy() ? "Loading..." : empty_headline;
+   const char *detail = cobalt_session_busy() ? "" : empty_detail;
 
    SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge,
                      m->font_body * 5 };
@@ -151,19 +161,21 @@ draw_empty(cobalt_render *r, const cobalt_metrics *m, int top)
 }
 
 void
-cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
-                     cobalt_surface_id surface)
+cobalt_timeline_draw_feed(cobalt_timeline *view, cobalt_render *r,
+                          cobalt_surface_id surface, const cobalt_feed *feed,
+                          const char *title, const char *empty_headline,
+                          const char *empty_detail, const char *footer,
+                          const char *footer_scroll)
 {
-   if (!view || !r) {
+   if (!view || !r || !feed) {
       return;
    }
 
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   const cobalt_feed *feed = cobalt_session_feed();
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
    /* Header. */
-   cobalt_draw_text(r, COBALT_FONT_TITLE, "Timeline", m->pad_edge, m->pad_edge,
+   cobalt_draw_text(r, COBALT_FONT_TITLE, title, m->pad_edge, m->pad_edge,
                     COBALT_COLOUR_HEADER_TEXT);
    {
       char subtitle[96];
@@ -186,7 +198,7 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
    const int bottom = m->height - m->pad_edge - 24;
 
    if (feed->count == 0) {
-      draw_empty(r, m, top);
+      draw_empty(r, m, top, empty_headline, empty_detail);
       cobalt_listnav_draw_begin(&view->nav, touchable);
       cobalt_listnav_draw_empty(&view->nav, touchable);
       return;
@@ -281,14 +293,23 @@ cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
    const SDL_Rect strip = { 0, strip_top, m->width, m->height - strip_top };
    cobalt_fill_rect(r, &strip, COBALT_COLOUR_BG_BOTTOM);
 
-   char footer[120];
    if (cobalt_session_busy()) {
-      snprintf(footer, sizeof footer, "Working...");
+      cobalt_draw_hints(r, "Working...");
    } else if (split && view->detail_more.w > 0) {
-      snprintf(footer, sizeof footer,
-               "A: thread  Y: more  Left: like  Right: repost  L/R: scroll text");
+      cobalt_draw_hints(r, footer_scroll);
    } else {
-      snprintf(footer, sizeof footer, "A: thread  Y: more  Left: like  Right: repost");
+      cobalt_draw_hints(r, footer);
    }
-   cobalt_draw_hints(r, footer);
+}
+
+void
+cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
+                     cobalt_surface_id surface)
+{
+   cobalt_timeline_draw_feed(
+      view, r, surface, cobalt_session_feed(), "Timeline", "Nothing here yet",
+      "Press + to refresh. If this stays empty, follow some accounts and they "
+      "will show up here.",
+      "A: thread  Y: more  Left: like  Right: repost",
+      "A: thread  Y: more  Left: like  Right: repost  L/R: scroll text");
 }

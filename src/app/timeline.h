@@ -61,8 +61,23 @@ void cobalt_timeline_rewind(cobalt_timeline *view);
 cobalt_timeline_action cobalt_timeline_update(cobalt_timeline *view,
                                               const cobalt_input *in);
 
+/* The same list, backed by another feed. Bookmarks use it so their separate
+ * list gets the same cards, paging and navigation without a second renderer. */
+typedef bool (*cobalt_timeline_load_fn)(bool paging);
+
+cobalt_timeline_action cobalt_timeline_update_feed(cobalt_timeline *view,
+                                                   const cobalt_input *in,
+                                                   const cobalt_feed *feed,
+                                                   cobalt_timeline_load_fn load);
+
 void cobalt_timeline_draw(cobalt_timeline *view, cobalt_render *r,
                           cobalt_surface_id surface);
+
+void cobalt_timeline_draw_feed(cobalt_timeline *view, cobalt_render *r,
+                               cobalt_surface_id surface, const cobalt_feed *feed,
+                               const char *title, const char *empty_headline,
+                               const char *empty_detail, const char *footer,
+                               const char *footer_scroll);
 
 #ifdef __cplusplus
 }

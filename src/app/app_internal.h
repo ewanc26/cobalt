@@ -47,7 +47,7 @@
 #include <string.h>
 
 /* Entries on the home menu; app_home.c checks its table against this. */
-#define COBALT_HOME_MENU_COUNT 14
+#define COBALT_HOME_MENU_COUNT 15
 /* How deep a chain of thread and profile screens can nest before the oldest
  * return is dropped. */
 #define COBALT_RETURN_DEPTH 16
@@ -69,6 +69,7 @@ struct cobalt_app {
    cobalt_signin signin;
    cobalt_entropy_view entropy;
    cobalt_timeline timeline;
+   cobalt_timeline bookmarks;
    cobalt_thread_view thread;
    cobalt_compose compose;
    cobalt_notify_view notify;
@@ -89,6 +90,10 @@ struct cobalt_app {
    cobalt_popup popup;
    cobalt_screen popup_screen;
    bool popup_in_thread;
+   /* The post the open More menu would bookmark. The popup's own argument is
+    * too small for an at-uri, and the request needs the whole thing. */
+   char bookmark_uri[COBALT_POST_URI_MAX];
+   bool bookmark_target;
    cobalt_imageview imageview;
    /* Which row is highlighted on the account screen's small menu. */
    int account_selected;
@@ -139,6 +144,7 @@ struct cobalt_app {
 /* app.c */
 void cobalt_app_draw_header(cobalt_render *r, const char *subtitle);
 void cobalt_app_draw_notice(const cobalt_app *app, cobalt_render *r, int y, int width);
+void cobalt_app_set_notice(cobalt_app *app, const char *message, bool is_error);
 
 /* app_home.c */
 void cobalt_app_update_home(cobalt_app *app, const cobalt_input *in);

@@ -40,6 +40,11 @@
 #include "util/rng.h"
 #include "util/clock.h"
 
+#ifdef COBALT_HAS_WOLFRAM
+#include <wolfram/bookmark_typed.h>
+#include <wolfram/feed_typed.h>
+#endif
+
 #include <math.h>
 
 #include <arpa/inet.h>
@@ -2882,6 +2887,86 @@ test_picker_paths(const char *root)
 }
 
 static void
+test_bookmarks(void)
+{
+   static cobalt_feed feed;
+   char uri_a[COBALT_POST_URI_MAX] = "at://did:plc:abc/app.bsky.feed.post/a";
+   char uri_b[COBALT_POST_URI_MAX] = "at://did:plc:abc/app.bsky.feed.post/b";
+
+   begin("bookmark state and bookmark-page ordering");
+
+   seed_feed(&feed, uri_a, 1, 0);
+   CHECK(!feed.posts[0].bookmarked);
+   CHECK(cobalt_feed_apply_bookmark(&feed, uri_a, true));
+   CHECK(feed.posts[0].bookmarked);
+   CHECK(cobalt_feed_apply_bookmark(&feed, uri_a, false));
+   CHECK(!feed.posts[0].bookmarked);
+   CHECK(!cobalt_feed_apply_bookmark(&feed, "at://missing", true));
+   CHECK(!cobalt_feed_apply_bookmark(NULL, uri_a, true));
+
+   static cobalt_thread thread;
+   memset(&thread, 0, sizeof(thread));
+   thread.count = 1;
+   snprintf(thread.posts[0].uri, sizeof(thread.posts[0].uri), "%s", uri_a);
+   CHECK(cobalt_thread_apply_bookmark(&thread, uri_a, true));
+   CHECK(thread.posts[0].bookmarked);
+
+#ifdef COBALT_HAS_WOLFRAM
+   {
+      wf_bookmark_list marks;
+      wf_bookmark items[2];
+      wf_agent_post_list posts;
+      wf_agent_post_view views[2];
+      char handle_a[] = "a.test";
+      char handle_b[] = "b.test";
+      char cursor[] = "next-page";
+
+      memset(&marks, 0, sizeof(marks));
+      memset(items, 0, sizeof(items));
+      memset(&posts, 0, sizeof(posts));
+      memset(views, 0, sizeof(views));
+      items[0].uri = uri_b;
+      items[1].uri = uri_a;
+      marks.items = items;
+      marks.count = 2;
+      marks.cursor = cursor;
+
+      /* getPosts returns views in its own order; the bookmark order is what
+       * the list must show. */
+      views[0].uri = uri_a;
+      views[0].author.handle = handle_a;
+      views[1].uri = uri_b;
+      views[1].author.handle = handle_b;
+      posts.posts = views;
+      posts.post_count = 2;
+
+      memset(&feed, 0, sizeof(feed));
+      CHECK(cobalt_feed_append_bookmarks_from_wolfram(&feed, &marks, &posts, 0) == 2);
+      CHECK(feed.count == 2);
+      CHECK_STR(feed.posts[0].uri, uri_b);
+      CHECK_STR(feed.posts[1].uri, uri_a);
+      CHECK(feed.posts[0].bookmarked && feed.posts[1].bookmarked);
+      CHECK_STR(feed.cursor, "next-page");
+      CHECK(feed.has_more);
+
+      /* A bookmark whose record is gone has no post view and is skipped, but
+       * the page cursor still advances past it. */
+      posts.post_count = 1;
+      memset(&feed, 0, sizeof(feed));
+      CHECK(cobalt_feed_append_bookmarks_from_wolfram(&feed, &marks, &posts, 0) == 1);
+      CHECK_STR(feed.posts[0].uri, uri_a);
+      CHECK(feed.has_more);
+
+      marks.cursor = NULL;
+      memset(&feed, 0, sizeof(feed));
+      CHECK(cobalt_feed_append_bookmarks_from_wolfram(&feed, &marks, &posts, 0) == 1);
+      CHECK(!feed.has_more);
+      CHECK_STR(feed.cursor, "");
+   }
+#endif
+}
+
+static void
 test_delete_post_helpers(void)
 {
    begin("own-post detection and local removal");
@@ -3907,6 +3992,7 @@ main(int argc, char **argv)
    test_entropy_gather(root);
    test_actor_list_remove();
    test_interactions();
+   test_bookmarks();
    test_delete_post_helpers();
    test_quote_helpers();
    test_follow_lists();

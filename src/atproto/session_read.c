@@ -104,6 +104,92 @@ cobalt_session_run_timeline(const cobalt_job_input *in, cobalt_job_result *r, co
    r->ok = true;
 }
 
+void
+cobalt_session_run_bookmarks(const cobalt_job_input *in, cobalt_job_result *r,
+                             cobalt_auth_state *state)
+{
+   wf_bookmark_list marks;
+   wf_agent_post_list posts;
+   const char *cursor = NULL;
+   const char *uris[COBALT_SESSION_PAGE];
+   size_t uri_count = 0;
+   wf_status status;
+   int64_t now;
+   int added;
+   int total;
+
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in to see your bookmarks.");
+      return;
+   }
+
+   if (in->paging) {
+      SDL_LockMutex(g_session.lock);
+      cursor = g_session.bookmarks.cursor[0] ? g_session.bookmarks.cursor : NULL;
+      SDL_UnlockMutex(g_session.lock);
+      if (!cursor) {
+         *state = COBALT_AUTH_SIGNED_IN;
+         r->ok = true;
+         return;
+      }
+   }
+
+   memset(&marks, 0, sizeof(marks));
+   memset(&posts, 0, sizeof(posts));
+   COBALT_LOGI("session: getBookmarks limit=%d cursor=%s", COBALT_SESSION_PAGE,
+               cursor ? cursor : "(top)");
+   status = wf_agent_get_bookmarks_typed(g_session.wf, COBALT_SESSION_PAGE, cursor,
+                                         &marks);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: getBookmarks failed (%d)", (int) status);
+      cobalt_session_describe_failure(r, status, COBALT_JOB_BOOKMARKS);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   for (size_t i = 0; i < marks.count && uri_count < COBALT_SESSION_PAGE; i++) {
+      if (marks.items[i].uri && marks.items[i].uri[0]) {
+         uris[uri_count++] = marks.items[i].uri;
+      }
+   }
+
+   if (uri_count > 0) {
+      COBALT_LOGI("session: getPosts for %d bookmarks", (int) uri_count);
+      status = wf_agent_get_posts_typed(g_session.wf, uris, uri_count, &posts);
+      if (status != WF_OK) {
+         COBALT_LOGW("session: getPosts for bookmarks failed (%d)", (int) status);
+         cobalt_session_describe_failure(r, status, COBALT_JOB_BOOKMARKS);
+         wf_bookmark_list_free(&marks);
+         *state = COBALT_AUTH_SIGNED_IN;
+         return;
+      }
+   }
+
+   now = cobalt_time_now();
+
+   SDL_LockMutex(g_session.lock);
+   if (!in->paging) {
+      cobalt_feed_reset(&g_session.bookmarks);
+   }
+   added = cobalt_feed_append_bookmarks_from_wolfram(&g_session.bookmarks, &marks,
+                                                     uri_count > 0 ? &posts : NULL,
+                                                     now);
+   total = g_session.bookmarks.count;
+   SDL_UnlockMutex(g_session.lock);
+
+   wf_agent_post_list_free(&posts);
+   wf_bookmark_list_free(&marks);
+
+   COBALT_LOGI("session: bookmarks +%d posts (%d held)", added, total);
+   if (total == 0 && !in->paging) {
+      cobalt_session_set_message(r, "No bookmarks yet. Bookmark a post from its More menu.");
+   }
+
+   cobalt_session_publish();
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
 /*
  * A custom feed (app.bsky.feed.getFeed), identified by `in->uri` — the
  * generator's AT-URI. `wf_agent_get_feed_typed` returns `wf_agent_feed_view_list`,
@@ -1338,6 +1424,21 @@ const cobalt_feed *
 cobalt_session_feed(void)
 {
    return &g_session.feed;
+}
+
+bool
+cobalt_session_begin_bookmarks(bool paging)
+{
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   in.paging = paging;
+   return cobalt_session_submit(COBALT_JOB_BOOKMARKS, &in);
+}
+
+const cobalt_feed *
+cobalt_session_bookmarks(void)
+{
+   return &g_session.bookmarks;
 }
 
 const cobalt_thread *

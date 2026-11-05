@@ -83,6 +83,48 @@ cobalt_session_run_interaction(const cobalt_job_input *in, cobalt_job_result *r,
 }
 
 void
+cobalt_session_run_bookmark(const cobalt_job_input *in, cobalt_job_result *r,
+                             cobalt_auth_state *state)
+{
+   wf_status status;
+
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in to save bookmarks.");
+      return;
+   }
+
+   COBALT_LOGI("session: %s bookmark %s", in->flag ? "adding" : "removing", in->uri);
+   status = in->flag ? wf_agent_create_bookmark(g_session.wf, in->uri, NULL)
+                     : wf_agent_delete_bookmark(g_session.wf, in->uri);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: bookmark %s failed (%d)",
+                  in->flag ? "create" : "delete", (int) status);
+      cobalt_session_set_message(r, in->flag
+                     ? "Could not save that bookmark (wolfram status %d)."
+                     : "Could not remove that bookmark (wolfram status %d).",
+                  (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(g_session.lock);
+   cobalt_feed_apply_bookmark(&g_session.feed, in->uri, in->flag);
+   cobalt_feed_apply_bookmark(&g_session.author_feed, in->uri, in->flag);
+   cobalt_thread_apply_bookmark(&g_session.conversation, in->uri, in->flag);
+   if (in->flag) {
+      cobalt_feed_apply_bookmark(&g_session.bookmarks, in->uri, true);
+   } else {
+      cobalt_feed_remove_post(&g_session.bookmarks, in->uri);
+   }
+   SDL_UnlockMutex(g_session.lock);
+
+   cobalt_session_publish();
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->bookmarked = in->flag;
+   r->ok = true;
+}
+
+void
 cobalt_session_run_delete_post(const cobalt_job_input *in, cobalt_job_result *r,
                 cobalt_auth_state *state)
 {
@@ -455,4 +497,18 @@ bool
 cobalt_session_begin_repost(const char *uri, const char *cid)
 {
    return begin_interaction(COBALT_JOB_REPOST, uri, cid, false);
+}
+
+bool
+cobalt_session_begin_bookmark(const char *uri, bool bookmarked)
+{
+   cobalt_job_input in;
+
+   if (!uri || !uri[0]) {
+      return false;
+   }
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", uri);
+   in.flag = bookmarked;
+   return cobalt_session_submit(COBALT_JOB_BOOKMARK, &in);
 }

@@ -21,6 +21,29 @@ facet_label(const cobalt_post *post, const cobalt_post_facet *f, char *out,
    out[n] = '\0';
 }
 
+/* A thread's post view has no viewer.bookmarked field, so the loaded bookmark
+ * page is consulted as well: a post opened from that page still knows it is
+ * saved, even though the network thread response could not say so. */
+static bool
+post_is_bookmarked(const cobalt_post *post)
+{
+   const cobalt_feed *marks;
+
+   if (!post) {
+      return false;
+   }
+   if (post->bookmarked) {
+      return true;
+   }
+   marks = cobalt_session_bookmarks();
+   for (int i = 0; i < marks->count; i++) {
+      if (strcmp(marks->posts[i].uri, post->uri) == 0) {
+         return true;
+      }
+   }
+   return false;
+}
+
 void
 cobalt_app_open_post_menu(cobalt_app *app, const cobalt_post *post, bool in_thread)
 {
@@ -35,6 +58,14 @@ cobalt_app_open_post_menu(cobalt_app *app, const cobalt_post *post, bool in_thre
    }
    if (post->image_count > 0) {
       cobalt_popup_add(&app->popup, COBALT_POPUP_IMAGE, "View image", "");
+   }
+   if (post->uri[0]) {
+      /* The popup argument is 128 bytes and an at-uri can be longer, so the
+       * request target is kept in app state instead of the row. */
+      snprintf(app->bookmark_uri, sizeof(app->bookmark_uri), "%s", post->uri);
+      app->bookmark_target = !post_is_bookmarked(post);
+      cobalt_popup_add(&app->popup, COBALT_POPUP_BOOKMARK,
+                       app->bookmark_target ? "Bookmark" : "Remove bookmark", "");
    }
    for (int i = 0; i < post->facet_count; i++) {
       const cobalt_post_facet *f = &post->facets[i];
@@ -51,6 +82,8 @@ cobalt_app_open_post_menu(cobalt_app *app, const cobalt_post *post, bool in_thre
    if (app->screen == COBALT_SCREEN_TIMELINE) {
       cobalt_popup_add(&app->popup, COBALT_POPUP_COMPOSE, "New post", "");
       cobalt_popup_add(&app->popup, COBALT_POPUP_REFRESH, "Refresh timeline", "");
+   } else if (app->screen == COBALT_SCREEN_BOOKMARKS) {
+      cobalt_popup_add(&app->popup, COBALT_POPUP_REFRESH, "Refresh bookmarks", "");
    }
    if (post->like_count > 0) {
       char label[COBALT_POPUP_LABEL_MAX];
@@ -188,6 +221,11 @@ cobalt_app_popup_choose(cobalt_app *app, int index)
          const cobalt_post *post = NULL;
          if (app->popup_screen == COBALT_SCREEN_PROFILE) {
             post = cobalt_profile_view_selected_post(&app->profile);
+         } else if (app->popup_screen == COBALT_SCREEN_BOOKMARKS) {
+            const cobalt_feed *feed = cobalt_session_bookmarks();
+            if (app->bookmarks.nav.selected < feed->count) {
+               post = &feed->posts[app->bookmarks.nav.selected];
+            }
          } else if (app->popup_in_thread) {
             const cobalt_thread *conv = cobalt_session_thread();
             if (app->thread.nav.selected < conv->count) {
@@ -202,6 +240,20 @@ cobalt_app_popup_choose(cobalt_app *app, int index)
          if (post) {
             cobalt_imageview_open(&app->imageview, post);
             cobalt_popup_close(&app->popup);
+         }
+         break;
+      }
+      case COBALT_POPUP_BOOKMARK: {
+         char uri[COBALT_POST_URI_MAX];
+         const bool target = app->bookmark_target;
+
+         snprintf(uri, sizeof(uri), "%s", app->bookmark_uri);
+         if (uri[0] && cobalt_session_begin_bookmark(uri, target)) {
+            app->bookmark_target = target;
+            cobalt_popup_close(&app->popup);
+         } else {
+            cobalt_app_set_notice(app, "Could not start the bookmark request. "
+                                      "Wait for the last request to finish.", true);
          }
          break;
       }
@@ -231,6 +283,10 @@ cobalt_app_popup_choose(cobalt_app *app, int index)
          if (app->popup_screen == COBALT_SCREEN_NOTIFICATIONS) {
             if (cobalt_session_begin_notifications(false)) {
                cobalt_notify_view_rewind(&app->notify);
+            }
+         } else if (app->popup_screen == COBALT_SCREEN_BOOKMARKS) {
+            if (cobalt_session_begin_bookmarks(false)) {
+               cobalt_timeline_rewind(&app->bookmarks);
             }
          } else if (cobalt_session_begin_feed_current(false)) {
             cobalt_timeline_rewind(&app->timeline);
