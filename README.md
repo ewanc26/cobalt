@@ -56,6 +56,7 @@ replace testing on the console.
 - Posting, replies, quote posts and reply gates
 - Threads: write up to eight posts in a row and publish them as one thread
 - Likes and reposts, including undo
+- Private bookmarks, listed on their own paged screen and toggled from a post's More menu
 - Notifications and mark-as-seen
 - Profiles, follows and unfollows, and editing your own display name and bio
 - Followers, following and profile tabs

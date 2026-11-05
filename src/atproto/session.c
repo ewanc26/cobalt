@@ -444,6 +444,8 @@ run_job(cobalt_job_kind kind, const cobalt_job_input *in, cobalt_auth_state *sta
       case COBALT_JOB_RESUME: cobalt_session_run_resume(&r, state);     break;
       case COBALT_JOB_LOGOUT: cobalt_session_run_logout(&r, state);     break;
       case COBALT_JOB_TIMELINE: cobalt_session_run_timeline(in, &r, state); break;
+      case COBALT_JOB_BOOKMARKS: cobalt_session_run_bookmarks(in, &r, state); break;
+      case COBALT_JOB_BOOKMARK:  cobalt_session_run_bookmark(in, &r, state);  break;
       case COBALT_JOB_THREAD:   cobalt_session_run_thread(in, &r, state);   break;
       case COBALT_JOB_LIKE:     cobalt_session_run_interaction(in, &r, state, true);  break;
       case COBALT_JOB_REPOST:   cobalt_session_run_interaction(in, &r, state, false); break;

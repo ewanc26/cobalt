@@ -2,6 +2,7 @@
 #include "util/log.h"
 
 #ifdef COBALT_HAS_WOLFRAM
+#include <wolfram/bookmark_typed.h>
 #include <wolfram/embed_typed.h>
 #include <wolfram/feed_typed.h>
 #include <wolfram/post_view_typed.h>
@@ -250,6 +251,30 @@ cobalt_feed_apply_repost(cobalt_feed *feed, const char *post_uri,
       return false;
    }
    apply_to_post(post, record_uri, false);
+   return true;
+}
+
+bool
+cobalt_feed_apply_bookmark(cobalt_feed *feed, const char *post_uri,
+                           bool bookmarked)
+{
+   cobalt_post *post = feed ? find_post(feed->posts, feed->count, post_uri) : NULL;
+   if (!post) {
+      return false;
+   }
+   post->bookmarked = bookmarked;
+   return true;
+}
+
+bool
+cobalt_thread_apply_bookmark(cobalt_thread *thread, const char *post_uri,
+                             bool bookmarked)
+{
+   cobalt_post *post = thread ? find_post(thread->posts, thread->count, post_uri) : NULL;
+   if (!post) {
+      return false;
+   }
+   post->bookmarked = bookmarked;
    return true;
 }
 
@@ -750,6 +775,7 @@ fill_from_view(cobalt_post *post, const wf_agent_post_view *view, int64_t now)
             view->viewer.like ? view->viewer.like : "");
    snprintf(post->viewer_repost, sizeof(post->viewer_repost), "%s",
             view->viewer.repost ? view->viewer.repost : "");
+   post->bookmarked = view->viewer.has_bookmarked && view->viewer.bookmarked;
 
    fill_embed(post, view->embed);
 
@@ -881,6 +907,73 @@ cobalt_feed_append_posts_from_wolfram(cobalt_feed *feed,
       feed->has_more = true;
    }
    return added;
+}
+
+int
+cobalt_feed_append_bookmarks_from_wolfram(cobalt_feed *feed,
+                                           const struct wf_bookmark_list *bookmarks,
+                                           const struct wf_agent_post_list *posts,
+                                           int64_t now)
+{
+#ifdef COBALT_HAS_WOLFRAM
+   if (!feed || !bookmarks) {
+      return 0;
+   }
+
+   const wf_bookmark_list *marks = (const wf_bookmark_list *) bookmarks;
+   const wf_agent_post_list *views = (const wf_agent_post_list *) posts;
+   int added = 0;
+
+   for (size_t i = 0; i < marks->count; i++) {
+      const wf_bookmark *mark = &marks->items[i];
+      const wf_agent_post_view *view = NULL;
+
+      if (!mark->uri || !mark->uri[0] || !views) {
+         continue;
+      }
+      for (size_t j = 0; j < views->post_count; j++) {
+         if (views->posts[j].uri && strcmp(views->posts[j].uri, mark->uri) == 0) {
+            view = &views->posts[j];
+            break;
+         }
+      }
+      /* A blocked or deleted bookmarked record has no post view. Skipping it
+       * is better than drawing the raw bookmarkView union in the UI. */
+      if (!view) {
+         continue;
+      }
+      if (feed->count >= COBALT_FEED_MAX_POSTS) {
+         break;
+      }
+
+      cobalt_post *post = &feed->posts[feed->count];
+      fill_from_view(post, view, now);
+      /* It came from getBookmarks, so it is bookmarked even if a sparse view
+       * omitted viewer state. */
+      post->bookmarked = true;
+      feed->count++;
+      added++;
+   }
+
+   if (feed->count >= COBALT_FEED_MAX_POSTS) {
+      feed->cursor[0] = '\0';
+      feed->has_more = false;
+   } else if (marks->cursor && marks->cursor[0]) {
+      snprintf(feed->cursor, sizeof(feed->cursor), "%s", marks->cursor);
+      feed->has_more = true;
+   } else {
+      feed->cursor[0] = '\0';
+      feed->has_more = false;
+   }
+
+   return added;
+#else
+   (void) feed;
+   (void) bookmarks;
+   (void) posts;
+   (void) now;
+   return 0;
+#endif
 }
 
 /* --- threads --- */

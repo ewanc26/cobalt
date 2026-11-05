@@ -218,6 +218,11 @@ typedef struct {
    char viewer_like[COBALT_POST_URI_MAX];
    char viewer_repost[COBALT_POST_URI_MAX];
 
+   /* Private bookmark state. Bookmarks are a boolean on the viewer, not a
+    * record URI like likes and reposts, so the post menu only needs to know
+    * which verb to send. */
+   bool bookmarked;
+
    /* Kept for interactions and thread view, not drawn. */
    char uri[COBALT_POST_URI_MAX];
    char cid[COBALT_POST_CID_MAX];
@@ -341,6 +346,13 @@ bool cobalt_feed_apply_like(cobalt_feed *feed, const char *post_uri,
 bool cobalt_feed_apply_repost(cobalt_feed *feed, const char *post_uri,
                               const char *record_uri);
 
+/* Apply a bookmark toggle locally. Every loaded copy of the post moves with
+ * it, so the menu says the same thing on the timeline, a profile and a thread. */
+bool cobalt_feed_apply_bookmark(cobalt_feed *feed, const char *post_uri,
+                                bool bookmarked);
+bool cobalt_thread_apply_bookmark(cobalt_thread *thread, const char *post_uri,
+                                  bool bookmarked);
+
 /* The same, for a loaded thread. A post is frequently on screen in both the
  * feed and a thread at once, and both copies have to move together. */
 bool cobalt_thread_apply_like(cobalt_thread *thread, const char *post_uri,
@@ -411,6 +423,16 @@ struct wf_agent_post_list;
 int cobalt_feed_append_posts_from_wolfram(cobalt_feed *feed,
                                           const struct wf_agent_post_list *list,
                                           const char *next_cursor, int64_t now);
+
+/* Resolve a page of bookmarks into post rows, keeping the server's bookmark
+ * order even though getPosts may return the views in any order. A bookmarked
+ * post that is now blocked or deleted simply has no view and is skipped; the
+ * bookmark cursor still advances past it. */
+struct wf_bookmark_list;
+int cobalt_feed_append_bookmarks_from_wolfram(cobalt_feed *feed,
+                                              const struct wf_bookmark_list *bookmarks,
+                                              const struct wf_agent_post_list *posts,
+                                              int64_t now);
 
 /* Fetch result of getPosts for one pinned post; prepends it via
  * cobalt_feed_prepend_pinned. Returns whether a post was added. */

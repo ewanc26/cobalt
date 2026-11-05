@@ -32,6 +32,7 @@
 #include <wolfram/actor_typed.h>
 #include <wolfram/agent.h>
 #include <wolfram/attach.h>
+#include <wolfram/bookmark_typed.h>
 #include <wolfram/chat_group.h>
 #include <wolfram/embed.h>
 #include <wolfram/failure.h>
@@ -168,6 +169,8 @@ typedef struct {
    /* Published by the worker alongside the auth state, and read by the
     * timeline screen. Guarded by `lock` on write, read while idle. */
    cobalt_feed feed;
+   /* Private bookmarks, kept out of the shared feed window. */
+   cobalt_feed bookmarks;
    /* Named to stay clear of `thread`, which is the worker. */
    cobalt_thread conversation;
    cobalt_notifications notifications;
@@ -247,6 +250,8 @@ bool cobalt_session_publish(void);
 void cobalt_session_run_block(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_blocked_list(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_delete_post(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_bookmark(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_bookmarks(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_feed(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_follow(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_followers(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);

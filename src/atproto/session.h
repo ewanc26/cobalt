@@ -68,6 +68,8 @@ typedef enum {
    COBALT_JOB_RESUME,
    COBALT_JOB_LOGOUT,
    COBALT_JOB_TIMELINE,
+   COBALT_JOB_BOOKMARKS,
+   COBALT_JOB_BOOKMARK,
    COBALT_JOB_THREAD,
    COBALT_JOB_LIKE,
    COBALT_JOB_REPOST,
@@ -120,6 +122,8 @@ typedef struct {
    /* COBALT_JOB_THREAD_MUTE: the state now in effect, so the screen can name
     * it after the request rather than re-deriving it. */
    bool thread_muted;
+   /* COBALT_JOB_BOOKMARK: the state now in effect. */
+   bool bookmarked;
    /* Written for the user, not for a log: says what happened and what to do
     * about it. Empty on success. */
    char message[COBALT_MESSAGE_MAX];
@@ -214,6 +218,22 @@ bool cobalt_session_begin_search_posts(const char *query, bool paging);
 /* Refresh or page whatever the shared feed window currently holds — home
  * timeline, a custom feed, or post search — rather than always the home one. */
 bool cobalt_session_begin_feed_current(bool paging);
+
+/*
+ * Fetch the account's private bookmarks. Each page costs two requests: the
+ * bookmark list, then getPosts for the URIs it names. The second request is
+ * how the view is rendered without reimplementing the bookmarkView union in
+ * the app, and deleted records drop out of the list naturally.
+ */
+bool cobalt_session_begin_bookmarks(bool paging);
+
+/* The bookmarks page, kept separate from the shared feed so opening Bookmarks
+ * cannot replace the home timeline behind it. */
+const cobalt_feed *cobalt_session_bookmarks(void);
+
+/* Add or remove a private bookmark. The target state is explicit rather than a
+ * toggle so two presses cannot disagree about what was last fetched. */
+bool cobalt_session_begin_bookmark(const char *uri, bool bookmarked);
 
 /*
  * The feed, thread, notifications and profile as last fetched. Never NULL.

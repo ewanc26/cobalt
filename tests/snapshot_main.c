@@ -380,7 +380,7 @@ drag_to(int x, int from, int to)
 
 /* Home selection is linear and wraps; the app remembers it across screens.
  * Must match COBALT_HOME_MENU_COUNT in app/app_internal.h. */
-#define HOME_MENU_COUNT 14
+#define HOME_MENU_COUNT 15
 
 static void
 open_home_item(int idx)
@@ -981,7 +981,30 @@ main(int argc, char **argv)
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
    shoot("home-signedin");
 
-   open_home_item(5);
+   /* Bookmarks: the same cards as the timeline, from their own paged list.
+    * The mock PDS has no bookmark fixtures, so the page is copied from the
+    * loaded timeline here and the layout itself is what is checked. */
+   {
+      cobalt_feed *marks = (cobalt_feed *) cobalt_session_bookmarks();
+      *marks = *cobalt_session_feed();
+      for (int i = 0; i < marks->count; i++) {
+         marks->posts[i].bookmarked = true;
+      }
+      g_app->screen = COBALT_SCREEN_BOOKMARKS;
+      cobalt_timeline_rewind(&g_app->bookmarks);
+      settle(3);
+      CHECK(popup() == NULL);
+      shoot("bookmarks");
+      frame(COBALT_BTN_ALT_Y); settle(5);
+      CHECK(popup_index(COBALT_POPUP_BOOKMARK) >= 0);
+      CHECK_STR(popup()->items[popup_index(COBALT_POPUP_BOOKMARK)].label,
+                "Remove bookmark");
+      shoot("bookmarks-menu");
+      frame(COBALT_BTN_BACK); settle(3);
+      go_home();
+   }
+
+   open_home_item(6);
    settle(40);
    shoot("notifications");
 
@@ -1019,7 +1042,7 @@ main(int argc, char **argv)
    }
 
    /* The DM inbox is read-only: the screen opens and says what it can do. */
-   open_home_item(6);
+   open_home_item(7);
    settle(40);
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_MESSAGES);
    shoot("messages");
@@ -1064,13 +1087,13 @@ main(int argc, char **argv)
 
    frame(COBALT_BTN_BACK);
    settle(10);
-   open_home_item(9); /* diagnostics, after the Updates entry was removed */
+   open_home_item(10); /* diagnostics, after the Updates entry was removed */
    settle(10);
    shoot("diagnostics");
 
    frame(COBALT_BTN_BACK);
    settle(10);
-   open_home_item(1);
+   open_home_item(2);
    settle(10);
    shoot("compose");
 
@@ -1117,14 +1140,14 @@ main(int argc, char **argv)
    settle(2);
    frame(COBALT_BTN_CONFIRM);
    settle(5);
-   open_home_item(8);
+   open_home_item(9);
    settle(10);
    shoot("account");
 
    /* Queued posts: an empty queue, then one with two saved posts. */
    frame(COBALT_BTN_BACK);
    settle(10);
-   open_home_item(7);
+   open_home_item(8);
    settle(20);
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_QUEUE);
    shoot("queue-empty");
@@ -1133,13 +1156,13 @@ main(int argc, char **argv)
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
    cobalt_post_queue_add(&g_app->queue, "Saved for later: a draft I wrote on the bus.", 1700000000);
    cobalt_post_queue_add(&g_app->queue, "Second post, waiting until I am online.", 1700000600);
-   open_home_item(7);
+   open_home_item(8);
    settle(20);
    shoot("queue");
 
    frame(COBALT_BTN_BACK);
    settle(10);
-   open_home_item(2);
+   open_home_item(3);
    settle(10);
    shoot("search");
 
@@ -1150,7 +1173,7 @@ main(int argc, char **argv)
    settle(2);
    frame(COBALT_BTN_CONFIRM);
    settle(5);
-   open_home_item(3);
+   open_home_item(4);
    settle(10);
    settle(30);
    CHECK(cobalt_session_saved_feeds()->count == 2);
@@ -1179,7 +1202,7 @@ main(int argc, char **argv)
 
    frame(COBALT_BTN_BACK);
    settle(10);
-   open_home_item(4);
+   open_home_item(5);
    settle(40);
    shoot("lists");
 
@@ -1196,7 +1219,7 @@ main(int argc, char **argv)
     * 9, and the two lists, feeds 3 and lists 4. Compose and search are left
     * out on purpose: B types there, so they have no pill. */
    {
-      static const int items[] = {0, 3, 4, 5, 6, 8, 9, 12};
+      static const int items[] = {0, 4, 5, 6, 7, 9, 10, 13};
       for (size_t k = 0; k < sizeof items / sizeof items[0]; k++) {
          open_home_item(items[k]);
          settle(20);
@@ -1326,7 +1349,7 @@ main(int argc, char **argv)
    /* Off-TV play: the GamePad alone must still draw the whole app. The home
     * menu's "TV display" entry is the toggle; the TV drops to its idle card. */
    {
-      open_home_item(10);
+      open_home_item(11);
       settle(4);
       CHECK(cobalt_app_display(g_app) == COBALT_DISPLAY_GAMEPAD);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
@@ -1339,7 +1362,7 @@ main(int argc, char **argv)
       CHECK(cobalt_render_role(g_drc) == COBALT_ROLE_FULL);
       shoot("offtv-timeline");
 
-      open_home_item(10); /* back to TV + GamePad */
+      open_home_item(11); /* back to TV + GamePad */
       settle(4);
       CHECK(cobalt_app_display(g_app) == COBALT_DISPLAY_DUAL);
       CHECK(cobalt_render_role(g_drc) == COBALT_ROLE_REMOTE);
@@ -1357,7 +1380,7 @@ main(int argc, char **argv)
       g_app->settings.high_contrast = false;
       cobalt_theme_apply(COBALT_THEME_LIGHT);
       cobalt_theme_set_high_contrast(false);
-      open_home_item(11); /* settings */
+      open_home_item(12); /* settings */
       settle(4);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_SETTINGS);
       shoot("settings-light");
@@ -1481,7 +1504,7 @@ main(int argc, char **argv)
     * behind buttons a console cannot open. The screen is passive: B or the
     * Back pill leaves it. */
    {
-      open_home_item(12); /* credits */
+      open_home_item(13); /* credits */
       settle(4);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_CREDITS);
       CHECK(cobalt_credits_repo_count() == 5);
@@ -1540,7 +1563,7 @@ main(int argc, char **argv)
       settle(3);
       CHECK(!g_app->imageview.open);
 
-      open_home_item(6);
+      open_home_item(7);
       settle(40);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_MESSAGES);
       frame(COBALT_BTN_CONFIRM);
