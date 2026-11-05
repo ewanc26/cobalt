@@ -70,6 +70,7 @@ replace testing on the console.
 - Custom feed browsing
 - Read-only lists and list members
 - Mute and block, including browsable lists
+- Mute or unmute a conversation from its Thread window menu, with the server's answer on the status line
 - Post search
 
 ### Deliberately not planned

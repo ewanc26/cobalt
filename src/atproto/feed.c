@@ -37,6 +37,15 @@ cobalt_post_uri_is_by(const char *uri, const char *did)
    return strncmp(uri + 5, did, n) == 0 && uri[5 + n] == '/';
 }
 
+const char *
+cobalt_post_thread_root(const cobalt_post *post)
+{
+   if (!post) {
+      return "";
+   }
+   return post->root_uri[0] ? post->root_uri : post->uri;
+}
+
 int
 cobalt_feed_remove_post(cobalt_feed *feed, const char *uri)
 {

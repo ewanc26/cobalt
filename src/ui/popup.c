@@ -158,6 +158,7 @@ icon_for(cobalt_popup_kind kind)
       case COBALT_POPUP_FOLLOWING: return COBALT_ICON_USERS;
       case COBALT_POPUP_TAB:     return COBALT_ICON_LIST;
       case COBALT_POPUP_THREAD:  return COBALT_ICON_REPLY;
+      case COBALT_POPUP_THREAD_MUTE: return COBALT_ICON_BELL;
    }
    return COBALT_ICON_LIST;
 }

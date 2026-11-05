@@ -115,6 +115,11 @@ typedef struct {
    bool link_disable;
 } cobalt_job_input;
 
+/* How many thread roots one run remembers as muted. The server has no read
+ * for this, so it is a screen's worth of recent choices rather than a durable
+ * account list. */
+#define COBALT_MUTED_THREADS_MAX 16
+
 typedef struct {
    bool initialised;
 
@@ -179,6 +184,13 @@ typedef struct {
    int profile_tab;
    cobalt_actor_list muted;
    cobalt_actor_list blocked;
+   /* Thread roots this client has muted in this run, so the Thread window's
+    * menu can name the state. The protocol has no "which threads are muted"
+    * read — app.bsky.feed.defs#threadContext carries no such flag — so a mute
+    * made on another client cannot be seen here. Cleared on sign-out, because
+    * the server-side mute belongs to the account. Guarded by `lock`. */
+   char muted_threads[COBALT_MUTED_THREADS_MAX][COBALT_POST_URI_MAX];
+   int muted_thread_count;
    cobalt_actor_list followers;
    cobalt_actor_list following;
    char follow_actor[COBALT_POST_URI_MAX];
@@ -246,6 +258,7 @@ void cobalt_session_run_chat_group_add(const cobalt_job_input *in, cobalt_job_re
 void cobalt_session_run_chat_group_remove(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_chat_join_link(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_mute(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_thread_mute(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_muted_list(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_notifications(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_chat_inbox(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);

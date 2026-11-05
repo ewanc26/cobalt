@@ -503,6 +503,7 @@ run_job(cobalt_job_kind kind, const cobalt_job_input *in, cobalt_auth_state *sta
       case COBALT_JOB_PROFILE:  cobalt_session_run_profile(in, &r, state);   break;
       case COBALT_JOB_FOLLOW:   cobalt_session_run_follow(in, &r, state);    break;
       case COBALT_JOB_MUTE:     cobalt_session_run_mute(in, &r, state);      break;
+      case COBALT_JOB_THREAD_MUTE: cobalt_session_run_thread_mute(in, &r, state); break;
       case COBALT_JOB_BLOCK:    cobalt_session_run_block(in, &r, state);     break;
       case COBALT_JOB_MUTED_LIST:   cobalt_session_run_muted_list(in, &r, state);   break;
       case COBALT_JOB_BLOCKED_LIST: cobalt_session_run_blocked_list(in, &r, state); break;

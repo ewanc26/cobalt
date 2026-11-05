@@ -3776,6 +3776,30 @@ test_listnav_restore(void)
 }
 
 static void
+test_thread_root_selection(void)
+{
+   begin("a thread mute names the conversation root");
+   cobalt_post post;
+   memset(&post, 0, sizeof(post));
+   snprintf(post.uri, sizeof(post.uri), "at://did:plc:me/app.bsky.feed.post/2");
+   snprintf(post.root_uri, sizeof(post.root_uri),
+            "at://did:plc:me/app.bsky.feed.post/1");
+
+   CHECK(strcmp(cobalt_post_thread_root(&post),
+                "at://did:plc:me/app.bsky.feed.post/1") == 0);
+   post.root_uri[0] = '\0';
+   CHECK(strcmp(cobalt_post_thread_root(&post), post.uri) == 0);
+   CHECK(cobalt_post_thread_root(NULL)[0] == '\0');
+
+   /* Nothing is muted before a session, and a root that is not an AT-URI is
+    * refused without starting a job. */
+   CHECK(!cobalt_session_thread_is_muted(post.uri));
+   CHECK(!cobalt_session_thread_is_muted(NULL));
+   CHECK(!cobalt_session_begin_thread_mute("not-a-uri", true));
+   CHECK(!cobalt_session_begin_thread_mute(NULL, true));
+}
+
+static void
 test_popup_link_qr(void)
 {
    begin("a link's text page carries a QR code");
@@ -3854,6 +3878,7 @@ main(int argc, char **argv)
    test_refresh_rewinds_detail();
    test_touch_drag_scrolls_a_list();
    test_popup_touch();
+   test_thread_root_selection();
    test_popup_link_qr();
    test_listnav();
    test_listnav_restore();

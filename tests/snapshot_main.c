@@ -707,6 +707,15 @@ main(int argc, char **argv)
    frame(COBALT_BTN_CONFIRM);
    settle(30);
    shoot("thread");
+   /* The thread's More menu offers the conversation mute, chosen from the
+    * root rather than the reply the cursor is on. */
+   frame(COBALT_BTN_ALT_Y);
+   settle(5);
+   CHECK(popup_index(COBALT_POPUP_THREAD_MUTE) >= 0);
+   shoot("thread-menu");
+   frame(COBALT_BTN_BACK);
+   settle(5);
+   CHECK(popup() == NULL);
    for (int k = 0; k < 2; k++) { frame(COBALT_BTN_DOWN); settle(5); }
    shoot("thread-scrolled");
    for (int k = 0; k < 2; k++) { frame(COBALT_BTN_UP); settle(5); }
