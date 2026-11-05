@@ -358,6 +358,9 @@ cobalt_session_run_logout(cobalt_job_result *r, cobalt_auth_state *state)
    cobalt_actor_list_reset(&g_session.blocked);
    cobalt_actor_list_reset(&g_session.followers);
    cobalt_actor_list_reset(&g_session.following);
+   /* Thread mutes are the account's server-side state; the local record must
+    * not follow the next person who signs in on this console. */
+   g_session.muted_thread_count = 0;
    g_session.follow_actor[0] = '\0';
    cobalt_actor_list_reset(&g_session.search);
    SDL_UnlockMutex(g_session.lock);

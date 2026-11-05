@@ -473,6 +473,15 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          }
          break;
 
+      case COBALT_JOB_THREAD_MUTE:
+         if (result->ok) {
+            set_notice(app, result->thread_muted ? "Thread muted."
+                                                 : "Thread unmuted.", false);
+         } else {
+            set_notice(app, result->message, true);
+         }
+         break;
+
       case COBALT_JOB_CHAT_SEND:
          /* A sent reply clears the draft and reloads the thread so it shows. A
           * failed one keeps the draft, so the person can send it again. */

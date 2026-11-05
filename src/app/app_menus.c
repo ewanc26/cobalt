@@ -63,6 +63,15 @@ cobalt_app_open_post_menu(cobalt_app *app, const cobalt_post *post, bool in_thre
       cobalt_popup_add(&app->popup, COBALT_POPUP_REPOSTS, label, post->uri);
    }
    if (in_thread) {
+      /* The conversation's root, not the reply the cursor is on: the server's
+       * thread mute names the root. A placeholder has no URI to name. */
+      const char *root = cobalt_post_thread_root(post);
+      if (root[0]) {
+         cobalt_popup_add(&app->popup, COBALT_POPUP_THREAD_MUTE,
+                          cobalt_session_thread_is_muted(root) ? "Unmute thread"
+                                                              : "Mute thread",
+                          root);
+      }
       cobalt_popup_add(&app->popup, COBALT_POPUP_QUOTE, "Quote post", post->uri);
       if (cobalt_post_uri_is_by(post->uri, cobalt_session_did())) {
          cobalt_popup_add(&app->popup, COBALT_POPUP_DELETE, "Delete post",
@@ -248,6 +257,18 @@ cobalt_app_popup_choose(cobalt_app *app, int index)
            cobalt_profile_view_rewind(&app->profile);
          }
          break;
+      case COBALT_POPUP_THREAD_MUTE: {
+         /* Copy the root out before closing: the popup's own storage is what
+          * the item points into. */
+         char root[COBALT_POPUP_ARG_MAX];
+         snprintf(root, sizeof(root), "%s", it->arg);
+         cobalt_popup_close(&app->popup);
+         if (!cobalt_session_busy() && root[0]) {
+            cobalt_session_begin_thread_mute(
+               root, !cobalt_session_thread_is_muted(root));
+         }
+         break;
+      }
       case COBALT_POPUP_DELETE:
          snprintf(app->thread.delete_uri, sizeof(app->thread.delete_uri), "%s",
                   it->arg);

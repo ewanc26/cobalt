@@ -84,6 +84,7 @@ typedef enum {
    COBALT_JOB_LISTS,
    COBALT_JOB_LIST_MEMBERS,
    COBALT_JOB_DELETE_POST,
+   COBALT_JOB_THREAD_MUTE,
    COBALT_JOB_PROFILE_TAB,
    COBALT_JOB_FOLLOWERS,
    COBALT_JOB_FOLLOWING,
@@ -115,6 +116,9 @@ typedef struct {
    /* A thread that went out only in part: ok is true because the first posts
     * are public, and `message` says how far it got. Nothing else sets this. */
    bool partial;
+   /* COBALT_JOB_THREAD_MUTE: the state now in effect, so the screen can name
+    * it after the request rather than re-deriving it. */
+   bool thread_muted;
    /* Written for the user, not for a log: says what happened and what to do
     * about it. Empty on success. */
    char message[COBALT_MESSAGE_MAX];
@@ -452,6 +456,21 @@ bool cobalt_session_begin_follow(void);
  * already gates all three the same way. */
 bool cobalt_session_begin_mute(void);
 bool cobalt_session_begin_block(void);
+
+/*
+ * Mute or unmute notifications for one conversation, by its root AT-URI
+ * (app.bsky.graph.muteThread/unmuteThread). The root is the one the loaded
+ * thread's post carries — cobalt_post_thread_root() chooses it — not the reply
+ * whose menu was opened.
+ *
+ * The protocol exposes no read for which threads are muted, so
+ * cobalt_session_thread_is_muted() knows only the roots this client has muted
+ * during the run. A mute made elsewhere is invisible until this client mutes
+ * or unmutes the same root; on success the result's `thread_muted` reports the
+ * state now in effect. The record is cleared on sign-out.
+ */
+bool cobalt_session_begin_thread_mute(const char *root_uri, bool mute);
+bool cobalt_session_thread_is_muted(const char *root_uri);
 
 /*
  * Muted and blocked accounts: fetch the list, and remove a row from it.

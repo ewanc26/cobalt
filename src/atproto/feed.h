@@ -281,6 +281,14 @@ void cobalt_thread_reset(cobalt_thread *thread);
 bool cobalt_post_uri_is_by(const char *uri, const char *did);
 
 /*
+ * The root of the conversation `post` belongs to: its own reply root when the
+ * record carried one, otherwise its own URI (a top-level post is its own
+ * thread). Muting a thread is a server call about the root, not about the row
+ * the menu was opened on, so the selection is kept here and host-tested.
+ */
+const char *cobalt_post_thread_root(const cobalt_post *post);
+
+/*
  * Drop every row showing `uri` — a timeline can hold the same post more than
  * once, as an original and as someone's repost of it. Returns how many were
  * removed. Used after a delete, so the post leaves the screen without a

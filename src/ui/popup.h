@@ -37,6 +37,7 @@ typedef enum {
    COBALT_POPUP_FOLLOWING,
    COBALT_POPUP_TAB,
    COBALT_POPUP_THREAD,
+   COBALT_POPUP_THREAD_MUTE,
 } cobalt_popup_kind;
 
 typedef struct {

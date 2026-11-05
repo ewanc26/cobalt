@@ -195,6 +195,64 @@ cobalt_session_run_mute(const cobalt_job_input *in, cobalt_job_result *r, cobalt
 }
 
 void
+cobalt_session_run_thread_mute(const cobalt_job_input *in, cobalt_job_result *r,
+                 cobalt_auth_state *state)
+{
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in first.");
+      return;
+   }
+
+   const bool mute = in->flag;
+   COBALT_LOGI("session: %s thread %s", mute ? "muting" : "unmuting", in->uri);
+   const wf_status status = mute ? wf_agent_mute_thread(g_session.wf, in->uri)
+                                 : wf_agent_unmute_thread(g_session.wf, in->uri);
+
+   if (status != WF_OK) {
+      COBALT_LOGW("session: thread %s failed (%d)", mute ? "mute" : "unmute",
+                  (int) status);
+      cobalt_session_set_message(r, "Could not %s that thread (wolfram status %d).",
+                  mute ? "mute" : "unmute", (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   SDL_LockMutex(g_session.lock);
+   int found = -1;
+   for (int i = 0; i < g_session.muted_thread_count; i++) {
+      if (strcmp(g_session.muted_threads[i], in->uri) == 0) {
+         found = i;
+         break;
+      }
+   }
+   if (mute) {
+      if (found < 0 && g_session.muted_thread_count < COBALT_MUTED_THREADS_MAX) {
+         found = g_session.muted_thread_count++;
+         snprintf(g_session.muted_threads[found],
+                  sizeof(g_session.muted_threads[found]), "%s", in->uri);
+      }
+   } else if (found >= 0) {
+      g_session.muted_threads[found][0] = '\0';
+      /* Keep the array packed, so the count is the number of roots held. */
+      for (int i = found + 1; i < g_session.muted_thread_count; i++) {
+         snprintf(g_session.muted_threads[i - 1],
+                  sizeof(g_session.muted_threads[i - 1]), "%s",
+                  g_session.muted_threads[i]);
+      }
+      if (g_session.muted_thread_count > 0) {
+         g_session.muted_thread_count--;
+      }
+   }
+   r->thread_muted = mute;
+   SDL_UnlockMutex(g_session.lock);
+
+   cobalt_session_publish();
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+void
 cobalt_session_run_block(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state)
 {
    if (!g_session.wf) {
@@ -364,4 +422,37 @@ cobalt_session_begin_block(void)
       return false;
    }
    return cobalt_session_submit(COBALT_JOB_BLOCK, &in);
+}
+
+bool
+cobalt_session_begin_thread_mute(const char *root_uri, bool mute)
+{
+   if (!root_uri || strncmp(root_uri, "at://", 5) != 0) {
+      return false;
+   }
+
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", root_uri);
+   in.flag = mute;
+   return cobalt_session_submit(COBALT_JOB_THREAD_MUTE, &in);
+}
+
+bool
+cobalt_session_thread_is_muted(const char *root_uri)
+{
+   if (!root_uri || !root_uri[0] || !g_session.lock) {
+      return false;
+   }
+
+   SDL_LockMutex(g_session.lock);
+   bool muted = false;
+   for (int i = 0; i < g_session.muted_thread_count; i++) {
+      if (strcmp(g_session.muted_threads[i], root_uri) == 0) {
+         muted = true;
+         break;
+      }
+   }
+   SDL_UnlockMutex(g_session.lock);
+   return muted;
 }
