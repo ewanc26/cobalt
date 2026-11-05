@@ -31,7 +31,7 @@ The footer names the buttons that work on the current screen. A prompt that name
 
 ![Home](screenshots/home-signedin.png)
 
-Timeline, New post, Search, Feeds, Lists, Notifications, Messages, Queued posts, Account (or Sign in), Diagnostics, TV display, Settings, Credits and Quit. Timeline, New post, Search, Feeds, Lists, Notifications and Messages need you signed in; Queued posts and the rest do not.
+Timeline, Bookmarks, New post, Search, Feeds, Lists, Notifications, Messages, Queued posts, Account (or Sign in), Diagnostics, TV display, Settings, Credits and Quit. Timeline, Bookmarks, New post, Search, Feeds, Lists, Notifications and Messages need you signed in; Queued posts and the rest do not.
 
 TV display switches between TV plus GamePad and Off-TV Play, where the TV goes idle and everything happens on the GamePad.
 
@@ -62,7 +62,7 @@ The first time Cobalt runs without a seed file it asks you to scribble on the Ga
 
 ![The More menu](screenshots/more-menu.png)
 
-The More menu lists, for the highlighted post: the author's profile, View image, every link, mention and hashtag in the text (a link only shows its address, since Cobalt cannot open a browser), New post, Refresh, Liked by and Reposted by.
+The More menu lists, for the highlighted post: the author's profile, View image, every link, mention and hashtag in the text (a link only shows its address, since Cobalt cannot open a browser), Bookmark or Remove bookmark, New post, Refresh, Liked by and Reposted by.
 
 A post can carry up to four pictures, a gallery row (the first four of a larger gallery), a link-card preview naming its publication or host, or a video's poster with its length and a note that it cannot play.
 
@@ -85,6 +85,14 @@ When a link points at an Atmosphere record, Cobalt asks the AppView for the rich
 Shows the conversation around a post. Like and repost work as on the timeline. A on the post you opened is Reply; A on any other post opens the conversation from that post. X quotes, + replies, Y opens the More menu, which here also has Quote post and, on your own posts, Delete post (it asks first).
 
 On the TV the conversation is a column on the left, and the post you have selected is shown on the right. When its text is longer than the column it ends with a "More below" line, and L and R scroll the text, one line at a time, without moving the selection. A scrollbar shows where you are. Moving to another post starts its text at the top. The GamePad keeps the full-width view.
+
+## Bookmarks
+
+![Bookmarks](screenshots/bookmarks.png)
+
+Bookmarks is the account's private saved-post list, kept apart from the timeline: opening it does not replace Home, and Back returns to wherever it was opened from. A opens the selected post's thread. Up and Down move, + refreshes, and reaching the bottom loads the next page. The list is in the order the service returns and a post deleted since it was saved is left out.
+
+Use **Bookmark** or **Remove bookmark** in a post's More menu to change the list. Only the service's answer changes the menu: a failed save or removal leaves the last confirmed state and says why on the status line. The protocol has no public view of a bookmark, so the list is never shown to anyone but the signed-in account.
 
 ## Queued posts
 
