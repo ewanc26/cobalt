@@ -948,6 +948,48 @@ main(int argc, char **argv)
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
    }
 
+   /* Reports: the post menu, the reason picker and the explicit send/cancel
+    * confirmation. The fixture's posts all belong to the signed-in account,
+    * where the action is correctly absent, so this one scene borrows another
+    * author and restores it afterwards. Cancel is chosen so nothing is sent. */
+   {
+      cobalt_feed *feed = (cobalt_feed *) cobalt_session_feed();
+      char saved_uri[COBALT_POST_URI_MAX];
+      char saved_handle[COBALT_POST_NAME_MAX];
+      bool saved_self;
+
+      CHECK(feed->count > 0);
+      snprintf(saved_uri, sizeof saved_uri, "%s", feed->posts[0].uri);
+      snprintf(saved_handle, sizeof saved_handle, "%s", feed->posts[0].handle);
+      saved_self = cobalt_post_uri_is_by(feed->posts[0].uri, cobalt_session_did());
+      snprintf(feed->posts[0].uri, sizeof feed->posts[0].uri,
+               "at://did:plc:other/app.bsky.feed.post/1");
+      snprintf(feed->posts[0].handle, sizeof feed->posts[0].handle, "bob.test");
+      open_post_menu(0);
+      {
+         const int report = popup_index(COBALT_POPUP_REPORT_POST);
+
+         CHECK(report >= 0);
+         shoot("timeline-menu-report");
+         popup_select(report);
+         frame(COBALT_BTN_CONFIRM); settle(3);
+         CHECK(popup() != NULL && popup()->items[0].kind == COBALT_POPUP_REPORT_REASON);
+         shoot("report-reasons");
+         popup_select(0);
+         frame(COBALT_BTN_CONFIRM); settle(3);
+         CHECK(popup_index(COBALT_POPUP_REPORT_SEND) >= 0);
+         CHECK(popup_index(COBALT_POPUP_CANCEL) >= 0);
+         shoot("report-confirm");
+         popup_select(popup_index(COBALT_POPUP_CANCEL));
+         frame(COBALT_BTN_CONFIRM); settle(3);
+         CHECK(popup() == NULL);
+         CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
+      }
+      snprintf(feed->posts[0].uri, sizeof feed->posts[0].uri, "%s", saved_uri);
+      snprintf(feed->posts[0].handle, sizeof feed->posts[0].handle, "%s", saved_handle);
+      CHECK(cobalt_post_uri_is_by(feed->posts[0].uri, cobalt_session_did()) == saved_self);
+   }
+
    /* Profile: card 0's menu opens the author's profile as its first row. */
    open_post_menu(0);
    {

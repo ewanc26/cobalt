@@ -101,6 +101,12 @@ struct cobalt_app {
     * too small for an at-uri, and the request needs the whole thing. */
    char bookmark_uri[COBALT_POST_URI_MAX];
    bool bookmark_target;
+   /* The targets the open More menu offers to report, and the one chosen. A
+    * report is held across the reason and confirmation popups, then copied
+    * into the session request when the person presses Send. */
+   cobalt_report report_post_target;
+   cobalt_report report_account_target;
+   cobalt_report report;
    cobalt_imageview imageview;
    /* Which row is highlighted on the account screen's small menu. */
    int account_selected;
