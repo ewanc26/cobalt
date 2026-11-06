@@ -110,6 +110,7 @@ UNIT_SOURCES := \
 	$(SRC)/atproto/session_auth.c \
 	$(SRC)/atproto/session_read.c \
 	$(SRC)/atproto/session_profile.c \
+	$(SRC)/atproto/report.c \
 	$(SRC)/atproto/session_lists.c \
 	$(SRC)/atproto/session_post.c \
 	$(SRC)/app/signin.c \

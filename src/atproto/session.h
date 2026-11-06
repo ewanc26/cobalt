@@ -34,6 +34,7 @@
 #include "atproto/notifications.h"
 #include "atproto/chat.h"
 #include "atproto/actor_profile.h"
+#include "atproto/report.h"
 #include "cache/session_store.h"
 
 #include <stdbool.h>
@@ -87,6 +88,7 @@ typedef enum {
    COBALT_JOB_LIST_MEMBERS,
    COBALT_JOB_DELETE_POST,
    COBALT_JOB_THREAD_MUTE,
+   COBALT_JOB_REPORT,
    COBALT_JOB_PROFILE_UPDATE,
    COBALT_JOB_PROFILE_TAB,
    COBALT_JOB_FOLLOWERS,
@@ -501,6 +503,13 @@ bool cobalt_session_begin_block(void);
  */
 bool cobalt_session_begin_thread_mute(const char *root_uri, bool mute);
 bool cobalt_session_thread_is_muted(const char *root_uri);
+
+/*
+ * Send a moderation report. The target and the reason are checked before any
+ * request is made; exactly one subject form reaches Wolfram, and the success
+ * notice is shown only after the service confirms the report.
+ */
+bool cobalt_session_begin_report(const cobalt_report *report);
 
 /*
  * Muted and blocked accounts: fetch the list, and remove a row from it.

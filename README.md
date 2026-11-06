@@ -72,6 +72,7 @@ replace testing on the console.
 - Custom feed browsing
 - Read-only lists and list members
 - Mute and block, including browsable lists
+- Report a post or account with a reason, with a confirmation before anything is sent
 - Mute or unmute a conversation from its Thread window menu, with the server's answer on the status line
 - Post search
 

@@ -67,6 +67,11 @@ cobalt_app_open_post_menu(cobalt_app *app, const cobalt_post *post, bool in_thre
       cobalt_popup_add(&app->popup, COBALT_POPUP_BOOKMARK,
                        app->bookmark_target ? "Bookmark" : "Remove bookmark", "");
    }
+   memset(&app->report_post_target, 0, sizeof app->report_post_target);
+   if (post->uri[0] && !cobalt_post_uri_is_by(post->uri, cobalt_session_did()) &&
+       cobalt_report_post(&app->report_post_target, post->uri, post->cid, NULL)) {
+      cobalt_popup_add(&app->popup, COBALT_POPUP_REPORT_POST, "Report post", "");
+   }
    for (int i = 0; i < post->facet_count; i++) {
       const cobalt_post_facet *f = &post->facets[i];
       if (!f->target[0]) {
@@ -128,6 +133,11 @@ cobalt_app_open_profile_menu(cobalt_app *app)
    }
    const cobalt_profile *profile = cobalt_session_profile();
    char label[COBALT_POPUP_LABEL_MAX];
+   memset(&app->report_account_target, 0, sizeof app->report_account_target);
+   if (profile->did[0] && !profile->is_self &&
+       cobalt_report_account(&app->report_account_target, profile->did, NULL)) {
+      cobalt_popup_add(&app->popup, COBALT_POPUP_REPORT_ACCOUNT, "Report account", "");
+   }
    if (profile->is_self) {
       cobalt_popup_add(&app->popup, COBALT_POPUP_EDIT_PROFILE, "Edit profile", "");
    }
@@ -157,6 +167,30 @@ cobalt_app_open_notification_menu(cobalt_app *app, const cobalt_notification *it
       cobalt_popup_add(&app->popup, COBALT_POPUP_THREAD, "Open post", item->subject_uri);
    }
    cobalt_popup_add(&app->popup, COBALT_POPUP_REFRESH, "Refresh notifications", "");
+}
+
+static void
+open_report_reasons(cobalt_app *app, const cobalt_report *target)
+{
+   const cobalt_report_reason *reasons;
+   int count;
+
+   if (!target || (target->subject == COBALT_REPORT_POST &&
+                   (!target->uri[0] || !target->cid[0])) ||
+       (target->subject == COBALT_REPORT_ACCOUNT && !target->did[0])) {
+      return;
+   }
+   app->report = *target;
+   app->report.reason_type[0] = '\0';
+   cobalt_popup_open(&app->popup, target->subject == COBALT_REPORT_ACCOUNT
+                                     ? "Report account"
+                                     : "Report post");
+   reasons = cobalt_report_reasons(&count);
+   for (int i = 0; i < count; i++) {
+      cobalt_popup_add(&app->popup, COBALT_POPUP_REPORT_REASON, reasons[i].label,
+                       reasons[i].reason_type);
+   }
+   cobalt_popup_add(&app->popup, COBALT_POPUP_CANCEL, "Cancel", "");
 }
 
 void
@@ -341,6 +375,38 @@ cobalt_app_popup_choose(cobalt_app *app, int index)
          snprintf(app->thread.delete_uri, sizeof(app->thread.delete_uri), "%s",
                   it->arg);
          app->thread.confirm_delete = true;
+         cobalt_popup_close(&app->popup);
+         break;
+      case COBALT_POPUP_REPORT_POST:
+         open_report_reasons(app, &app->report_post_target);
+         break;
+      case COBALT_POPUP_REPORT_ACCOUNT:
+         open_report_reasons(app, &app->report_account_target);
+         break;
+      case COBALT_POPUP_REPORT_REASON:
+         snprintf(app->report.reason_type, sizeof app->report.reason_type, "%s",
+                  it->arg);
+         if (!cobalt_report_valid(&app->report)) {
+            break;
+         }
+         cobalt_popup_open(&app->popup,
+                           app->report.subject == COBALT_REPORT_ACCOUNT
+                              ? "Send account report?"
+                              : "Send post report?");
+         cobalt_popup_add(&app->popup, COBALT_POPUP_REPORT_SEND, "Send report", "");
+         cobalt_popup_add(&app->popup, COBALT_POPUP_CANCEL, "Cancel", "");
+         break;
+      case COBALT_POPUP_REPORT_SEND: {
+         cobalt_report report = app->report;
+
+         cobalt_popup_close(&app->popup);
+         if (!cobalt_session_begin_report(&report)) {
+            cobalt_app_set_notice(app, "Could not start the report request. "
+                                      "Wait for the last request to finish.", true);
+         }
+         break;
+      }
+      case COBALT_POPUP_CANCEL:
          cobalt_popup_close(&app->popup);
          break;
    }
