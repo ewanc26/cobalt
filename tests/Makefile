@@ -111,6 +111,7 @@ UNIT_SOURCES := \
 	$(SRC)/atproto/session_read.c \
 	$(SRC)/atproto/session_profile.c \
 	$(SRC)/atproto/report.c \
+	$(SRC)/atproto/starter_packs.c \
 	$(SRC)/atproto/session_lists.c \
 	$(SRC)/atproto/session_post.c \
 	$(SRC)/app/signin.c \
@@ -148,6 +149,7 @@ UNIT_SOURCES := \
 	$(SRC)/atproto/actors.c \
 	$(SRC)/app/graph.c \
 	$(SRC)/app/search.c \
+	$(SRC)/app/starter_pack.c \
 	$(SRC)/ui/postcard.c \
 	$(SRC)/ui/render.c \
 	$(SRC)/ui/theme.c \

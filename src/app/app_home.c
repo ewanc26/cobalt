@@ -451,6 +451,7 @@ cobalt_app_update_feeds(cobalt_app *app, const cobalt_input *in)
       cobalt_timeline_rewind(&app->timeline);
       cobalt_session_begin_feed(e.uri, false);
       app->viewing_custom_feed = true;
+      app->feed_back = COBALT_SCREEN_FEEDS;
       app->viewing_search = false;
       app->screen = COBALT_SCREEN_TIMELINE;
    }
