@@ -8,6 +8,8 @@
  */
 
 #include "app/compose.h"
+#include "app/drafts.h"
+#include "app/draft_store.h"
 #include "app/post_queue.h"
 #include "app/queue_store.h"
 #include "app/settings_store.h"
@@ -2891,7 +2893,9 @@ test_bookmarks(void)
 {
    static cobalt_feed feed;
    char uri_a[COBALT_POST_URI_MAX] = "at://did:plc:abc/app.bsky.feed.post/a";
+#ifdef COBALT_HAS_WOLFRAM
    char uri_b[COBALT_POST_URI_MAX] = "at://did:plc:abc/app.bsky.feed.post/b";
+#endif
 
    begin("bookmark state and bookmark-page ordering");
 
@@ -3743,6 +3747,118 @@ test_listnav(void)
    CHECK(nav.selected == 0 && nav.scroll == 0 && nav.last_visible == -1);
 }
 
+/* Saved drafts: the list, the file, and the conversion to and from the compose
+ * screen. Nothing here can publish. */
+static void
+test_drafts(void)
+{
+   static cobalt_drafts list, back;
+   static cobalt_draft d;
+   static char buf[COBALT_DRAFTS_FILE_MAX];
+   const char *path = "drafts-test.dat";
+
+   begin("saved drafts round-trip and never enter the queue");
+   cobalt_drafts_init(&list);
+   CHECK(!cobalt_drafts_add(&list, NULL));
+   memset(&d, 0, sizeof(d));
+   CHECK(!cobalt_draft_valid(&d));
+   CHECK(!cobalt_drafts_add(&list, &d));
+
+   snprintf(d.text, sizeof(d.text), "line one\nline two\twith a tab \\ slash");
+   d.saved_at = 100;
+   d.kind = COBALT_DRAFT_POST;
+   CHECK(cobalt_draft_valid(&d));
+   CHECK(cobalt_drafts_add(&list, &d));
+
+   memset(&d, 0, sizeof(d));
+   snprintf(d.text, sizeof(d.text), "reply");
+   d.saved_at = 200;
+   d.kind = COBALT_DRAFT_REPLY;
+   snprintf(d.parent_uri, sizeof(d.parent_uri), "at://a/p/1");
+   snprintf(d.parent_cid, sizeof(d.parent_cid), "cid1");
+   snprintf(d.root_uri, sizeof(d.root_uri), "at://a/p/root");
+   snprintf(d.root_cid, sizeof(d.root_cid), "rootcid");
+   snprintf(d.reply_to, sizeof(d.reply_to), "alice.test");
+   CHECK(cobalt_drafts_add(&list, &d));
+   CHECK(list.count == 2);
+   CHECK(cobalt_drafts_get(&list, 1)->saved_at == 200);
+   CHECK(cobalt_drafts_get(&list, 2) == NULL);
+
+   CHECK(cobalt_drafts_encode(&list, buf, sizeof(buf)));
+   CHECK(cobalt_drafts_decode(buf, strlen(buf), &back));
+   CHECK(back.count == 2);
+   CHECK(strcmp(back.items[0].text, list.items[0].text) == 0);
+   CHECK(strcmp(back.items[1].reply_to, "alice.test") == 0);
+   CHECK(!cobalt_drafts_decode(buf, strlen(buf) - 4, &back));
+   CHECK(back.count == 0);
+   CHECK(!cobalt_drafts_decode("cobalt-drafts 2\n", 15, &back));
+   CHECK(back.count == 0);
+
+   remove(path);
+   cobalt_drafts_init(&back);
+   CHECK(cobalt_drafts_load(path, &back));
+   CHECK(back.count == 0);
+   CHECK(cobalt_drafts_save(path, &list));
+   CHECK(cobalt_drafts_load(path, &back));
+   CHECK(back.count == 2);
+   remove(path);
+}
+
+static void
+test_compose_drafts(void)
+{
+   cobalt_compose c;
+   cobalt_draft d, saved;
+
+   begin("compose saves drafts with reply and quote context");
+   cobalt_compose_init(&c);
+   CHECK(!cobalt_compose_can_save_draft(&c));
+   CHECK(!cobalt_compose_to_draft(&c, &d, 1));
+   snprintf(c.text, sizeof(c.text), "hello");
+   c.reply_gate = COBALT_REPLY_GATE_NOBODY;
+   CHECK(cobalt_compose_can_save_draft(&c));
+   CHECK(cobalt_compose_to_draft(&c, &d, 10));
+   CHECK(d.kind == COBALT_DRAFT_POST);
+   CHECK(d.saved_at == 10);
+   CHECK(d.reply_gate == COBALT_REPLY_GATE_NOBODY);
+   cobalt_drafts_init(&(cobalt_drafts) {0});
+   cobalt_compose_restore_draft(&c, &d);
+   CHECK(strcmp(c.text, "hello") == 0);
+   CHECK(c.reply_gate == COBALT_REPLY_GATE_NOBODY);
+
+   memset(&saved, 0, sizeof(saved));
+   snprintf(saved.text, sizeof(saved.text), "reply text");
+   saved.kind = COBALT_DRAFT_REPLY;
+   snprintf(saved.parent_uri, sizeof(saved.parent_uri), "at://a/p/1");
+   snprintf(saved.parent_cid, sizeof(saved.parent_cid), "cid1");
+   snprintf(saved.root_uri, sizeof(saved.root_uri), "at://a/p/root");
+   snprintf(saved.root_cid, sizeof(saved.root_cid), "rootcid");
+   snprintf(saved.reply_to, sizeof(saved.reply_to), "alice.test");
+   cobalt_compose_restore_draft(&c, &saved);
+   CHECK(cobalt_compose_is_reply(&c));
+   CHECK(strcmp(c.reply_to, "alice.test") == 0);
+   CHECK(cobalt_compose_to_draft(&c, &d, 11));
+   CHECK(d.kind == COBALT_DRAFT_REPLY);
+   CHECK(strcmp(d.root_cid, "rootcid") == 0);
+
+   memset(&saved, 0, sizeof(saved));
+   snprintf(saved.text, sizeof(saved.text), "quote text");
+   saved.kind = COBALT_DRAFT_QUOTE;
+   snprintf(saved.quote_uri, sizeof(saved.quote_uri), "at://a/p/quote");
+   snprintf(saved.quote_cid, sizeof(saved.quote_cid), "qcid");
+   snprintf(saved.quote_handle, sizeof(saved.quote_handle), "bob.test");
+   cobalt_compose_restore_draft(&c, &saved);
+   CHECK(cobalt_compose_is_quote(&c));
+   CHECK(strcmp(c.quote_handle, "bob.test") == 0);
+
+   c.attach_path[0] = 'x';
+   c.attach_path[1] = '\0';
+   CHECK(!cobalt_compose_can_save_draft(&c));
+   c.attach_path[0] = '\0';
+   c.thread_count = 1;
+   CHECK(!cobalt_compose_can_save_draft(&c));
+}
+
 /* The queue on the SD card: what is saved comes back exactly, and a damaged or
  * truncated file is refused rather than loaded half-way. */
 static void
@@ -4017,6 +4133,8 @@ main(int argc, char **argv)
    test_listnav_restore();
    test_post_queue();
    test_queue_store();
+   test_drafts();
+   test_compose_drafts();
    test_settings_store();
    test_palette_contrast();
    test_post_refuses_partial_refs();

@@ -2,6 +2,7 @@
 #include "app/account_view.h"
 #include "app/settings_view.h"
 #include "app/queue_store.h"
+#include "app/draft_store.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -12,6 +13,13 @@ static bool
 queue_file(char *out, size_t size)
 {
    return cobalt_data_path(out, size, "queue.dat");
+}
+
+/* Composer drafts have their own file, separate from the send queue. */
+static bool
+drafts_file(char *out, size_t size)
+{
+   return cobalt_data_path(out, size, "drafts.dat");
 }
 
 /* The preferences file in the app's data directory. */
@@ -58,6 +66,24 @@ load_queue(cobalt_app *app)
    }
 }
 
+/* A damaged drafts file is kept as drafts.dat.bad, like a damaged queue: it
+ * may still be someone's writing, and it must not stop the app from starting. */
+static void
+load_drafts(cobalt_app *app)
+{
+   char path[256];
+   char bad[272];
+
+   cobalt_drafts_init(&app->drafts);
+   if (!drafts_file(path, sizeof(path))) {
+      return;
+   }
+   if (!cobalt_drafts_load(path, &app->drafts)) {
+      snprintf(bad, sizeof(bad), "%s.bad", path);
+      rename(path, bad);
+   }
+}
+
 /* Focus animation, in units of "fraction of the way there per frame". */
 #define FOCUS_RATE 0.25f
 
@@ -99,6 +125,9 @@ cobalt_app_create(void)
    cobalt_lists_view_init(&app->lists);
    cobalt_queue_view_open(&app->queue_view);
    load_queue(app);
+   cobalt_draft_view_open(&app->draft_view);
+   app->draft_origin = -1;
+   load_drafts(app);
 
    curl_version_info_data *curl_info = curl_version_info(CURLVERSION_NOW);
    snprintf(app->curl_version, sizeof(app->curl_version), "curl %s / %s",
@@ -295,6 +324,134 @@ persist_queue(cobalt_app *app)
    }
 }
 
+static bool
+persist_drafts(cobalt_app *app)
+{
+   char path[256];
+
+   if (!drafts_file(path, sizeof(path)) || !cobalt_drafts_save(path, &app->drafts)) {
+      set_notice(app, "Could not save drafts to the SD card.", true);
+      return false;
+   }
+   return true;
+}
+
+/* Save the composition as a draft, replacing the one it was resumed from when
+ * there is one. The list and the screen are local: no request is started. */static void
+compose_save_draft(cobalt_app *app)
+{
+   cobalt_draft draft;
+   cobalt_draft previous;
+   const bool update = app->draft_origin >= 0;
+   const unsigned index = app->draft_origin >= 0 ? (unsigned) app->draft_origin : 0;
+   bool had_previous = false;
+
+   if (!cobalt_compose_to_draft(&app->compose, &draft, (long long) time(NULL))) {
+      set_notice(app, "Only a single text post can be saved as a draft. "
+                       "Post or discard this one first.", true);
+      return;
+   }
+   if (update) {
+      const cobalt_draft *old = cobalt_drafts_get(&app->drafts, index);
+
+      if (old) {
+         previous = *old;
+         had_previous = true;
+      }
+      if (!cobalt_drafts_replace(&app->drafts, index, &draft)) {
+         set_notice(app, "Could not update that draft.", true);
+         return;
+      }
+   } else if (!cobalt_drafts_add(&app->drafts, &draft)) {
+      set_notice(app, app->drafts.count >= COBALT_DRAFT_MAX
+                         ? "Drafts are full. Delete one first."
+                         : "Could not save that draft.", true);
+      return;
+   }
+   if (!persist_drafts(app)) {
+      /* Keep the composer exactly as it was: a failed write is not permission
+       * to throw away what someone typed. Put the in-memory list back too, so
+       * a retry does not leave a duplicate if the card recovers. */
+      if (update && had_previous) {
+         cobalt_drafts_replace(&app->drafts, index, &previous);
+      } else if (!update) {
+         cobalt_drafts_remove(&app->drafts, app->drafts.count - 1);
+      }
+      return;
+   }
+   app->draft_origin = -1;
+   cobalt_compose_init(&app->compose);
+   cobalt_draft_view_open(&app->draft_view);
+   app->screen = COBALT_SCREEN_DRAFTS;
+   set_notice(app, "Draft saved.", false);
+}
+
+/* Leaving a resumed draft writes the current text back before the screen goes
+ * away. Clearing a draft on screen leaves the saved copy alone: deleting one is
+ * a deliberate action on the Drafts screen, not a side effect of an empty box. */
+static void
+compose_leave(cobalt_app *app)
+{
+   if (app->draft_origin >= 0) {
+      cobalt_draft draft;
+      if (cobalt_compose_to_draft(&app->compose, &draft, (long long) time(NULL)) &&
+          cobalt_drafts_replace(&app->drafts, (unsigned) app->draft_origin, &draft)) {
+         persist_drafts(app);
+      }
+      app->draft_origin = -1;
+   }
+   app->screen = app->compose_return;
+}
+
+static void
+resume_draft(cobalt_app *app, unsigned index)
+{
+   const cobalt_draft *draft = cobalt_drafts_get(&app->drafts, index);
+
+   if (!draft) {
+      return;
+   }
+   cobalt_compose_restore_draft(&app->compose, draft);
+   app->draft_origin = (int) index;
+   app->compose_return = COBALT_SCREEN_DRAFTS;
+   app->screen = COBALT_SCREEN_COMPOSE;
+}
+
+static void
+delete_draft(cobalt_app *app, unsigned index)
+{
+   if (cobalt_drafts_remove(&app->drafts, index)) {
+      if (app->draft_view.selected >= app->drafts.count) {
+         app->draft_view.selected = app->drafts.count ? app->drafts.count - 1 : 0;
+      }
+      app->draft_view.scroll =
+         (app->draft_view.selected / COBALT_DRAFT_ROWS) * COBALT_DRAFT_ROWS;
+      persist_drafts(app);
+      set_notice(app, "Draft deleted.", false);
+   }
+}
+
+static void
+cobalt_app_update_drafts(cobalt_app *app, const cobalt_input *in)
+{
+   unsigned index = 0;
+
+   switch (cobalt_draft_view_update(&app->draft_view, &app->drafts, in, &index)) {
+      case COBALT_DRAFT_VIEW_BACK:
+         app->screen = COBALT_SCREEN_HOME;
+         break;
+      case COBALT_DRAFT_VIEW_RESUME:
+         resume_draft(app, index);
+         break;
+      case COBALT_DRAFT_VIEW_DELETE:
+         delete_draft(app, index);
+         break;
+      case COBALT_DRAFT_VIEW_STAY:
+      default:
+         break;
+   }
+}
+
 /* Start sending the queued post at `index`. It is held in queue_inflight until
  * the post's result arrives, and the SD copy is only rewritten then: if the app
  * closes mid-send, the post is still in the file and comes back to the queue. */
@@ -448,6 +605,12 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
                                : app->compose.thread_count > 0
                                   ? "Thread posted." : "Posted.", false);
             }
+            /* A resumed draft is done once its post is live. */
+            if (app->draft_origin >= 0) {
+               cobalt_drafts_remove(&app->drafts, (unsigned) app->draft_origin);
+               app->draft_origin = -1;
+               persist_drafts(app);
+            }
             /* Back to where composing started, and refresh so the new post is
              * actually visible rather than only claimed. */
             app->screen = app->compose_return;
@@ -463,12 +626,16 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
                 * to it must not silently replace it with the home timeline. */
                cobalt_session_begin_bookmarks(false);
                cobalt_timeline_rewind(&app->bookmarks);
+            } else if (app->compose_return == COBALT_SCREEN_DRAFTS) {
+               /* The list is local and was updated above; do not replace the
+                * screen with a feed fetch it never showed. */
             } else {
                cobalt_session_begin_timeline(false);
                app->viewing_custom_feed = false;
                app->viewing_search = false;
                cobalt_timeline_rewind(&app->timeline);
             }
+            app->draft_origin = -1;
             cobalt_compose_init(&app->compose);
          } else {
             /* Stay on the compose screen with the text intact — a failed post
@@ -897,6 +1064,7 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             case COBALT_TIMELINE_COMPOSE:
                cobalt_compose_init(&app->compose);
+               app->draft_origin = -1;
                app->compose_return = COBALT_SCREEN_TIMELINE;
                app->screen = COBALT_SCREEN_COMPOSE;
                break;
@@ -927,6 +1095,7 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                break;
             case COBALT_TIMELINE_COMPOSE:
                cobalt_compose_init(&app->compose);
+               app->draft_origin = -1;
                app->compose_return = COBALT_SCREEN_BOOKMARKS;
                app->screen = COBALT_SCREEN_COMPOSE;
                break;
@@ -954,6 +1123,7 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                if (app->thread.nav.selected < conv->count) {
                   cobalt_compose_quote(&app->compose,
                                        &conv->posts[app->thread.nav.selected]);
+                  app->draft_origin = -1;
                   if (cobalt_compose_is_quote(&app->compose)) {
                      app->compose_return = COBALT_SCREEN_THREAD;
                      app->screen = COBALT_SCREEN_COMPOSE;
@@ -966,6 +1136,7 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                if (app->thread.nav.selected < conv->count) {
                   cobalt_compose_reply_to(&app->compose,
                                           &conv->posts[app->thread.nav.selected]);
+                  app->draft_origin = -1;
                   app->compose_return = COBALT_SCREEN_THREAD;
                   app->screen = COBALT_SCREEN_COMPOSE;
                }
@@ -1147,7 +1318,7 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
       case COBALT_SCREEN_COMPOSE:
          switch (cobalt_compose_update(&app->compose, in)) {
             case COBALT_COMPOSE_CANCELLED:
-               app->screen = app->compose_return;
+               compose_leave(app);
                break;
             case COBALT_COMPOSE_SUBMIT:
                if (app->compose.thread_count > 0) {
@@ -1194,15 +1365,23 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
                   break;
                }
                persist_queue(app);
+               app->draft_origin = -1;
                cobalt_compose_init(&app->compose);
                cobalt_queue_view_open(&app->queue_view);
                app->screen = COBALT_SCREEN_QUEUE;
                set_notice(app, "Saved for later.", false);
                break;
+            case COBALT_COMPOSE_SAVE_DRAFT:
+               compose_save_draft(app);
+               break;
             case COBALT_COMPOSE_STAY:
             default:
                break;
          }
+         break;
+
+      case COBALT_SCREEN_DRAFTS:
+         cobalt_app_update_drafts(app, in);
          break;
 
       case COBALT_SCREEN_QUEUE:
@@ -1535,6 +1714,10 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_SEARCH:
          cobalt_search_view_draw(&app->search, r, surface);
+         break;
+
+      case COBALT_SCREEN_DRAFTS:
+         cobalt_draft_view_draw(&app->draft_view, &app->drafts, r);
          break;
 
       case COBALT_SCREEN_QUEUE:

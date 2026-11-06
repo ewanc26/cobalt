@@ -5,6 +5,7 @@
 typedef enum {
    ACTION_TIMELINE = 0,
    ACTION_BOOKMARKS,
+   ACTION_DRAFTS,
    ACTION_COMPOSE,
    ACTION_SEARCH,
    ACTION_FEEDS,
@@ -29,6 +30,7 @@ typedef enum {
 static const menu_action MENU[] = {
    ACTION_TIMELINE,
    ACTION_BOOKMARKS,
+   ACTION_DRAFTS,
    ACTION_COMPOSE,
    ACTION_SEARCH,
    ACTION_FEEDS,
@@ -126,6 +128,7 @@ menu_label(int index)
    switch (MENU[index]) {
       case ACTION_TIMELINE:       return "Timeline";
       case ACTION_BOOKMARKS:      return "Bookmarks";
+      case ACTION_DRAFTS:         return "Drafts";
       case ACTION_COMPOSE:        return "New post";
       case ACTION_SEARCH:         return "Search";
       case ACTION_FEEDS:          return "Feeds";
@@ -153,6 +156,8 @@ menu_hint(int index)
       case ACTION_BOOKMARKS:
          return signed_in() ? "Posts you saved for later"
                             : "Sign in to see your bookmarks";
+      case ACTION_DRAFTS:
+         return "Posts you saved to finish later";
       case ACTION_COMPOSE:
          return signed_in() ? "Write something" : "Sign in to post";
       case ACTION_SEARCH:
@@ -241,8 +246,15 @@ activate(cobalt_app *app, int index)
          COBALT_LOGI("menu: opened bookmarks");
          break;
 
+      case ACTION_DRAFTS:
+         cobalt_draft_view_open(&app->draft_view);
+         app->screen = COBALT_SCREEN_DRAFTS;
+         COBALT_LOGI("menu: opened drafts");
+         break;
+
       case ACTION_COMPOSE:
          cobalt_compose_init(&app->compose);
+         app->draft_origin = -1;
          app->compose_return = COBALT_SCREEN_HOME;
          app->screen = COBALT_SCREEN_COMPOSE;
          COBALT_LOGI("menu: composing a new post");

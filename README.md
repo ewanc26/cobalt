@@ -57,6 +57,7 @@ replace testing on the console.
 - Threads: write up to eight posts in a row and publish them as one thread
 - Likes and reposts, including undo
 - Private bookmarks, listed on their own paged screen and toggled from a post's More menu
+- Saved composer drafts, separate from the queue: text and reply/quote context are kept on the SD card and resumed from a Drafts screen
 - Notifications and mark-as-seen
 - Profiles, follows and unfollows, and editing your own display name and bio
 - Followers, following and profile tabs

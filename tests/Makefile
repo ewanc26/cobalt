@@ -131,6 +131,9 @@ UNIT_SOURCES := \
 	$(SRC)/app/timeline.c \
 	$(SRC)/app/post_queue.c \
 	$(SRC)/app/queue_store.c \
+	$(SRC)/app/drafts.c \
+	$(SRC)/app/draft_store.c \
+	$(SRC)/app/draft_view.c \
 	$(SRC)/app/settings_store.c \
 	$(SRC)/app/thread.c \
 	$(SRC)/app/compose.c \
