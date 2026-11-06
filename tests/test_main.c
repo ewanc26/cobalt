@@ -14,6 +14,7 @@
 #include "app/queue_store.h"
 #include "app/settings_store.h"
 #include "app/graph.h"
+#include "app/lists.h"
 #include "app/search.h"
 #include "app/timeline.h"
 #include "app/profile.h"
@@ -4049,6 +4050,26 @@ test_thread_root_selection(void)
 }
 
 static void
+test_list_management(void)
+{
+   begin("list purposes and the list editor validate before a write");
+
+   CHECK_STR(cobalt_list_purpose_label(COBALT_LIST_PURPOSE_CURATE), "Curation");
+   CHECK_STR(cobalt_list_purpose_label(COBALT_LIST_PURPOSE_MODERATE), "Moderation");
+   CHECK_STR(cobalt_list_purpose_next(COBALT_LIST_PURPOSE_CURATE),
+             COBALT_LIST_PURPOSE_MODERATE);
+   CHECK_STR(cobalt_list_purpose_next(COBALT_LIST_PURPOSE_MODERATE),
+             COBALT_LIST_PURPOSE_CURATE);
+
+   CHECK(cobalt_list_edit_valid("Friends", "People I know",
+                                COBALT_LIST_PURPOSE_CURATE));
+   CHECK(cobalt_list_edit_valid("Quiet", "", COBALT_LIST_PURPOSE_MODERATE));
+   CHECK(!cobalt_list_edit_valid("", "", COBALT_LIST_PURPOSE_CURATE));
+   CHECK(!cobalt_list_edit_valid(NULL, "", COBALT_LIST_PURPOSE_CURATE));
+   CHECK(!cobalt_list_edit_valid("Friends", "", "app.bsky.graph.defs#other"));
+}
+
+static void
 test_profile_edit_validation(void)
 {
    begin("editing your profile checks the field limits");
@@ -4231,6 +4252,7 @@ main(int argc, char **argv)
    test_popup_touch();
    test_thread_root_selection();
    test_reports();
+   test_list_management();
    test_profile_edit_validation();
    test_popup_link_qr();
    test_listnav();

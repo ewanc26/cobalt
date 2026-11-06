@@ -426,9 +426,16 @@ cobalt_session_run_list_members(const cobalt_job_input *in, cobalt_job_result *r
    SDL_LockMutex(g_session.lock);
    if (!in->paging) {
       cobalt_actor_list_reset(&g_session.list_members);
+      memset(g_session.list_member_uris, 0, sizeof(g_session.list_member_uris));
    }
+   const int first = g_session.list_members.count;
    const int added = cobalt_actor_list_append_from_wolfram_list_items(
       &g_session.list_members, &wf_list);
+   for (int i = 0; i < added; i++) {
+      snprintf(g_session.list_member_uris[first + i],
+               sizeof(g_session.list_member_uris[first + i]), "%s",
+               wf_list.items[i].uri ? wf_list.items[i].uri : "");
+   }
    if (in->paging && added == 0) {
       g_session.list_members.has_more = false;
       g_session.list_members.cursor[0] = '\0';
@@ -445,6 +452,231 @@ cobalt_session_run_list_members(const cobalt_job_input *in, cobalt_job_result *r
 
    cobalt_session_publish();
 
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+/* The record key at the end of at://did/app.bsky.graph.list/rkey. */
+static bool
+list_rkey(const char *uri, char *out, size_t cap)
+{
+   const char *slash;
+
+   if (!uri || !out || cap == 0) {
+      return false;
+   }
+   slash = strrchr(uri, '/');
+   if (!slash || !slash[1]) {
+      return false;
+   }
+   snprintf(out, cap, "%s", slash + 1);
+   return true;
+}
+
+void
+cobalt_session_run_list_create(const cobalt_job_input *in, cobalt_job_result *r,
+                                cobalt_auth_state *state)
+{
+   wf_agent_post_result created;
+   wf_status status;
+
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in first.");
+      return;
+   }
+   if (!in->list_name[0]) {
+      cobalt_session_set_message(r, "A list needs a name.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   memset(&created, 0, sizeof(created));
+   status = wf_agent_graph_create_list(g_session.wf, in->list_purpose,
+                                       in->list_name,
+                                       in->list_description[0]
+                                          ? in->list_description : NULL,
+                                       &created);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: create list failed (%d)", (int) status);
+      cobalt_session_set_message(r, "Could not create the list (wolfram status %d).",
+                                 (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   wf_agent_post_result_free(&created);
+   cobalt_session_set_message(r, "List created.");
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+void
+cobalt_session_run_list_update(const cobalt_job_input *in, cobalt_job_result *r,
+                               cobalt_auth_state *state)
+{
+   wf_repo_record record;
+   wf_agent_post_result updated;
+   wf_status status;
+   char rkey[COBALT_POST_URI_MAX];
+   char *json;
+
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in first.");
+      return;
+   }
+   if (!in->list_name[0] || !list_rkey(in->uri, rkey, sizeof(rkey))) {
+      cobalt_session_set_message(r, "That list has no name or no record key.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   memset(&record, 0, sizeof(record));
+   status = wf_agent_get_record_typed(g_session.wf, g_session.did,
+                                      "app.bsky.graph.list", rkey, NULL,
+                                      &record);
+   if (status != WF_OK || !record.value || !cJSON_IsObject(record.value)) {
+      COBALT_LOGW("session: list record fetch failed (%d)", (int) status);
+      cobalt_session_set_message(r, "Could not read that list (wolfram status %d).",
+                                 (int) status);
+      wf_repo_record_free(&record);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   cJSON_DeleteItemFromObjectCaseSensitive(record.value, "name");
+   cJSON_DeleteItemFromObjectCaseSensitive(record.value, "description");
+   cJSON_DeleteItemFromObjectCaseSensitive(record.value, "purpose");
+   cJSON_AddStringToObject(record.value, "name", in->list_name);
+   if (in->list_description[0]) {
+      cJSON_AddStringToObject(record.value, "description",
+                              in->list_description);
+   }
+   cJSON_AddStringToObject(record.value, "purpose", in->list_purpose);
+   json = cJSON_PrintUnformatted(record.value);
+   if (!json) {
+      cobalt_session_set_message(r, "Could not build the updated list record.");
+      wf_repo_record_free(&record);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   memset(&updated, 0, sizeof(updated));
+   status = wf_agent_graph_update_list(g_session.wf, rkey, json, &updated);
+   cJSON_free(json);
+   wf_repo_record_free(&record);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: update list failed (%d)", (int) status);
+      cobalt_session_set_message(r, "Could not save the list (wolfram status %d).",
+                                 (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   wf_agent_post_result_free(&updated);
+
+   SDL_LockMutex(g_session.lock);
+   for (int i = 0; i < g_session.lists.count; i++) {
+      if (strcmp(g_session.lists.lists[i].uri, in->uri) == 0) {
+         snprintf(g_session.lists.lists[i].name,
+                  sizeof(g_session.lists.lists[i].name), "%s", in->list_name);
+         snprintf(g_session.lists.lists[i].description,
+                  sizeof(g_session.lists.lists[i].description), "%s",
+                  in->list_description);
+         snprintf(g_session.lists.lists[i].purpose,
+                  sizeof(g_session.lists.lists[i].purpose), "%s",
+                  in->list_purpose);
+         break;
+      }
+   }
+   SDL_UnlockMutex(g_session.lock);
+
+   cobalt_session_set_message(r, "List updated.");
+   cobalt_session_publish();
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+void
+cobalt_session_run_list_add_member(const cobalt_job_input *in,
+                                    cobalt_job_result *r,
+                                    cobalt_auth_state *state)
+{
+   wf_agent_post_result item;
+   wf_status status;
+   char subject[COBALT_DID_MAX];
+   char *did = NULL;
+
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in first.");
+      return;
+   }
+   if (!in->uri[0] || !in->member_did[0]) {
+      cobalt_session_set_message(r, "Choose a list and an account first.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   snprintf(subject, sizeof(subject), "%s", in->member_did);
+   if (subject[0] == '@') {
+      memmove(subject, subject + 1, strlen(subject));
+   }
+   if (strncmp(subject, "did:", 4) == 0) {
+      did = subject;
+   } else {
+      char *resolved = NULL;
+      status = wf_agent_resolve_handle(g_session.wf, subject, &resolved);
+      if (status != WF_OK || !resolved || !resolved[0]) {
+         cobalt_session_set_message(r, "Could not find @%s.", subject);
+         free(resolved);
+         *state = COBALT_AUTH_SIGNED_IN;
+         return;
+      }
+      snprintf(subject, sizeof(subject), "%s", resolved);
+      free(resolved);
+      did = subject;
+   }
+
+   memset(&item, 0, sizeof(item));
+   status = wf_agent_graph_create_list_item(g_session.wf, in->uri, did, &item);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: add list member failed (%d)", (int) status);
+      cobalt_session_set_message(r, "Could not add that account (wolfram status %d).",
+                                 (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   wf_agent_post_result_free(&item);
+   cobalt_session_set_message(r, "Added to the list.");
+   cobalt_session_publish();
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
+void
+cobalt_session_run_list_remove_member(const cobalt_job_input *in,
+                                       cobalt_job_result *r,
+                                       cobalt_auth_state *state)
+{
+   wf_status status;
+
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in first.");
+      return;
+   }
+   if (!in->list_item_uri[0]) {
+      cobalt_session_set_message(r, "That member has no record to remove.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   status = wf_agent_graph_delete_list_item(g_session.wf, in->list_item_uri);
+   if (status != WF_OK) {
+      COBALT_LOGW("session: remove list member failed (%d)", (int) status);
+      cobalt_session_set_message(r, "Could not remove that account (wolfram status %d).",
+                                 (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+   cobalt_session_set_message(r, "Removed from the list.");
+   cobalt_session_publish();
    *state = COBALT_AUTH_SIGNED_IN;
    r->ok = true;
 }
@@ -733,6 +965,79 @@ cobalt_session_begin_list_members(const char *list_uri, bool paging)
    snprintf(in.uri, sizeof(in.uri), "%s", list_uri ? list_uri : "");
    in.paging = paging;
    return cobalt_session_submit(COBALT_JOB_LIST_MEMBERS, &in);
+}
+
+const char *
+cobalt_session_list_member_uri(int index)
+{
+   if (index < 0 || index >= g_session.list_members.count) {
+      return "";
+   }
+   return g_session.list_member_uris[index];
+}
+
+bool
+cobalt_session_begin_list_create(const char *name, const char *description,
+                                  const char *purpose)
+{
+   cobalt_job_input in;
+
+   if (!name || !name[0]) {
+      return false;
+   }
+   memset(&in, 0, sizeof(in));
+   snprintf(in.list_name, sizeof(in.list_name), "%s", name);
+   snprintf(in.list_description, sizeof(in.list_description), "%s",
+            description ? description : "");
+   snprintf(in.list_purpose, sizeof(in.list_purpose), "%s",
+            purpose && purpose[0] ? purpose : COBALT_LIST_PURPOSE_CURATE);
+   return cobalt_session_submit(COBALT_JOB_LIST_CREATE, &in);
+}
+
+bool
+cobalt_session_begin_list_update(const char *list_uri, const char *name,
+                                  const char *description, const char *purpose)
+{
+   cobalt_job_input in;
+
+   if (!list_uri || !list_uri[0] || !name || !name[0]) {
+      return false;
+   }
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", list_uri);
+   snprintf(in.list_name, sizeof(in.list_name), "%s", name);
+   snprintf(in.list_description, sizeof(in.list_description), "%s",
+            description ? description : "");
+   snprintf(in.list_purpose, sizeof(in.list_purpose), "%s",
+            purpose && purpose[0] ? purpose : COBALT_LIST_PURPOSE_CURATE);
+   return cobalt_session_submit(COBALT_JOB_LIST_UPDATE, &in);
+}
+
+bool
+cobalt_session_begin_list_add_member(const char *list_uri, const char *subject)
+{
+   cobalt_job_input in;
+
+   if (!list_uri || !list_uri[0] || !subject || !subject[0]) {
+      return false;
+   }
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", list_uri);
+   snprintf(in.member_did, sizeof(in.member_did), "%s", subject);
+   return cobalt_session_submit(COBALT_JOB_LIST_ADD_MEMBER, &in);
+}
+
+bool
+cobalt_session_begin_list_remove_member(const char *list_item_uri)
+{
+   cobalt_job_input in;
+
+   if (!list_item_uri || !list_item_uri[0]) {
+      return false;
+   }
+   memset(&in, 0, sizeof(in));
+   snprintf(in.list_item_uri, sizeof(in.list_item_uri), "%s", list_item_uri);
+   return cobalt_session_submit(COBALT_JOB_LIST_REMOVE_MEMBER, &in);
 }
 
 const cobalt_starter_pack *

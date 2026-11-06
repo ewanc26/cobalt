@@ -112,6 +112,7 @@ UNIT_SOURCES := \
 	$(SRC)/atproto/session_profile.c \
 	$(SRC)/atproto/report.c \
 	$(SRC)/atproto/starter_packs.c \
+	$(SRC)/atproto/curated_lists.c \
 	$(SRC)/atproto/session_lists.c \
 	$(SRC)/atproto/session_post.c \
 	$(SRC)/app/signin.c \

@@ -9,6 +9,37 @@
 #include <stdio.h>
 #include <string.h>
 
+const char *
+cobalt_list_purpose_label(const char *purpose)
+{
+   return (purpose && strcmp(purpose, COBALT_LIST_PURPOSE_MODERATE) == 0)
+             ? "Moderation"
+             : "Curation";
+}
+
+const char *
+cobalt_list_purpose_next(const char *purpose)
+{
+   return (purpose && strcmp(purpose, COBALT_LIST_PURPOSE_MODERATE) == 0)
+             ? COBALT_LIST_PURPOSE_CURATE
+             : COBALT_LIST_PURPOSE_MODERATE;
+}
+
+bool
+cobalt_list_edit_valid(const char *name, const char *description,
+                        const char *purpose)
+{
+   if (!name || !description || !purpose || name[0] == '\0') {
+      return false;
+   }
+   if (strlen(name) >= COBALT_POST_NAME_MAX ||
+       strlen(description) >= COBALT_POST_NAME_MAX) {
+      return false;
+   }
+   return strcmp(purpose, COBALT_LIST_PURPOSE_CURATE) == 0 ||
+          strcmp(purpose, COBALT_LIST_PURPOSE_MODERATE) == 0;
+}
+
 void
 cobalt_list_summary_list_reset(cobalt_list_summary_list *list)
 {
@@ -55,6 +86,9 @@ cobalt_list_summary_list_append_from_wolfram(
       cobalt_feed_copy_text(out->description, sizeof(out->description),
                             src_list->description ? src_list->description
                                                    : "");
+      snprintf(out->purpose, sizeof(out->purpose), "%s",
+               src_list->purpose ? src_list->purpose
+                                 : COBALT_LIST_PURPOSE_CURATE);
       snprintf(out->avatar, sizeof(out->avatar), "%s",
                src_list->avatar ? src_list->avatar : "");
 

@@ -821,6 +821,18 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          break;
       }
 
+      case COBALT_JOB_LIST_CREATE:
+      case COBALT_JOB_LIST_UPDATE:
+      case COBALT_JOB_LIST_ADD_MEMBER:
+      case COBALT_JOB_LIST_REMOVE_MEMBER:
+         cobalt_lists_view_result(&app->lists, result->kind, result->ok,
+                                  result->message);
+         if (app->screen != COBALT_SCREEN_LISTS &&
+             (result->message[0] || !result->ok)) {
+            set_notice(app, result->message, !result->ok);
+         }
+         break;
+
       case COBALT_JOB_PROFILE_UPDATE:
          app->profile_edit.saving = false;
          if (result->ok) {
