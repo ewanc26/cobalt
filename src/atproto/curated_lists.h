@@ -6,9 +6,8 @@
  * a list member is the same "avatar, name, handle" row shape as everything
  * else in actors.h, so there is no separate row type to define.
  *
- * Read-only: browsing lists and their members only. Wolfram's list_typed.h
- * exposes getLists/getList but no create/edit/delete wrapper, so creating or
- * editing a list from Cobalt is out of scope until that SDK support exists.
+ * The list-of-lists rows carry the record's purpose so the editor can show
+ * and preserve whether a list is a curation or moderation list.
  */
 
 #include "atproto/actors.h"
@@ -21,11 +20,25 @@ extern "C" {
 #endif
 
 #define COBALT_LISTS_MAX 30
+#define COBALT_LIST_PURPOSE_MAX 64
+
+#define COBALT_LIST_PURPOSE_CURATE "app.bsky.graph.defs#curatelist"
+#define COBALT_LIST_PURPOSE_MODERATE "app.bsky.graph.defs#modlist"
+
+/* A short label for a list purpose, and the purpose that follows it when the
+ * editor cycles. Unknown purposes read as curate, the service default. */
+const char *cobalt_list_purpose_label(const char *purpose);
+const char *cobalt_list_purpose_next(const char *purpose);
+/* A list write needs a non-empty name and one of the two supported purposes;
+ * an empty description is valid. */
+bool cobalt_list_edit_valid(const char *name, const char *description,
+                            const char *purpose);
 
 typedef struct {
    char uri[COBALT_POST_URI_MAX];
    char name[COBALT_POST_NAME_MAX];
    char description[COBALT_POST_NAME_MAX];
+   char purpose[COBALT_LIST_PURPOSE_MAX];
    char avatar[COBALT_POST_AVATAR_MAX];
 } cobalt_list_summary;
 

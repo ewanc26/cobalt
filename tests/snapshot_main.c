@@ -1295,6 +1295,27 @@ main(int argc, char **argv)
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
    }
 
+   /* Go back in for the inline editor and member actions. */
+   open_home_item(6);
+   settle(40);
+   frame(COBALT_BTN_ALT_Y);
+   settle(5);
+   shoot("lists-edit");
+   frame(COBALT_BTN_BACK);
+   settle(5);
+   frame(COBALT_BTN_CONFIRM);
+   settle(80);
+   shoot("lists-members");
+   frame(COBALT_BTN_ALT_Y);
+   settle(5);
+   shoot("lists-add-member");
+   /* The add keyboard is modal over the member list; the scene is the last
+    * thing this screen needs to show, so return directly rather than relying
+    * on the keyboard's cancel path here (it has its own tests). */
+   g_app->screen = COBALT_SCREEN_HOME;
+   g_app->lists.add_active = false;
+   settle(5);
+
    /* A starter pack is a header, its bounded member rows and the feeds that
     * follow them. The session snapshot is written directly because this scene
     * exists to render the screen, not to repeat the worker's fetch. */
