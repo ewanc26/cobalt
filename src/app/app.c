@@ -666,6 +666,16 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          }
          break;
 
+      case COBALT_JOB_REPORT:
+         if (result->ok) {
+            set_notice(app, "Report sent. Thank you.", false);
+         } else {
+            set_notice(app, result->message[0] ? result->message
+                                               : "Could not send the report.",
+                       true);
+         }
+         break;
+
       case COBALT_JOB_CHAT_SEND:
          /* A sent reply clears the draft and reloads the thread so it shows. A
           * failed one keeps the draft, so the person can send it again. */

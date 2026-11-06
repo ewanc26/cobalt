@@ -136,6 +136,8 @@ Y lists message requests, from people you have not talked with yet. A accepts th
 
 A on a name or avatar opens a profile. On the header row: A follows or unfollows, Left mutes, Right blocks (none of these on your own profile). Y opens the More menu on any row. It lists followers, following and the next tab (posts, replies, media and, on your own profile, likes) and, on a post, the same entries as on the timeline. Posts work like the timeline.
 
+On someone else's post, More also offers Report post; on their profile menu it offers Report account. Choose one of the reason types, then Send report. Nothing is sent by choosing a reason alone: the confirmation names the action, Cancel or B closes it without sending, and the notice saying the report was sent appears only when the service has confirmed it. The entry is absent on your own post and account.
+
 ## Search, feeds and lists
 
 ![Feeds](screenshots/feeds.png)

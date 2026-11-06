@@ -25,6 +25,7 @@
 #include "atproto/feed.h"
 #include "atproto/external_card.h"
 #include "atproto/notifications.h"
+#include "atproto/report.h"
 #include "atproto/chat.h"
 #include "app/chat_thread.h"
 #include "app/messages.h"
@@ -4047,6 +4048,61 @@ test_profile_edit_validation(void)
 }
 
 static void
+test_reports(void)
+{
+   begin("report reasons and subjects map to the service's fields");
+   static cobalt_report r;
+   int count = 0;
+   const cobalt_report_reason *reasons = cobalt_report_reasons(&count);
+
+   CHECK(count == 6);
+   CHECK(reasons != NULL);
+   for (int i = 0; i < count; i++) {
+      CHECK(reasons[i].reason_type && reasons[i].label);
+      CHECK(cobalt_report_reason_known(reasons[i].reason_type));
+   }
+   CHECK_STR(reasons[0].reason_type, "com.atproto.moderation.defs#reasonSpam");
+   CHECK_STR(reasons[5].reason_type, "com.atproto.moderation.defs#reasonOther");
+   CHECK(!cobalt_report_reason_known("com.atproto.moderation.defs#reasonBogus"));
+   CHECK(!cobalt_report_reason_known(NULL));
+
+   /* A post report sends its AT-URI and CID, and no DID. */
+   CHECK(cobalt_report_post(&r, "at://did:plc:abc/app.bsky.feed.post/3k", "bafy123",
+                            reasons[0].reason_type));
+   CHECK(r.subject == COBALT_REPORT_POST);
+   CHECK_STR(r.uri, "at://did:plc:abc/app.bsky.feed.post/3k");
+   CHECK_STR(r.cid, "bafy123");
+   CHECK_STR(r.did, "");
+   CHECK(cobalt_report_valid(&r));
+
+   /* An account report sends its DID, and neither post field. */
+   CHECK(cobalt_report_account(&r, "did:plc:abc", reasons[2].reason_type));
+   CHECK(r.subject == COBALT_REPORT_ACCOUNT);
+   CHECK_STR(r.did, "did:plc:abc");
+   CHECK_STR(r.uri, "");
+   CHECK_STR(r.cid, "");
+   CHECK(cobalt_report_valid(&r));
+
+   /* The target can be held before a reason is chosen, but it is not valid
+    * until one is. */
+   CHECK(cobalt_report_post(&r, "at://did:plc:abc/app.bsky.feed.post/3k", "bafy123",
+                            NULL));
+   CHECK(!cobalt_report_valid(&r));
+   CHECK(cobalt_report_post(&r, "at://did:plc:abc/app.bsky.feed.post/3k", "bafy123",
+                            "com.atproto.moderation.defs#reasonBogus"));
+   CHECK(!cobalt_report_valid(&r));
+
+   /* Malformed targets are refused rather than sent as a half report. */
+   CHECK(!cobalt_report_post(&r, "", "bafy123", reasons[0].reason_type));
+   CHECK(!cobalt_report_post(&r, "https://example.com", "bafy123",
+                             reasons[0].reason_type));
+   CHECK(!cobalt_report_post(&r, "at://did:plc:abc/app.bsky.feed.post/3k", "",
+                             reasons[0].reason_type));
+   CHECK(!cobalt_report_account(&r, "alice.example.com", reasons[0].reason_type));
+   CHECK(!cobalt_report_account(&r, "did:", reasons[0].reason_type));
+}
+
+static void
 test_popup_link_qr(void)
 {
    begin("a link's text page carries a QR code");
@@ -4127,6 +4183,7 @@ main(int argc, char **argv)
    test_touch_drag_scrolls_a_list();
    test_popup_touch();
    test_thread_root_selection();
+   test_reports();
    test_profile_edit_validation();
    test_popup_link_qr();
    test_listnav();

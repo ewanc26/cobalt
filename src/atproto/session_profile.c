@@ -435,6 +435,58 @@ cobalt_session_begin_follow(void)
    return cobalt_session_submit(COBALT_JOB_FOLLOW, &in);
 }
 
+#ifdef COBALT_HAS_WOLFRAM
+void
+cobalt_session_run_report(const cobalt_job_input *in, cobalt_job_result *r,
+                           cobalt_auth_state *state)
+{
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in first.");
+      return;
+   }
+
+   wf_moderation_report_record record;
+   memset(&record, 0, sizeof record);
+   const char *did = in->report_account ? in->uri : NULL;
+   const char *uri = in->report_account ? NULL : in->uri;
+   const char *cid = in->report_account ? NULL : in->cid;
+
+   COBALT_LOGI("session: reporting %s %s", in->report_account ? "account" : "post",
+               in->uri);
+   const wf_status status = wf_agent_report_typed(
+       g_session.wf, did, uri, cid, in->report_reason, NULL, NULL, NULL, &record);
+   wf_moderation_report_record_free(&record);
+
+   if (status != WF_OK) {
+      COBALT_LOGW("session: report failed (%d)", (int) status);
+      cobalt_session_set_message(r, "Could not send the report (wolfram status %d).",
+                                 (int) status);
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+#endif /* COBALT_HAS_WOLFRAM */
+
+bool
+cobalt_session_begin_report(const cobalt_report *report)
+{
+   cobalt_job_input in;
+   memset(&in, 0, sizeof(in));
+
+   if (!cobalt_report_valid(report)) {
+      return false;
+   }
+   in.report_account = report->subject == COBALT_REPORT_ACCOUNT;
+   snprintf(in.uri, sizeof(in.uri), "%s",
+            in.report_account ? report->did : report->uri);
+   snprintf(in.cid, sizeof(in.cid), "%s", in.report_account ? "" : report->cid);
+   snprintf(in.report_reason, sizeof(in.report_reason), "%s", report->reason_type);
+   return cobalt_session_submit(COBALT_JOB_REPORT, &in);
+}
+
 bool
 cobalt_session_begin_mute(void)
 {

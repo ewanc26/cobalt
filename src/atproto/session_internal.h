@@ -40,6 +40,7 @@
 #include <wolfram/feed_typed.h>
 #include <wolfram/graph_typed.h>
 #include <wolfram/list_typed.h>
+#include <wolfram/moderation_report_typed.h>
 #include <wolfram/moderation_typed.h>
 #include <wolfram/oauth_pairing.h>
 #include <wolfram/profile_tab.h>
@@ -78,6 +79,11 @@ typedef struct {
     * follow/block, mute has no record URI for record_uri's emptiness to
     * signal an undo with, so the direction is carried explicitly. */
    bool flag;
+
+   /* Report only: `uri` is the subject post's AT-URI or, when this is true,
+    * the subject account's DID. `report_reason` is a moderation reason NSID. */
+   bool report_account;
+   char report_reason[COBALT_REPORT_REASON_MAX];
 
    /* A thread of new posts: how many, with the texts in s.thread_texts (too big
     * to copy with every job; only one job runs at a time and a new one is
@@ -268,6 +274,7 @@ void cobalt_session_run_chat_group_remove(const cobalt_job_input *in, cobalt_job
 void cobalt_session_run_chat_join_link(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_mute(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_thread_mute(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_report(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_muted_list(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_notifications(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_chat_inbox(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
