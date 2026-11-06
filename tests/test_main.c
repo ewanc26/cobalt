@@ -26,6 +26,7 @@
 #include "atproto/external_card.h"
 #include "atproto/notifications.h"
 #include "atproto/report.h"
+#include "atproto/starter_packs.h"
 #include "atproto/chat.h"
 #include "app/chat_thread.h"
 #include "app/messages.h"
@@ -2758,6 +2759,51 @@ test_search_mode_toggle(void)
 }
 
 static void
+test_starter_pack_links(void)
+{
+   begin("starter-pack links and row bounds");
+
+   char out[COBALT_POST_URI_MAX];
+   cobalt_starter_pack pack;
+   cobalt_actor_list members;
+
+   CHECK(cobalt_starter_pack_uri_from_link(
+      "at://did:plc:abc/app.bsky.graph.starterpack/3kpack", out, sizeof(out)));
+   CHECK_STR(out, "at://did:plc:abc/app.bsky.graph.starterpack/3kpack");
+
+   CHECK(cobalt_starter_pack_uri_from_link(
+      "https://bsky.app/starter-pack/did:plc:abc/3kpack", out, sizeof(out)));
+   CHECK_STR(out, "at://did:plc:abc/app.bsky.graph.starterpack/3kpack");
+
+   CHECK(cobalt_starter_pack_uri_from_link(
+      "http://bsky.app/starter-pack/alice.example/3kpack?x=1#y", out,
+      sizeof(out)));
+   CHECK_STR(out, "at://alice.example/app.bsky.graph.starterpack/3kpack");
+
+   CHECK(!cobalt_starter_pack_uri_from_link(
+      "https://bsky.app/profile/alice.example", out, sizeof(out)));
+   CHECK_STR(out, "");
+   CHECK(!cobalt_starter_pack_uri_from_link(
+      "https://bsky.app/starter-pack/alice.example", out, sizeof(out)));
+   CHECK(!cobalt_starter_pack_uri_from_link(
+      "at://did:plc:abc/app.bsky.feed.post/3kpack", out, sizeof(out)));
+   CHECK(!cobalt_starter_pack_uri_from_link(
+      "at://did:plc:abc/app.bsky.graph.starterpack/3kpack/extra", out,
+      sizeof(out)));
+   CHECK(!cobalt_starter_pack_uri_from_link(NULL, out, sizeof(out)));
+   CHECK(!cobalt_starter_pack_uri_from_link(
+      "at://did:plc:abc/app.bsky.graph.starterpack/3kpack", out, 8));
+
+   memset(&pack, 0, sizeof(pack));
+   memset(&members, 0, sizeof(members));
+   members.count = 4;
+   pack.feed_count = COBALT_STARTER_PACK_FEEDS_MAX;
+   CHECK(cobalt_starter_pack_row_count(&pack, &members) ==
+         COBALT_STARTER_PACK_FEEDS_MAX + 4);
+   CHECK(cobalt_starter_pack_row_count(NULL, NULL) == 0);
+}
+
+static void
 test_image_attach(const char *root)
 {
    begin("image attach");
@@ -4174,6 +4220,7 @@ main(int argc, char **argv)
    test_image_attach(root);
    test_picker_paths(root);
    test_search_mode_toggle();
+   test_starter_pack_links();
    test_pinned_prepend();
    test_compose();
    test_compose_thread();

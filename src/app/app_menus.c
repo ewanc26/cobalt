@@ -49,6 +49,8 @@ cobalt_app_open_post_menu(cobalt_app *app, const cobalt_post *post, bool in_thre
 {
    const char *handle = post->handle[0] == '@' ? post->handle + 1 : post->handle;
    char label[COBALT_POPUP_LABEL_MAX];
+   bool pack_added = false;
+   app->starter_pack_uri[0] = '\0';
    cobalt_popup_open(&app->popup, "More");
    app->popup_screen = app->screen;
    app->popup_in_thread = in_thread;
@@ -78,6 +80,13 @@ cobalt_app_open_post_menu(cobalt_app *app, const cobalt_post *post, bool in_thre
          continue;
       }
       facet_label(post, f, label, sizeof(label));
+      if (!pack_added && f->kind == COBALT_FACET_LINK &&
+          cobalt_starter_pack_uri_from_link(f->target, app->starter_pack_uri,
+                                            sizeof(app->starter_pack_uri))) {
+         cobalt_popup_add(&app->popup, COBALT_POPUP_STARTER_PACK,
+                          "Open starter pack", "");
+         pack_added = true;
+      }
       cobalt_popup_add(&app->popup,
                        f->kind == COBALT_FACET_LINK ? COBALT_POPUP_LINK
                        : f->kind == COBALT_FACET_MENTION ? COBALT_POPUP_MENTION
@@ -231,6 +240,23 @@ cobalt_app_popup_choose(cobalt_app *app, int index)
          char arg[COBALT_POPUP_ARG_MAX];
          snprintf(arg, sizeof(arg), "%s", it->arg);
          cobalt_popup_show_text(&app->popup, "Link", arg);
+         break;
+      }
+      case COBALT_POPUP_STARTER_PACK: {
+         char pack_uri[COBALT_POST_URI_MAX];
+         snprintf(pack_uri, sizeof(pack_uri), "%s", app->starter_pack_uri);
+         cobalt_popup_close(&app->popup);
+         if (!cobalt_session_busy() && pack_uri[0] &&
+             cobalt_session_begin_starter_pack(pack_uri, false)) {
+            cobalt_starter_pack_view_open(&app->starter_pack, pack_uri);
+            cobalt_app_current_thread_uri(outer, sizeof outer);
+            cobalt_app_push_return(app, app->popup_screen, outer);
+            app->screen = COBALT_SCREEN_STARTER_PACK;
+         } else if (!pack_uri[0]) {
+            cobalt_app_set_notice(app, "That starter-pack link is incomplete.", true);
+         } else {
+            cobalt_app_set_notice(app, "Wait for the last request to finish.", true);
+         }
          break;
       }
       case COBALT_POPUP_QUOTE: {

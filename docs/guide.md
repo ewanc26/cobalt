@@ -144,6 +144,8 @@ On someone else's post, More also offers Report post; on their profile menu it o
 
 Search finds accounts and posts (switch with Y). Feeds lists the custom feeds your account has saved. Lists shows your curated lists and their members. In all of them A opens the thing and B goes back.
 
+A starter-pack link in a post's More menu opens the pack instead of the link page. The pack screen names its creator and lists the suggested accounts and included feeds; A opens the selected profile or feed, and B returns to where you opened the pack. Creating a pack is not offered.
+
 ## Account
 
 Muted accounts and Blocked accounts (A on one undoes it), the post language setting and Sign out, which wipes the saved session from the SD card.

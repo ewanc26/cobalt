@@ -31,6 +31,7 @@
 #include "atproto/actors.h"
 #include "atproto/feed.h"
 #include "atproto/curated_lists.h"
+#include "atproto/starter_packs.h"
 #include "atproto/notifications.h"
 #include "atproto/chat.h"
 #include "atproto/actor_profile.h"
@@ -86,6 +87,7 @@ typedef enum {
    COBALT_JOB_FEED,
    COBALT_JOB_LISTS,
    COBALT_JOB_LIST_MEMBERS,
+   COBALT_JOB_STARTER_PACK,
    COBALT_JOB_DELETE_POST,
    COBALT_JOB_THREAD_MUTE,
    COBALT_JOB_REPORT,
@@ -583,6 +585,15 @@ const cobalt_saved_feeds *cobalt_session_saved_feeds(void);
 bool cobalt_session_begin_saved_feeds(void);
 bool cobalt_session_begin_list_members(const char *list_uri, bool paging);
 const cobalt_actor_list *cobalt_session_list_members(void);
+
+/*
+ * Starter packs. A fresh call fetches the pack record and the first page of
+ * its members; paging fetches the next member page from the pack's list. Both
+ * results are bounded by the fixed actor window and eight feed references.
+ */
+bool cobalt_session_begin_starter_pack(const char *pack_uri, bool paging);
+const cobalt_starter_pack *cobalt_session_starter_pack(void);
+const cobalt_actor_list *cobalt_session_starter_pack_members(void);
 
 /*
  * Guard for the shared snapshots above.

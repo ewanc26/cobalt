@@ -449,6 +449,104 @@ cobalt_session_run_list_members(const cobalt_job_input *in, cobalt_job_result *r
    r->ok = true;
 }
 
+/* A starter pack is the pack record plus its underlying list's members. The
+ * fresh call fetches both; a paging call only asks the list for its next page.
+ * The pack and member list are separate snapshots so a failed member page can
+ * leave the header on screen with a recoverable message. */
+void
+cobalt_session_run_starter_pack(const cobalt_job_input *in, cobalt_job_result *r,
+                                cobalt_auth_state *state)
+{
+   char list_uri[COBALT_POST_URI_MAX];
+   const char *cursor = NULL;
+
+   if (!g_session.wf) {
+      cobalt_session_set_message(r, "Sign in first.");
+      return;
+   }
+   if (!in->paging && (!in->uri[0] ||
+       !cobalt_starter_pack_uri_from_link(in->uri, list_uri, sizeof(list_uri)))) {
+      cobalt_session_set_message(r, "That is not a starter-pack link.");
+      *state = COBALT_AUTH_SIGNED_IN;
+      return;
+   }
+
+   if (!in->paging) {
+      wf_graph_starter_pack_view view;
+      wf_status status;
+
+      memset(&view, 0, sizeof(view));
+      status = wf_agent_get_starter_pack_typed(g_session.wf, in->uri, &view);
+      if (status != WF_OK) {
+         COBALT_LOGW("session: starter pack fetch failed (%d)", (int) status);
+         SDL_LockMutex(g_session.lock);
+         cobalt_starter_pack_reset(&g_session.starter_pack);
+         cobalt_actor_list_reset(&g_session.starter_pack_members);
+         SDL_UnlockMutex(g_session.lock);
+         cobalt_session_set_message(r, "Could not load that starter pack (wolfram status %d).",
+                                    (int) status);
+         *state = COBALT_AUTH_SIGNED_IN;
+         return;
+      }
+
+      SDL_LockMutex(g_session.lock);
+      cobalt_starter_pack_reset(&g_session.starter_pack);
+      cobalt_actor_list_reset(&g_session.starter_pack_members);
+      cobalt_starter_pack_fill_from_wolfram(&g_session.starter_pack, &view);
+      snprintf(list_uri, sizeof(list_uri), "%s",
+               g_session.starter_pack.list_uri);
+      SDL_UnlockMutex(g_session.lock);
+      wf_graph_starter_pack_view_free(&view);
+   } else {
+      SDL_LockMutex(g_session.lock);
+      snprintf(list_uri, sizeof(list_uri), "%s", g_session.starter_pack.list_uri);
+      cursor = g_session.starter_pack_members.cursor[0]
+                  ? g_session.starter_pack_members.cursor
+                  : NULL;
+      SDL_UnlockMutex(g_session.lock);
+      if (!list_uri[0] || !cursor) {
+         *state = COBALT_AUTH_SIGNED_IN;
+         r->ok = true;
+         return;
+      }
+   }
+
+   if (list_uri[0]) {
+      wf_agent_list_item_list members;
+      wf_status status;
+
+      memset(&members, 0, sizeof(members));
+      status = wf_agent_get_list_typed(g_session.wf, list_uri, COBALT_SESSION_PAGE,
+                                       cursor, &members);
+      if (status != WF_OK) {
+         COBALT_LOGW("session: starter-pack members failed (%d)", (int) status);
+         cobalt_session_set_message(r, "Could not load this pack's members (wolfram status %d).",
+                                    (int) status);
+      } else {
+         SDL_LockMutex(g_session.lock);
+         if (!in->paging) {
+            cobalt_actor_list_reset(&g_session.starter_pack_members);
+         }
+         const int added = cobalt_actor_list_append_from_wolfram_list_items(
+            &g_session.starter_pack_members, &members);
+         if (in->paging && added == 0) {
+            g_session.starter_pack_members.has_more = false;
+            g_session.starter_pack_members.cursor[0] = '\0';
+         }
+         const int total = g_session.starter_pack_members.count;
+         SDL_UnlockMutex(g_session.lock);
+         wf_agent_list_item_list_free(&members);
+         if (total == 0 && !in->paging) {
+            cobalt_session_set_message(r, "This starter pack has no available members.");
+         }
+      }
+   }
+
+   cobalt_session_publish();
+   *state = COBALT_AUTH_SIGNED_IN;
+   r->ok = true;
+}
+
 #endif /* COBALT_HAS_WOLFRAM */
 
 const cobalt_actor_list *
@@ -635,6 +733,32 @@ cobalt_session_begin_list_members(const char *list_uri, bool paging)
    snprintf(in.uri, sizeof(in.uri), "%s", list_uri ? list_uri : "");
    in.paging = paging;
    return cobalt_session_submit(COBALT_JOB_LIST_MEMBERS, &in);
+}
+
+const cobalt_starter_pack *
+cobalt_session_starter_pack(void)
+{
+   return &g_session.starter_pack;
+}
+
+const cobalt_actor_list *
+cobalt_session_starter_pack_members(void)
+{
+   return &g_session.starter_pack_members;
+}
+
+bool
+cobalt_session_begin_starter_pack(const char *pack_uri, bool paging)
+{
+   cobalt_job_input in;
+
+   if (!pack_uri || !pack_uri[0]) {
+      return false;
+   }
+   memset(&in, 0, sizeof(in));
+   snprintf(in.uri, sizeof(in.uri), "%s", pack_uri);
+   in.paging = paging;
+   return cobalt_session_submit(COBALT_JOB_STARTER_PACK, &in);
 }
 
 bool

@@ -123,6 +123,8 @@ cobalt_app_create(void)
    cobalt_graph_view_init(&app->graph);
    cobalt_search_view_init(&app->search);
    cobalt_lists_view_init(&app->lists);
+   cobalt_starter_pack_view_init(&app->starter_pack);
+   app->feed_back = COBALT_SCREEN_FEEDS;
    cobalt_queue_view_open(&app->queue_view);
    load_queue(app);
    cobalt_draft_view_open(&app->draft_view);
@@ -570,6 +572,8 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
    cobalt_graph_view_init(&app->graph);
    cobalt_search_view_init(&app->search);
    cobalt_lists_view_init(&app->lists);
+   cobalt_starter_pack_view_init(&app->starter_pack);
+   app->feed_back = COBALT_SCREEN_FEEDS;
          app->screen = COBALT_SCREEN_HOME;
          app->selected = 1;
          break;
@@ -1059,7 +1063,7 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
       case COBALT_SCREEN_TIMELINE:
          switch (cobalt_timeline_update(&app->timeline, in)) {
             case COBALT_TIMELINE_BACK:
-               app->screen = app->viewing_custom_feed ? COBALT_SCREEN_FEEDS
+               app->screen = app->viewing_custom_feed ? app->feed_back
                                                       : COBALT_SCREEN_HOME;
                break;
             case COBALT_TIMELINE_OPEN_THREAD:
@@ -1506,6 +1510,29 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
          }
          break;
 
+      case COBALT_SCREEN_STARTER_PACK:
+         switch (cobalt_starter_pack_view_update(&app->starter_pack, in)) {
+            case COBALT_STARTER_PACK_VIEW_BACK:
+               app->screen = cobalt_app_pop_return(app);
+               break;
+            case COBALT_STARTER_PACK_VIEW_OPEN_PROFILE:
+               cobalt_profile_view_rewind(&app->profile);
+               cobalt_app_push_return(app, COBALT_SCREEN_STARTER_PACK, NULL);
+               app->screen = COBALT_SCREEN_PROFILE;
+               break;
+            case COBALT_STARTER_PACK_VIEW_OPEN_FEED:
+               cobalt_timeline_rewind(&app->timeline);
+               app->viewing_custom_feed = true;
+               app->viewing_search = false;
+               app->feed_back = COBALT_SCREEN_STARTER_PACK;
+               app->screen = COBALT_SCREEN_TIMELINE;
+               break;
+            case COBALT_STARTER_PACK_VIEW_STAY:
+            default:
+               break;
+         }
+         break;
+
       case COBALT_SCREEN_HOME:
       default:
          cobalt_app_update_home(app, in);
@@ -1736,6 +1763,10 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_LISTS:
          cobalt_lists_view_draw(&app->lists, r, surface);
+         break;
+
+      case COBALT_SCREEN_STARTER_PACK:
+         cobalt_starter_pack_view_draw(&app->starter_pack, r, surface);
          break;
 
       case COBALT_SCREEN_HOME:
