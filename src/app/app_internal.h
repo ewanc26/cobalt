@@ -14,6 +14,8 @@
 
 #include "app/post_queue.h"
 #include "app/queue_view.h"
+#include "app/drafts.h"
+#include "app/draft_view.h"
 #include "app/app.h"
 #include "app/compose.h"
 #include "app/credits_view.h"
@@ -47,7 +49,7 @@
 #include <string.h>
 
 /* Entries on the home menu; app_home.c checks its table against this. */
-#define COBALT_HOME_MENU_COUNT 15
+#define COBALT_HOME_MENU_COUNT 16
 /* How deep a chain of thread and profile screens can nest before the oldest
  * return is dropped. */
 #define COBALT_RETURN_DEPTH 16
@@ -87,6 +89,11 @@ struct cobalt_app {
    cobalt_queue_view queue_view;
    bool queue_send_pending;
    cobalt_queued_post queue_inflight;
+   /* Composer drafts are local and separate from the queue. draft_origin is
+    * the list index being edited, or -1 for a new composition. */
+   cobalt_drafts drafts;
+   cobalt_draft_view draft_view;
+   int draft_origin;
    cobalt_popup popup;
    cobalt_screen popup_screen;
    bool popup_in_thread;

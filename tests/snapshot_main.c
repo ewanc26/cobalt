@@ -380,7 +380,7 @@ drag_to(int x, int from, int to)
 
 /* Home selection is linear and wraps; the app remembers it across screens.
  * Must match COBALT_HOME_MENU_COUNT in app/app_internal.h. */
-#define HOME_MENU_COUNT 15
+#define HOME_MENU_COUNT 16
 
 static void
 open_home_item(int idx)
@@ -1004,7 +1004,7 @@ main(int argc, char **argv)
       go_home();
    }
 
-   open_home_item(6);
+   open_home_item(7);
    settle(40);
    shoot("notifications");
 
@@ -1042,7 +1042,7 @@ main(int argc, char **argv)
    }
 
    /* The DM inbox is read-only: the screen opens and says what it can do. */
-   open_home_item(7);
+   open_home_item(8);
    settle(40);
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_MESSAGES);
    shoot("messages");
@@ -1087,13 +1087,13 @@ main(int argc, char **argv)
 
    frame(COBALT_BTN_BACK);
    settle(10);
-   open_home_item(10); /* diagnostics, after the Updates entry was removed */
+   open_home_item(11); /* diagnostics, after the Updates entry was removed */
    settle(10);
    shoot("diagnostics");
 
    frame(COBALT_BTN_BACK);
    settle(10);
-   open_home_item(2);
+   open_home_item(3);
    settle(10);
    shoot("compose");
 
@@ -1140,14 +1140,53 @@ main(int argc, char **argv)
    settle(2);
    frame(COBALT_BTN_CONFIRM);
    settle(5);
-   open_home_item(9);
+   open_home_item(10);
    settle(10);
    shoot("account");
+
+   /* Drafts: a list, then resuming the first one into compose and coming back.
+    * The saved text survives the round trip; nothing is sent. */
+   {
+      cobalt_draft d;
+
+      cobalt_drafts_init(&g_app->drafts);
+      memset(&d, 0, sizeof(d));
+      snprintf(d.text, sizeof(d.text), "Draft: a thought I want to finish later.");
+      d.saved_at = 1700001000;
+      d.kind = COBALT_DRAFT_POST;
+      CHECK(cobalt_drafts_add(&g_app->drafts, &d));
+      memset(&d, 0, sizeof(d));
+      snprintf(d.text, sizeof(d.text), "A reply I started, with the thread still here.");
+      d.saved_at = 1700001600;
+      d.kind = COBALT_DRAFT_REPLY;
+      snprintf(d.parent_uri, sizeof(d.parent_uri), "at://a/p/parent");
+      snprintf(d.parent_cid, sizeof(d.parent_cid), "parentcid");
+      snprintf(d.root_uri, sizeof(d.root_uri), "at://a/p/root");
+      snprintf(d.root_cid, sizeof(d.root_cid), "rootcid");
+      snprintf(d.reply_to, sizeof(d.reply_to), "alice.test");
+      CHECK(cobalt_drafts_add(&g_app->drafts, &d));
+
+      open_home_item(2);
+      settle(10);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_DRAFTS);
+      shoot("drafts");
+      frame(COBALT_BTN_CONFIRM);
+      settle(10);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_COMPOSE);
+      shoot("drafts-resume");
+      /* The restored draft opens the keyboard; rather than drive its Cancel
+       * key from this scene, put the list back directly and go Home. */
+      g_app->screen = COBALT_SCREEN_DRAFTS;
+      cobalt_draft_view_open(&g_app->draft_view);
+      settle(3);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_DRAFTS);
+      go_home();
+   }
 
    /* Queued posts: an empty queue, then one with two saved posts. */
    frame(COBALT_BTN_BACK);
    settle(10);
-   open_home_item(8);
+   open_home_item(9);
    settle(20);
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_QUEUE);
    shoot("queue-empty");
@@ -1156,13 +1195,13 @@ main(int argc, char **argv)
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
    cobalt_post_queue_add(&g_app->queue, "Saved for later: a draft I wrote on the bus.", 1700000000);
    cobalt_post_queue_add(&g_app->queue, "Second post, waiting until I am online.", 1700000600);
-   open_home_item(8);
+   open_home_item(9);
    settle(20);
    shoot("queue");
 
    frame(COBALT_BTN_BACK);
    settle(10);
-   open_home_item(3);
+   open_home_item(4);
    settle(10);
    shoot("search");
 
@@ -1173,7 +1212,7 @@ main(int argc, char **argv)
    settle(2);
    frame(COBALT_BTN_CONFIRM);
    settle(5);
-   open_home_item(4);
+   open_home_item(5);
    settle(10);
    settle(30);
    CHECK(cobalt_session_saved_feeds()->count == 2);
@@ -1202,7 +1241,7 @@ main(int argc, char **argv)
 
    frame(COBALT_BTN_BACK);
    settle(10);
-   open_home_item(5);
+   open_home_item(6);
    settle(40);
    shoot("lists");
 
@@ -1219,7 +1258,7 @@ main(int argc, char **argv)
     * 9, and the two lists, feeds 3 and lists 4. Compose and search are left
     * out on purpose: B types there, so they have no pill. */
    {
-      static const int items[] = {0, 4, 5, 6, 7, 9, 10, 13};
+      static const int items[] = {0, 2, 5, 6, 7, 8, 9, 10, 11, 14};
       for (size_t k = 0; k < sizeof items / sizeof items[0]; k++) {
          open_home_item(items[k]);
          settle(20);
@@ -1349,7 +1388,7 @@ main(int argc, char **argv)
    /* Off-TV play: the GamePad alone must still draw the whole app. The home
     * menu's "TV display" entry is the toggle; the TV drops to its idle card. */
    {
-      open_home_item(11);
+      open_home_item(12);
       settle(4);
       CHECK(cobalt_app_display(g_app) == COBALT_DISPLAY_GAMEPAD);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
@@ -1362,7 +1401,7 @@ main(int argc, char **argv)
       CHECK(cobalt_render_role(g_drc) == COBALT_ROLE_FULL);
       shoot("offtv-timeline");
 
-      open_home_item(11); /* back to TV + GamePad */
+      open_home_item(12); /* back to TV + GamePad */
       settle(4);
       CHECK(cobalt_app_display(g_app) == COBALT_DISPLAY_DUAL);
       CHECK(cobalt_render_role(g_drc) == COBALT_ROLE_REMOTE);
@@ -1380,7 +1419,7 @@ main(int argc, char **argv)
       g_app->settings.high_contrast = false;
       cobalt_theme_apply(COBALT_THEME_LIGHT);
       cobalt_theme_set_high_contrast(false);
-      open_home_item(12); /* settings */
+      open_home_item(13); /* settings */
       settle(4);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_SETTINGS);
       shoot("settings-light");
@@ -1504,7 +1543,7 @@ main(int argc, char **argv)
     * behind buttons a console cannot open. The screen is passive: B or the
     * Back pill leaves it. */
    {
-      open_home_item(13); /* credits */
+      open_home_item(14); /* credits */
       settle(4);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_CREDITS);
       CHECK(cobalt_credits_repo_count() == 5);
@@ -1563,7 +1602,7 @@ main(int argc, char **argv)
       settle(3);
       CHECK(!g_app->imageview.open);
 
-      open_home_item(7);
+      open_home_item(8);
       settle(40);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_MESSAGES);
       frame(COBALT_BTN_CONFIRM);

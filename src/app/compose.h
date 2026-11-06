@@ -14,6 +14,7 @@
  * this one should too.
  */
 
+#include "app/drafts.h"
 #include "atproto/feed.h"
 #include "atproto/session.h"
 #include "input/input.h"
@@ -40,6 +41,7 @@ typedef enum {
    COBALT_COMPOSE_CANCELLED,  /* backed out; nothing was sent */
    COBALT_COMPOSE_SUBMIT,     /* the user confirmed */
    COBALT_COMPOSE_SAVE_LATER, /* the user chose to keep the text in the queue */
+   COBALT_COMPOSE_SAVE_DRAFT, /* the user chose to keep it as a composer draft */
 } cobalt_compose_action;
 
 /*
@@ -163,6 +165,21 @@ bool cobalt_compose_extend(cobalt_compose *compose);
  * count; `out` holds pointers into `compose`. */
 int cobalt_compose_thread_texts(const cobalt_compose *compose,
                                 const char *out[COBALT_THREAD_POSTS_MAX]);
+
+/*
+ * Whether this composition can be kept as a draft: text is present and there
+ * is no image or thread, because the drafts file holds one text post and its
+ * reply/quote context. A reply or quote is fine.
+ */
+bool cobalt_compose_can_save_draft(const cobalt_compose *compose);
+
+/* Copy the composition into a draft. False, with `draft` untouched, when
+ * cobalt_compose_can_save_draft is false. */
+bool cobalt_compose_to_draft(const cobalt_compose *compose, cobalt_draft *draft,
+                             long long now);
+
+/* Replace the composition with a saved draft, ready to edit. */
+void cobalt_compose_restore_draft(cobalt_compose *compose, const cobalt_draft *draft);
 
 /*
  * Codepoints left before the limit; negative when over. Exposed because it is

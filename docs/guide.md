@@ -31,7 +31,7 @@ The footer names the buttons that work on the current screen. A prompt that name
 
 ![Home](screenshots/home-signedin.png)
 
-Timeline, Bookmarks, New post, Search, Feeds, Lists, Notifications, Messages, Queued posts, Account (or Sign in), Diagnostics, TV display, Settings, Credits and Quit. Timeline, Bookmarks, New post, Search, Feeds, Lists, Notifications and Messages need you signed in; Queued posts and the rest do not.
+Timeline, Bookmarks, Drafts, New post, Search, Feeds, Lists, Notifications, Messages, Queued posts, Account (or Sign in), Diagnostics, TV display, Settings, Credits and Quit. Timeline, Bookmarks, New post, Search, Feeds, Lists, Notifications and Messages need you signed in; Drafts, Queued posts and the rest do not.
 
 TV display switches between TV plus GamePad and Off-TV Play, where the TV goes idle and everything happens on the GamePad.
 
@@ -93,6 +93,14 @@ On the TV the conversation is a column on the left, and the post you have select
 Bookmarks is the account's private saved-post list, kept apart from the timeline: opening it does not replace Home, and Back returns to wherever it was opened from. A opens the selected post's thread. Up and Down move, + refreshes, and reaching the bottom loads the next page. The list is in the order the service returns and a post deleted since it was saved is left out.
 
 Use **Bookmark** or **Remove bookmark** in a post's More menu to change the list. Only the service's answer changes the menu: a failed save or removal leaves the last confirmed state and says why on the status line. The protocol has no public view of a bookmark, so the list is never shown to anyone but the signed-in account.
+
+## Drafts
+
+![Drafts](screenshots/drafts.png)
+
+Drafts are compositions you stopped writing but did not post. In the confirmation list for a new post, reply or quote, choose **Save draft**. Nothing is sent or queued: the text waits in its own list until you return. Open **Drafts** on the home menu, then A to continue the selected one, X twice to delete it, or Up and Down to choose. Back returns without changing anything.
+
+The list is kept on the SD card, so drafts survive closing the app. A resumed draft is put back into the composer with its reply or quote context intact, and saving or posting it replaces that copy rather than making another. Images and multi-post threads cannot be saved as drafts yet: Cobalt says so and keeps you in the composer rather than saving part of one.
 
 ## Queued posts
 

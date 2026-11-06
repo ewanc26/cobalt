@@ -205,6 +205,7 @@ cobalt_app_popup_choose(cobalt_app *app, int index)
          if (app->thread.nav.selected < conv->count) {
             cobalt_compose_quote(&app->compose,
                                  &conv->posts[app->thread.nav.selected]);
+            app->draft_origin = -1;
             if (cobalt_compose_is_quote(&app->compose)) {
                app->compose_return = COBALT_SCREEN_THREAD;
                app->screen = COBALT_SCREEN_COMPOSE;
@@ -272,6 +273,7 @@ cobalt_app_popup_choose(cobalt_app *app, int index)
       case COBALT_POPUP_COMPOSE:
          cobalt_popup_close(&app->popup);
          cobalt_compose_init(&app->compose);
+         app->draft_origin = -1;
          app->compose_return = COBALT_SCREEN_TIMELINE;
          app->screen = COBALT_SCREEN_COMPOSE;
          break;
