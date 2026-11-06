@@ -70,7 +70,7 @@ replace testing on the console.
 - Link-card previews, including hydrated article, gallery and livestream cards from the AppView
 - Actor search
 - Custom feed browsing
-- Read-only lists and list members
+- Lists and list members, with create/edit and add/remove actions
 - Starter packs opened from a post link: bounded members and included feeds, with profiles and feeds one press away (read/use only)
 - Mute and block, including browsable lists
 - Report a post or account with a reason, with a confirmation before anything is sent

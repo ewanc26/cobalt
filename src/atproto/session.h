@@ -87,6 +87,10 @@ typedef enum {
    COBALT_JOB_FEED,
    COBALT_JOB_LISTS,
    COBALT_JOB_LIST_MEMBERS,
+   COBALT_JOB_LIST_CREATE,
+   COBALT_JOB_LIST_UPDATE,
+   COBALT_JOB_LIST_ADD_MEMBER,
+   COBALT_JOB_LIST_REMOVE_MEMBER,
    COBALT_JOB_STARTER_PACK,
    COBALT_JOB_DELETE_POST,
    COBALT_JOB_THREAD_MUTE,
@@ -584,6 +588,24 @@ typedef struct {
 const cobalt_saved_feeds *cobalt_session_saved_feeds(void);
 bool cobalt_session_begin_saved_feeds(void);
 bool cobalt_session_begin_list_members(const char *list_uri, bool paging);
+
+/* Create or edit a list's name, description and purpose. Names are required;
+ * an empty description clears it. Editing replaces the whole record, keeping
+ * its createdAt. */
+bool cobalt_session_begin_list_create(const char *name, const char *description,
+                                      const char *purpose);
+bool cobalt_session_begin_list_update(const char *list_uri, const char *name,
+                                      const char *description,
+                                      const char *purpose);
+
+/* Add an account to a list, or remove the member record at `list_item_uri`.
+ * `subject` may be a handle or a DID; Wolfram resolves the handle. */
+bool cobalt_session_begin_list_add_member(const char *list_uri, const char *subject);
+bool cobalt_session_begin_list_remove_member(const char *list_item_uri);
+
+/* The listitem record URI for a member row in cobalt_session_list_members(),
+ * or "" when the row has none. Valid until the next member fetch. */
+const char *cobalt_session_list_member_uri(int index);
 const cobalt_actor_list *cobalt_session_list_members(void);
 
 /*

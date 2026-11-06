@@ -1110,6 +1110,91 @@ test_group_management(void)
    cs_stop(&s);
 }
 
+/* List writes through the same session entry points the screen uses: the
+ * create/put bodies, the handle resolution behind an add, the record key behind
+ * a remove, and an update that keeps the fields it did not edit. */
+static void
+test_list_writes(void)
+{
+   cs_server s;
+   CHECK(cs_start(&s));
+   char svc[64];
+   snprintf(svc, sizeof svc, "http://127.0.0.1:%d", s.port);
+
+   cs_set(&s, "com.atproto.server.createSession", 200,
+      "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\","
+      "\"accessJwt\":\"a.b.c\",\"refreshJwt\":\"d.e.f\",\"active\":true}");
+   cs_set(&s, "com.atproto.repo.createRecord", 200,
+      "{\"uri\":\"at://did:plc:abc/app.bsky.graph.list/new\",\"cid\":\"c1\"}");
+   cs_set(&s, "com.atproto.repo.getRecord", 200,
+      "{\"uri\":\"at://did:plc:abc/app.bsky.graph.list/1\",\"cid\":\"c2\","
+      "\"value\":{\"$type\":\"app.bsky.graph.list\",\"name\":\"Old\","
+      "\"description\":\"old text\",\"purpose\":\"app.bsky.graph.defs#curatelist\","
+      "\"createdAt\":\"2026-10-01T10:00:00.000Z\",\"extra\":\"keep\"}}");
+   cs_set(&s, "com.atproto.repo.putRecord", 200,
+      "{\"uri\":\"at://did:plc:abc/app.bsky.graph.list/1\",\"cid\":\"c3\"}");
+   cs_set(&s, "com.atproto.identity.resolveHandle", 200,
+      "{\"did\":\"did:plc:bob\"}");
+   cs_set(&s, "com.atproto.repo.deleteRecord", 200, "{}");
+
+   cobalt_job_result r;
+   CHECK(cobalt_session_begin_login(svc, "ewancroft.test", "app-pass"));
+   CHECK(wait_job(&r) && r.ok);
+
+   CHECK(cobalt_session_begin_list_create("Friends", "People I know",
+                                           "app.bsky.graph.defs#curatelist"));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cs_hits(&s, "com.atproto.repo.createRecord") == 1);
+   CHECK(cs_request_contains(&s, "com.atproto.repo.createRecord",
+                             "\"name\":\"Friends\""));
+   CHECK(cs_request_contains(&s, "com.atproto.repo.createRecord",
+                             "\"purpose\":\"app.bsky.graph.defs#curatelist\""));
+
+   CHECK(cobalt_session_begin_list_update(
+      "at://did:plc:abc/app.bsky.graph.list/1", "Close friends", "",
+      "app.bsky.graph.defs#curatelist"));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cs_hits(&s, "com.atproto.repo.getRecord") == 1);
+   CHECK(cs_hits(&s, "com.atproto.repo.putRecord") == 1);
+   CHECK(cs_request_contains(&s, "com.atproto.repo.putRecord",
+                             "\"name\":\"Close friends\""));
+   CHECK(cs_request_contains(&s, "com.atproto.repo.putRecord",
+                             "\"createdAt\":\"2026-10-01T10:00:00.000Z\""));
+   CHECK(cs_request_contains(&s, "com.atproto.repo.putRecord",
+                             "\"extra\":\"keep\""));
+
+   CHECK(cobalt_session_begin_list_add_member(
+      "at://did:plc:abc/app.bsky.graph.list/1", "bob.test"));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cs_hits(&s, "com.atproto.identity.resolveHandle") == 1);
+   CHECK(cs_hits(&s, "com.atproto.repo.createRecord") == 2);
+   CHECK(cs_request_contains(&s, "com.atproto.repo.createRecord",
+                             "\"subject\":\"did:plc:bob\""));
+   CHECK(cs_request_contains(&s, "com.atproto.repo.createRecord",
+                             "\"list\":\"at://did:plc:abc/app.bsky.graph.list/1\""));
+
+   CHECK(cobalt_session_begin_list_remove_member(
+      "at://did:plc:abc/app.bsky.graph.listitem/1"));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cs_hits(&s, "com.atproto.repo.deleteRecord") == 1);
+   CHECK(cs_request_contains(&s, "com.atproto.repo.deleteRecord",
+                             "\"rkey\":\"1\""));
+
+   /* A refused save is a failure, not a success message, and the read it
+    * replaced is still the one the next edit starts from. */
+   cs_set(&s, "com.atproto.repo.putRecord", 500,
+      "{\"error\":\"InternalServerError\",\"message\":\"try later\"}");
+   CHECK(cobalt_session_begin_list_update(
+      "at://did:plc:abc/app.bsky.graph.list/1", "Again", "",
+      "app.bsky.graph.defs#curatelist"));
+   CHECK(wait_job(&r));
+   CHECK(!r.ok);
+   CHECK(cs_hits(&s, "com.atproto.repo.getRecord") == 2);
+   CHECK(cs_hits(&s, "com.atproto.repo.putRecord") == 2);
+
+   cs_stop(&s);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -1255,6 +1340,7 @@ main(int argc, char **argv)
    test_group_join_requests();
    test_group_create_and_join_link();
    test_group_management();
+   test_list_writes();
 
    wf_mock_pds_free(pds);
    printf("%d checks, %d failures\n", checks, failures);
