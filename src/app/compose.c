@@ -16,12 +16,13 @@
 #define CONFIRM_IMAGE   3
 #define CONFIRM_THREAD  4
 #define CONFIRM_SAVE    5
-#define CONFIRM_COUNT   6
+#define CONFIRM_DRAFT   6
+#define CONFIRM_COUNT   7
 
 /* Stored in confirm_choice as these ids; the row shows them in this order. */
 static const int CONFIRM_ORDER[CONFIRM_COUNT] = {
-   CONFIRM_POST, CONFIRM_SAVE, CONFIRM_THREAD, CONFIRM_IMAGE, CONFIRM_EDIT,
-   CONFIRM_DISCARD
+   CONFIRM_POST, CONFIRM_SAVE, CONFIRM_THREAD, CONFIRM_IMAGE, CONFIRM_DRAFT,
+   CONFIRM_EDIT, CONFIRM_DISCARD
 };
 
 /* The choices on offer for this post. An image and a thread exclude each other:
@@ -45,6 +46,9 @@ confirm_ids(const cobalt_compose *compose, int out[CONFIRM_COUNT])
            cobalt_compose_is_reply(compose) || cobalt_compose_is_quote(compose))) {
          continue;
       }
+      if (id == CONFIRM_DRAFT && !cobalt_compose_can_save_draft(compose)) {
+         continue;
+      }
       out[n++] = id;
    }
    return n;
@@ -59,6 +63,7 @@ confirm_label(const cobalt_compose *compose, int id)
                                                             : "Add image";
       case CONFIRM_THREAD:  return "Add to thread";
       case CONFIRM_SAVE:    return "Save for later";
+      case CONFIRM_DRAFT:   return "Save draft";
       case CONFIRM_EDIT:    return "Keep editing";
       default:              return "Discard";
    }
@@ -204,6 +209,84 @@ bool
 cobalt_compose_is_reply(const cobalt_compose *compose)
 {
    return compose && compose->parent_uri[0] != '\0';
+}
+
+bool
+cobalt_compose_can_save_draft(const cobalt_compose *compose)
+{
+   return compose && compose->text[0] && compose->thread_count == 0 &&
+          !compose->attach_path[0];
+}
+
+bool
+cobalt_compose_to_draft(const cobalt_compose *compose, cobalt_draft *draft,
+                        long long now)
+{
+   if (!draft || !cobalt_compose_can_save_draft(compose)) {
+      return false;
+   }
+   memset(draft, 0, sizeof(*draft));
+   snprintf(draft->text, sizeof(draft->text), "%s", compose->text);
+   draft->saved_at = now;
+   draft->reply_gate = (int) compose->reply_gate;
+   if (cobalt_compose_is_reply(compose)) {
+      draft->kind = COBALT_DRAFT_REPLY;
+      snprintf(draft->parent_uri, sizeof(draft->parent_uri), "%s",
+               compose->parent_uri);
+      snprintf(draft->parent_cid, sizeof(draft->parent_cid), "%s",
+               compose->parent_cid);
+      snprintf(draft->root_uri, sizeof(draft->root_uri), "%s", compose->root_uri);
+      snprintf(draft->root_cid, sizeof(draft->root_cid), "%s", compose->root_cid);
+      snprintf(draft->reply_to, sizeof(draft->reply_to), "%s", compose->reply_to);
+   } else if (cobalt_compose_is_quote(compose)) {
+      draft->kind = COBALT_DRAFT_QUOTE;
+      snprintf(draft->quote_uri, sizeof(draft->quote_uri), "%s",
+               compose->quote_uri);
+      snprintf(draft->quote_cid, sizeof(draft->quote_cid), "%s",
+               compose->quote_cid);
+      snprintf(draft->quote_handle, sizeof(draft->quote_handle), "%s",
+               compose->quote_handle);
+   } else {
+      draft->kind = COBALT_DRAFT_POST;
+   }
+   return cobalt_draft_valid(draft);
+}
+
+void
+cobalt_compose_restore_draft(cobalt_compose *compose, const cobalt_draft *draft)
+{
+   if (!compose) {
+      return;
+   }
+   cobalt_compose_init(compose);
+   if (!draft) {
+      return;
+   }
+   snprintf(compose->text, sizeof(compose->text), "%s", draft->text);
+   compose->reply_gate = (cobalt_reply_gate)
+      ((draft->reply_gate >= 0 && draft->reply_gate < COBALT_REPLY_GATE_COUNT)
+          ? draft->reply_gate : 0);
+   if (draft->kind == COBALT_DRAFT_REPLY) {
+      snprintf(compose->parent_uri, sizeof(compose->parent_uri), "%s",
+               draft->parent_uri);
+      snprintf(compose->parent_cid, sizeof(compose->parent_cid), "%s",
+               draft->parent_cid);
+      snprintf(compose->root_uri, sizeof(compose->root_uri), "%s",
+               draft->root_uri);
+      snprintf(compose->root_cid, sizeof(compose->root_cid), "%s",
+               draft->root_cid);
+      snprintf(compose->reply_to, sizeof(compose->reply_to), "%s",
+               draft->reply_to);
+   } else if (draft->kind == COBALT_DRAFT_QUOTE) {
+      snprintf(compose->quote_uri, sizeof(compose->quote_uri), "%s",
+               draft->quote_uri);
+      snprintf(compose->quote_cid, sizeof(compose->quote_cid), "%s",
+               draft->quote_cid);
+      snprintf(compose->quote_handle, sizeof(compose->quote_handle), "%s",
+               draft->quote_handle);
+   }
+   cobalt_keyboard_open(&compose->kb, compose->text, sizeof(compose->text), false,
+                        true);
 }
 
 bool
@@ -389,6 +472,9 @@ cobalt_compose_update(cobalt_compose *compose, const cobalt_input *in)
 
       case CONFIRM_SAVE:
          return COBALT_COMPOSE_SAVE_LATER;
+
+      case CONFIRM_DRAFT:
+         return COBALT_COMPOSE_SAVE_DRAFT;
 
       case CONFIRM_THREAD:
          cobalt_compose_extend(compose);
