@@ -21,6 +21,7 @@
 #include "atproto/notifications.h"
 #include "atproto/chat.h"
 #include "atproto/actor_profile.h"
+#include "atproto/starter_packs.h"
 #include "cache/session_store.h"
 #include "util/clock.h"
 #include "util/log.h"
@@ -39,6 +40,7 @@
 #include <wolfram/feed_gen_typed.h>
 #include <wolfram/feed_typed.h>
 #include <wolfram/graph_typed.h>
+#include <wolfram/graph_social_typed.h>
 #include <wolfram/list_typed.h>
 #include <wolfram/moderation_report_typed.h>
 #include <wolfram/moderation_typed.h>
@@ -219,6 +221,8 @@ typedef struct {
    cobalt_list_summary_list lists;
    cobalt_saved_feeds saved_feeds;
    cobalt_actor_list list_members;
+   cobalt_starter_pack starter_pack;
+   cobalt_actor_list starter_pack_members;
 
 #ifdef COBALT_HAS_WOLFRAM
    /* Owned by the worker while a job runs; only touched off-thread when idle. */
@@ -266,6 +270,7 @@ void cobalt_session_run_interaction(const cobalt_job_input *in, cobalt_job_resul
 void cobalt_session_run_likes(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_list_members(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_lists(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_starter_pack(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_chat_group_info(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_chat_group_create(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_chat_group_rename(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);

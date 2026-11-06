@@ -6,6 +6,7 @@
 #include "app/app.h"
 #include "app/app_internal.h"
 #include "atproto/session.h"
+#include "atproto/session_internal.h"
 #include "atproto/feed.h"
 #include "atproto/external_card.h"
 #include "ui/videoduration.h"
@@ -1292,6 +1293,49 @@ main(int argc, char **argv)
       tap(800, 38);
       settle(3);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_HOME);
+   }
+
+   /* A starter pack is a header, its bounded member rows and the feeds that
+    * follow them. The session snapshot is written directly because this scene
+    * exists to render the screen, not to repeat the worker's fetch. */
+   {
+      cobalt_starter_pack *pack = &g_session.starter_pack;
+      cobalt_actor_list *members = &g_session.starter_pack_members;
+
+      cobalt_starter_pack_reset(pack);
+      cobalt_actor_list_reset(members);
+      snprintf(pack->uri, sizeof pack->uri,
+               "at://did:plc:me/app.bsky.graph.starterpack/borders");
+      snprintf(pack->name, sizeof pack->name, "Welsh borders");
+      snprintf(pack->description, sizeof pack->description,
+               "Walkers, readers and people who know which lane the old stones are on.");
+      snprintf(pack->creator.handle, sizeof pack->creator.handle, "@rhi.example.social");
+      snprintf(pack->creator.display_name, sizeof pack->creator.display_name, "Rhiannon");
+      pack->member_count = 2;
+      snprintf(pack->feeds[0], sizeof pack->feeds[0],
+               "at://did:plc:me/app.bsky.feed.generator/borders");
+      snprintf(pack->feeds[1], sizeof pack->feeds[1],
+               "at://did:plc:me/app.bsky.feed.generator/quiet");
+      pack->feed_count = 2;
+      members->count = 2;
+      snprintf(members->actors[0].handle, sizeof members->actors[0].handle,
+               "@rhi.example.social");
+      snprintf(members->actors[0].display_name,
+               sizeof members->actors[0].display_name, "Rhiannon");
+      snprintf(members->actors[0].did, sizeof members->actors[0].did,
+               "did:plc:rhiannon7wvx2m4qz6kbyt");
+      snprintf(members->actors[1].handle, sizeof members->actors[1].handle,
+               "@rhibear.example.social");
+      snprintf(members->actors[1].display_name,
+               sizeof members->actors[1].display_name, "Rhiannon Bear");
+      snprintf(members->actors[1].did, sizeof members->actors[1].did,
+               "did:plc:bear4kq8vz2n7xwm3");
+
+      cobalt_starter_pack_view_open(&g_app->starter_pack, pack->uri);
+      g_app->screen = COBALT_SCREEN_STARTER_PACK;
+      settle(2);
+      shoot("starter-pack");
+      go_home();
    }
 
    /* The Back pill is drawn on every screen that does not give B to the
