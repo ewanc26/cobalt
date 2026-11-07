@@ -13,6 +13,12 @@
  * chrome around it. Overflow evicts least-recently-used rather than failing. */
 #define TEXT_CACHE_SIZE 128
 
+/* Measurements are cached separately from rendered textures: a string is often
+ * measured to place or fit it without being drawn, and a fitted prefix is a
+ * different key from the whole string. The same size serves a screen's labels,
+ * names and wrap candidates. */
+#define MEASURE_CACHE_SIZE 128
+
 /* Strings longer than this bypass the cache. Wrapped body lines are well under
  * it; the cap exists so the cache is a flat array with no per-entry malloc. */
 #define TEXT_KEY_MAX 160
@@ -51,6 +57,24 @@ typedef struct {
    uint32_t last_used;
    bool in_use;
 } text_entry;
+
+/*
+ * One TTF_SizeUTF8 result. Measuring is much cheaper than rendering, but it is
+ * not free, and the steady state measures the same strings every frame: a
+ * card's age, handle and counters are sized before they are drawn, and fitting
+ * a label measures candidate prefixes. Keeping the answer turns all of those
+ * into a lookup. The face is part of the key because the post face is reopened
+ * when the text scale changes, and the cache is flushed with the textures then.
+ */
+typedef struct {
+   char text[TEXT_KEY_MAX];
+   uint32_t hash;
+   cobalt_font_id font;
+   int w;
+   int h;
+   uint32_t last_used;
+   bool in_use;
+} measure_entry;
 
 /*
  * Where one wrapped line starts and ends, as offsets into the string it was
@@ -128,6 +152,9 @@ struct cobalt_render {
 
    text_entry cache[TEXT_CACHE_SIZE];
    uint32_t clock;
+
+   measure_entry measures[MEASURE_CACHE_SIZE];
+   uint32_t measure_clock;
 
    wrap_entry wraps[WRAP_CACHE_SIZE];
    uint32_t wrap_clock;
@@ -1875,18 +1902,61 @@ now_ns(void)
 static int
 measure_text(cobalt_render *r, cobalt_font_id id, const char *utf8, int *out_w, int *out_h)
 {
+   measure_entry *victim = NULL;
+   size_t len = 0;
+   uint32_t hash = 0;
+   bool cacheable = false;
+
+   if (r && utf8 && utf8[0] && font_of(r, id)) {
+      len = strlen(utf8);
+      if (len < TEXT_KEY_MAX) {
+         cacheable = true;
+         hash = hash_string(utf8);
+         for (int i = 0; i < MEASURE_CACHE_SIZE; i++) {
+            measure_entry *e = &r->measures[i];
+
+            if (!e->in_use) {
+               if (!victim || victim->in_use) victim = e;
+               continue;
+            }
+            if (e->hash == hash && e->font == id && strcmp(e->text, utf8) == 0) {
+               e->last_used = ++r->measure_clock;
+               if (out_w) *out_w = e->w;
+               if (out_h) *out_h = e->h;
+               return 0;
+            }
+            if (!victim || (victim->in_use && e->last_used < victim->last_used)) {
+               victim = e;
+            }
+         }
+      }
+   }
+
    const uint32_t t0 = SDL_GetTicks();
 #ifdef COBALT_E2E_HOST
    const uint64_t ns0 = now_ns();
 #endif
    if (r) r->text_measures++;
-   const int rc = measure_text_impl(r, id, utf8, out_w, out_h);
+   int w = 0, h = 0;
+   const int rc = measure_text_impl(r, id, utf8, &w, &h);
 #ifdef COBALT_E2E_HOST
    if (r) r->text_measure_ns += now_ns() - ns0;
 #endif
    const uint32_t dt = SDL_GetTicks() - t0;
    if (dt >= SLOW_MS) {
       COBALT_LOGW("render: slow measure %u ms (font %d, %.40s)", (unsigned) dt, (int) id, utf8);
+   }
+   if (out_w) *out_w = w;
+   if (out_h) *out_h = h;
+
+   if (rc == 0 && cacheable && victim) {
+      memcpy(victim->text, utf8, len + 1);
+      victim->hash = hash;
+      victim->font = id;
+      victim->w = w;
+      victim->h = h;
+      victim->last_used = ++r->measure_clock;
+      victim->in_use = true;
    }
    return rc;
 }
@@ -2547,6 +2617,9 @@ cobalt_render_flush_text_cache(cobalt_render *r)
          r->cache[i].tex = NULL;
       }
       r->cache[i].in_use = false;
+   }
+   for (int i = 0; i < MEASURE_CACHE_SIZE; i++) {
+      r->measures[i].in_use = false;
    }
 }
 
