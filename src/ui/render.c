@@ -589,21 +589,40 @@ cobalt_draw_page_title_colour(cobalt_render *r, const char *title, const char *n
     * the top edge with all the padding below. */
    const int y = (band > title_h) ? (band - title_h) / 2 : m->pad_edge / 4;
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE, title, m->pad_edge, y,
-                    COBALT_COLOUR_HEADER_TEXT);
+   const int band_w = m->width - 2 * m->pad_edge;
+   int note_w = 0;
+   if (note && note[0]) {
+      cobalt_text_size(r, COBALT_FONT_CAPTION, note, &note_w, NULL);
+   }
+   /* The title and the note share one line, so the title is fitted to what the
+    * note leaves instead of being drawn to meet it. A note too long to leave
+    * the title a readable share is the one that gives way: the page's own name
+    * is what the band is for. */
+   int title_room = band_w;
+   if (note_w > 0) {
+      const int with_note = band_w - note_w - m->pad_tile;
+      if (with_note >= band_w / 3) {
+         title_room = with_note;
+      }
+   }
+   const int title_w = cobalt_draw_text_fitted(r, COBALT_FONT_TITLE, title,
+                                               m->pad_edge, y, title_room,
+                                               COBALT_COLOUR_HEADER_TEXT);
 
-   if (!note || !note[0]) {
+   if (note_w == 0) {
       return;
    }
 
-   int title_w = 0;
-   cobalt_text_size(r, COBALT_FONT_TITLE, title, &title_w, NULL);
    const int note_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
-   /* Bottom-aligned to the title's baseline: the two faces have different line
-    * heights, so matching their bottoms is what keeps them on one line. */
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, note,
-                    m->pad_edge + title_w + m->pad_tile, y + title_h - note_h,
-                    note_colour);
+   const int note_x = m->pad_edge + title_w + m->pad_tile;
+   const int note_room = m->width - m->pad_edge - note_x;
+   if (note_room > 0) {
+      /* Bottom-aligned to the title's baseline: the two faces have different
+       * line heights, so matching their bottoms is what keeps them on one
+       * line. */
+      cobalt_draw_text_fitted(r, COBALT_FONT_CAPTION, note, note_x,
+                              y + title_h - note_h, note_room, note_colour);
+   }
 }
 
 void

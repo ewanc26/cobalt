@@ -82,9 +82,11 @@ cobalt_credits_view_draw(cobalt_render *r)
                           row.y + pad + (body_h - caption_h) / 2,
                           COBALT_COLOUR_ACCENT_TEXT);
       } else {
-         cobalt_draw_text(r, COBALT_FONT_CAPTION, repo->url,
-                          row.x + pad, row.y + pad + body_h,
-                          COBALT_COLOUR_ACCENT_TEXT);
+         /* A URL longer than the card is cut with an ellipsis rather than run
+          * off the edge; the address is still readable up to the cut. */
+         cobalt_draw_text_fitted(r, COBALT_FONT_CAPTION, repo->url,
+                                 row.x + pad, row.y + pad + body_h, inner_w,
+                                 COBALT_COLOUR_ACCENT_TEXT);
       }
 
       y += row_h + m->gap / 2;

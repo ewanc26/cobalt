@@ -490,22 +490,33 @@ draw_join_row(cobalt_render *r, const cobalt_chat_join_request *item, const SDL_
    const int right = rect->x + rect->w - m->pad_tile;
    const int y = rect->y + m->pad_tile;
 
-   const int name_w = cobalt_draw_text(r, COBALT_FONT_BODY, item->name, left, y,
-                                       COBALT_COLOUR_TEXT);
+   /* Both the handle and the age are placed from measurements taken before the
+    * name, so the name can be fitted to the room they leave instead of running
+    * underneath them. */
+   int tag_w = 0;
+   if (item->handle[0]) {
+      cobalt_text_size(r, COBALT_FONT_CAPTION, item->handle, &tag_w, NULL);
+   }
+   int age_w = 0;
+   if (item->age[0]) {
+      cobalt_text_size(r, COBALT_FONT_CAPTION, item->age, &age_w, NULL);
+   }
+   const int name_room = (right - left) -
+                         (tag_w ? tag_w + m->pad_tile / 2 : 0) -
+                         (age_w ? age_w + m->pad_tile / 2 : 0);
+   const int name_w = cobalt_draw_text_fitted(r, COBALT_FONT_BODY, item->name,
+                                              left, y, name_room,
+                                              COBALT_COLOUR_TEXT);
 
    if (item->handle[0]) {
-      int tag_w = 0;
-      cobalt_text_size(r, COBALT_FONT_CAPTION, item->handle, &tag_w, NULL);
       const int tag_x = left + name_w + m->pad_tile / 2;
-      if (tag_x + tag_w < right) {
+      if (tag_x + tag_w < right - (age_w ? age_w + m->pad_tile / 2 : 0)) {
          cobalt_draw_text(r, COBALT_FONT_CAPTION, item->handle, tag_x,
                           y + (body_h - caption_h) / 2, COBALT_COLOUR_TEXT_DIM);
       }
    }
 
    if (item->age[0]) {
-      int age_w = 0;
-      cobalt_text_size(r, COBALT_FONT_CAPTION, item->age, &age_w, NULL);
       const int age_x = right - age_w;
       if (age_x > left) {
          cobalt_draw_text(r, COBALT_FONT_CAPTION, item->age, age_x,
@@ -624,11 +635,21 @@ draw_member_row(cobalt_render *r, const cobalt_chat_member *member, const SDL_Re
    const int right = rect->x + rect->w - m->pad_tile;
    const int y = rect->y + m->pad_tile;
 
-   const int name_w = cobalt_draw_text(r, COBALT_FONT_BODY, member->name, left, y,
-                                       COBALT_COLOUR_TEXT);
+   int you_w = 0;
    if (self) {
-      int you_w = 0;
       cobalt_text_size(r, COBALT_FONT_CAPTION, "You", &you_w, NULL);
+   }
+   int handle_w = 0;
+   if (member->handle[0]) {
+      cobalt_text_size(r, COBALT_FONT_CAPTION, member->handle, &handle_w, NULL);
+   }
+   const int name_room = (right - left) -
+                         (you_w ? you_w + m->pad_tile : 0) -
+                         (handle_w ? handle_w + m->pad_tile / 2 : 0);
+   const int name_w = cobalt_draw_text_fitted(r, COBALT_FONT_BODY, member->name,
+                                              left, y, name_room,
+                                              COBALT_COLOUR_TEXT);
+   if (self) {
       const int you_x = right - you_w;
       if (you_x > left + name_w) {
          cobalt_draw_text(r, COBALT_FONT_CAPTION, "You", you_x,
@@ -637,10 +658,8 @@ draw_member_row(cobalt_render *r, const cobalt_chat_member *member, const SDL_Re
    }
 
    if (member->handle[0]) {
-      int handle_w = 0;
-      cobalt_text_size(r, COBALT_FONT_CAPTION, member->handle, &handle_w, NULL);
       const int handle_x = left + name_w + m->pad_tile / 2;
-      if (handle_x + handle_w < right) {
+      if (handle_x + handle_w < right - (self ? you_w + m->pad_tile : 0)) {
          cobalt_draw_text(r, COBALT_FONT_CAPTION, member->handle, handle_x,
                           y + (body_h - caption_h) / 2, COBALT_COLOUR_TEXT_DIM);
       }

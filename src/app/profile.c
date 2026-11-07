@@ -323,11 +323,18 @@ draw_header(cobalt_render *r, const cobalt_profile *profile,
                          profile->handle, left, avatar_y, w.avatar);
 
       int wy = rect->y + m->pad_tile + (inner - w.text_h) / 2;
-      const int name_w = cobalt_draw_text(r, COBALT_FONT_HEADING,
-                                          profile->display_name, w.text_left, wy,
-                                          COBALT_COLOUR_TEXT);
       int handle_w = 0;
       cobalt_text_size(r, COBALT_FONT_CAPTION, profile->handle, &handle_w, NULL);
+      /* The handle follows the name on the same band. Fit the name to the room
+       * the handle leaves, but never give the handle more than half the band:
+       * a long handle should drop, not erase the person's name. */
+      int name_room = w.text_width;
+      if (profile->handle[0] && handle_w + m->pad_tile < w.text_width / 2) {
+         name_room = w.text_width - handle_w - m->pad_tile;
+      }
+      const int name_w = cobalt_draw_text_fitted(r, COBALT_FONT_HEADING,
+                                                 profile->display_name, w.text_left,
+                                                 wy, name_room, COBALT_COLOUR_TEXT);
       const int handle_x = w.text_left + name_w + m->pad_tile;
       if (profile->handle[0] &&
           handle_x + handle_w <= w.text_left + w.text_width) {
@@ -376,12 +383,15 @@ draw_header(cobalt_render *r, const cobalt_profile *profile,
    cobalt_avatar_draw(r, profile->avatar, profile->display_name,
                       profile->handle, left, y, avatar);
 
-   /* Name and handle beside the avatar; everything after clears it. */
+   /* Name and handle beside the avatar; everything after clears it. Both stop
+    * at the card's right edge, which on this layout is the only thing keeping
+    * a long name from running under the Follow control. */
    const int name_left = left + avatar + m->pad_tile / 2;
-   cobalt_draw_text(r, COBALT_FONT_HEADING, profile->display_name, name_left, y,
-                    COBALT_COLOUR_TEXT);
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, profile->handle, name_left,
-                    y + heading_h, COBALT_COLOUR_TEXT_DIM);
+   const int name_room = (rect->x + rect->w - m->pad_tile) - name_left;
+   cobalt_draw_text_fitted(r, COBALT_FONT_HEADING, profile->display_name,
+                           name_left, y, name_room, COBALT_COLOUR_TEXT);
+   cobalt_draw_text_fitted(r, COBALT_FONT_CAPTION, profile->handle, name_left,
+                           y + heading_h, name_room, COBALT_COLOUR_TEXT_DIM);
 
    const int beside = heading_h + caption_h;
    y += (avatar > beside) ? avatar : beside;
