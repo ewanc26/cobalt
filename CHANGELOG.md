@@ -29,6 +29,16 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Changed
 
+- Wolfram is pinned to v0.44.2. The host and console CI jobs check out the same tag, so development, emulator and release builds use one Wolfram version.
+
+- Every screen outside Home now names itself in the title band instead of leading with the Cobalt wordmark and version. Settings, Account, Feeds, Credits, Diagnostics, Set up and Edit profile use the same page-title header as Notifications, Messages and Profiles, with a short note for context (what Settings controls, how many feeds are saved, the account handle); the version stays in Diagnostics' build line. On both screens the page's own name is now the largest line in the band.
+
+- Home uses one four-column grid on both screens instead of a four-column TV grid and a two-column GamePad list. Every entry keeps the same position on either screen, Down and Up move a full row everywhere (the TV previously moved two entries), and the GamePad's tiles grow from 40 px strips to 64 px finger targets with the focused entry's hint beneath the grid.
+
+- Profiles show their tabs as a visible Posts / Replies / Media strip under the page title, plus Likes on your own profile. The active tab is marked with an accent underline as well as colour, the left and right shoulders cycle the strip, GamePad taps pick a tab directly, and the tab name is no longer repeated in the title note. The More menu keeps its tab command. On TV the header is now one horizontal band — avatar, then name, handle, bio and counts, with Follow at the right edge — instead of a 266 px stack that pushed every post off the screen. Snapshots cover the Posts, Replies and Media states on both displays.
+
+- Notifications group the way the official client groups them: adjacent likes or reposts about the same post, within 48 hours of each other, draw as one row ("Ewan Croft and 2 others liked your post") using the newest actor's avatar and the row's subject. The "N new" badge still counts notifications rather than rows, and follows, replies and different posts keep their own rows. Unit tests cover the window, subject and reason boundaries and repeated grouping.
+
 - Release tag checks call Wolfram's reusable release-check workflow, pinned to v0.44.1. Cobalt still reads `COBALT_VERSION` itself, but the tag/version/changelog, on-main and `CI gate` checks are now shared rather than a second implementation. ([wolfram#232](https://github.com/ewanc26/wolfram/pull/232))
 
 - Wolfram is pinned to v0.43.2. The follower and following lists are populated again, because the typed calls now read the arrays the endpoints send, and its public headers compile under `-Wpedantic -Werror` on Clang 16 and older. ([wolfram#226](https://github.com/ewanc26/wolfram/pull/226))
@@ -64,6 +74,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Fixed
 
+- Dynamic names and labels stay inside their rows. Post and quote authors, search and list rows, starter-pack members, menu items, saved-feed addresses and sign-in values now use one measured single-line fitter, which cuts at a UTF-8 boundary and counts its ellipsis in the width. A long display name no longer runs under a post's age or leaves its tile. Host tests, snapshots and the Wii U build pass; Cemu did not leave its boot pattern, so this was not re-checked there.
 - `tools/check-parity.sh` works on a Mac. Its state regex used `\b`, which is a GNU extension BSD `regexec` does not implement, so every cell in `docs/PARITY.md` failed on macOS while Linux CI stayed green — the check was silently only running in one place. It now matches a word end with a trailing group instead, and the selftest that proves it still catches a bad state word passes on both. ([#256](https://github.com/ewanc26/cobalt/pull/256))
 - A menu's rows on the GamePad are 44 pixels tall rather than 40, and their text is centred in the row instead of sitting at its top — both were just short of a fingertip, and the rows are tapped. The compose screen's confirm buttons are 44 too, up from 42. ([#256](https://github.com/ewanc26/cobalt/pull/256))
 - A conversation's reply has a field. The draft was drawn straight onto the background, so an empty one was a lone caret under the last message; it now gets the same rounded box the compose screen gives its text. ([#256](https://github.com/ewanc26/cobalt/pull/256))

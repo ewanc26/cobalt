@@ -145,6 +145,26 @@ void cobalt_draw_pill(cobalt_render *r, const char *key, const char *label, int 
 int cobalt_content_bottom(cobalt_render *r);
 
 /*
+ * Where a list of `count` rows should sit in `available` pixels of panel.
+ *
+ * Picks the height to draw each row at and returns the offset from the top of
+ * the area. A short list grows into the space (up to half again its natural
+ * row height) and centres what the cap leaves over; a list that already fills
+ * the panel keeps `natural` and returns 0, so it scrolls exactly as before.
+ * `gap` is the space between rows, and *row_h receives the height to use.
+ */
+int cobalt_list_fill(int available, int count, int gap, int natural, int *row_h);
+
+/*
+ * An empty state between `top` and `bottom`: a headline, a line or two of
+ * guidance, on a tile sized to the text and centred as a block. The guidance
+ * for empty states is to centre them and to say what to do next, rather than
+ * leaving a sentence pinned under the title. `detail` may be NULL or empty.
+ */
+void cobalt_draw_empty_state(cobalt_render *r, int top, int bottom,
+                             const char *headline, const char *detail);
+
+/*
  * A Wii U menu style tile: rounded, light, with a soft drop shadow and a top
  * sheen. `focus` is 0..1 and drives the highlight and lift (AGENTS.md §5 asks
  * for tiles that respond to focus rather than static flat cards).
@@ -229,6 +249,15 @@ int cobalt_draw_text_centred(cobalt_render *r, cobalt_font_id font, const char *
                              int x, int y, int width, SDL_Color colour);
 
 /*
+ * Draws one line of at most `max_width` pixels, trimming at a UTF-8 boundary
+ * and adding an ellipsis when it does not fit. For names and labels in fixed
+ * rows and tiles, where wrapping would collide with the next line. Returns the
+ * drawn width, or 0 when nothing fits.
+ */
+int cobalt_draw_text_fitted(cobalt_render *r, cobalt_font_id font, const char *utf8,
+                            int x, int y, int max_width, SDL_Color colour);
+
+/*
  * Word-wraps to `max_width` and draws up to `max_lines` lines, appending an
  * ellipsis if the text did not fit. Returns the height consumed.
  * Post text is UTF-8 and may contain any script; wrapping is byte-safe and
@@ -260,6 +289,13 @@ int cobalt_text_wrapped_lines(cobalt_render *r, cobalt_font_id font,
 /* Bottom edge of the blue title band, and where screen content may start. */
 int cobalt_header_height(cobalt_render *r);
 int cobalt_content_top(cobalt_render *r);
+
+/* The band's one line: `title` in the title face, with `note` in the caption
+ * face set after it on the same baseline. Every screen goes through this so
+ * the band and what it holds cannot drift apart. */
+void cobalt_draw_page_title(cobalt_render *r, const char *title, const char *note);
+void cobalt_draw_page_title_colour(cobalt_render *r, const char *title, const char *note,
+                                   SDL_Color note_colour);
 
 void cobalt_text_size(cobalt_render *r, cobalt_font_id font, const char *utf8,
                       int *out_w, int *out_h);

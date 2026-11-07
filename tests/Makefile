@@ -230,11 +230,13 @@ else
 endif
 
 #---------------------------------------------------------------------------------
-# End-to-end against Wolfram's mock PDS. Needs a host Wolfram build made with
-#   cmake -S ../wolfram -B ../scratch-wf -DWOLFRAM_BUILD_TEST_HTTPD=ON
-# (WOLFRAM_E2E_BUILD overrides the path) and libmicrohttpd.
+# End-to-end and snapshot runs against Wolfram's mock PDS. They use the same
+# host build the link check does — the checkout's own build-host directory:
+#   cmake -S ../wolfram -B ../wolfram/build-host -DWOLFRAM_BUILD_TEST_HTTPD=ON
+#   cmake --build ../wolfram/build-host -j8 --target wolfram
+# (E2E_BUILD overrides the path) and libmicrohttpd.
 #---------------------------------------------------------------------------------
-E2E_BUILD ?= $(WOLFRAM_ROOT)/../scratch-wf
+E2E_BUILD ?= $(WOLFRAM_ROOT)/build-host
 E2E_BIN   := $(OUT)/cobalt-e2e
 E2E_SOURCES := $(filter-out $(SRC)/main.c, $(SWEEP_SOURCES))
 MHD_LIBS  := $(shell pkg-config --libs libmicrohttpd 2>/dev/null || echo -L/opt/homebrew/lib -lmicrohttpd)

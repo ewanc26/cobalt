@@ -187,20 +187,6 @@ cobalt_signin_update(cobalt_signin *s, const cobalt_input *in)
 
 /* --- drawing --- */
 
-static void
-draw_header(cobalt_render *r, const char *title, const char *subtitle)
-{
-   const cobalt_metrics *m = cobalt_render_metrics(r);
-
-   cobalt_draw_text(r, COBALT_FONT_TITLE, title, m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_HEADER_TEXT);
-
-   const int title_h = cobalt_font_line_height(r, COBALT_FONT_TITLE);
-   SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
-                    m->pad_edge + title_h - m->line_gap, dim);
-}
-
 /* What a field shows when it has no value yet. */
 static const char *
 field_display(const cobalt_signin *s, int index, char *scratch, size_t scratch_size)
@@ -270,10 +256,10 @@ draw_editing(cobalt_signin *s, cobalt_render *r, cobalt_surface_id surface)
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int field = s->editing;
 
-   draw_header(r, FIELDS[field].label,
-               field == FIELD_PASSWORD
-                  ? "App password, not your account password"
-                  : "A / touch: type     B: backspace");
+   cobalt_draw_page_title(r, FIELDS[field].label,
+                          field == FIELD_PASSWORD
+                             ? "App password, not your account password"
+                             : "A / touch: type     B: backspace");
 
    /* Split play: the keys are on the GamePad, so the TV mirrors what is being
     * entered. The password is masked for the same reason it is on the pad —
@@ -297,8 +283,9 @@ draw_editing(cobalt_signin *s, cobalt_render *r, cobalt_surface_id surface)
    char shown[128];
    cobalt_keyboard_display_text(&s->kb, shown, sizeof(shown));
    const int text_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
-   cobalt_draw_text(r, COBALT_FONT_BODY, shown, value_rect.x + m->pad_tile,
-                    value_rect.y + (value_h - text_h) / 2, COBALT_COLOUR_TEXT);
+   cobalt_draw_text_fitted(r, COBALT_FONT_BODY, shown, value_rect.x + m->pad_tile,
+                           value_rect.y + (value_h - text_h) / 2,
+                           value_rect.w - 2 * m->pad_tile, COBALT_COLOUR_TEXT);
 
    SDL_Rect keys = {
       m->pad_edge,
@@ -315,7 +302,8 @@ draw_fields(cobalt_signin *s, cobalt_render *r, cobalt_surface_id surface)
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
-   draw_header(r, "Sign in", "Leave App password empty to use browser OAuth");
+   cobalt_draw_page_title(r, "Sign in",
+                          "Leave App password empty to use browser OAuth");
 
    const int top = cobalt_content_top(r);
    const int row_w = m->width - 2 * m->pad_edge;
@@ -360,10 +348,11 @@ draw_fields(cobalt_signin *s, cobalt_render *r, cobalt_surface_id surface)
          const char *raw = field_buffer(s, i, &capacity);
          const bool empty = (!raw || raw[0] == '\0');
 
-         cobalt_draw_text(r, COBALT_FONT_BODY, shown,
-                          row.x + m->pad_tile,
-                          row.y + m->pad_tile / 2 + label_h,
-                          empty ? COBALT_COLOUR_TEXT_DIM : COBALT_COLOUR_TEXT);
+         cobalt_draw_text_fitted(r, COBALT_FONT_BODY, shown,
+                                 row.x + m->pad_tile,
+                                 row.y + m->pad_tile / 2 + label_h,
+                                 row_w - 2 * m->pad_tile,
+                                 empty ? COBALT_COLOUR_TEXT_DIM : COBALT_COLOUR_TEXT);
       }
 
       if (touchable) {

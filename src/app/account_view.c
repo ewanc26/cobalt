@@ -89,7 +89,7 @@ void
 cobalt_app_draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   cobalt_app_draw_header(r, "Account");
+   cobalt_draw_page_title(r, "Account", cobalt_session_handle());
 
    const int top = cobalt_content_top(r);
    const int heading_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
@@ -131,12 +131,14 @@ cobalt_app_draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id sur
                                     panel.w - 2 * m->pad_tile, 1, colours[i]);
    }
 
-   char lang_label[48];
-   snprintf(lang_label, sizeof(lang_label), "Post language: %s",
-            cobalt_session_post_lang()[0] ? cobalt_session_post_lang() : "none");
    const char *ROW_LABEL[ACCOUNT_ROW_COUNT] = {
-      "", "Muted accounts", "Blocked accounts", lang_label, "Sign out",
+      "", "Muted accounts", "Blocked accounts", "Post language", "Sign out",
    };
+   /* The language is a value, not part of the label. Settings and Credits put
+    * the label on the left edge and its state on the right; this was the last
+    * menu in the app whose rows did not read from the left. */
+   const char *lang_value = cobalt_session_post_lang()[0]
+                               ? cobalt_session_post_lang() : "None";
    const int label_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
 
    int row_y = panel.y + panel.h + m->gap;
@@ -144,10 +146,19 @@ cobalt_app_draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id sur
       SDL_Rect row = { m->pad_edge, row_y, width, row_h };
       const bool focused = (app->account_selected == i);
       cobalt_draw_tile(r, &row, focused ? 1.0f : 0.0f);
-      cobalt_draw_text_centred(r, COBALT_FONT_HEADING, ROW_LABEL[i], row.x,
-                               row.y + (row_h - label_h) / 2, row.w,
-                               i == ACCOUNT_ROW_SIGN_OUT ? COBALT_COLOUR_ERROR
-                                                        : COBALT_COLOUR_TEXT);
+      cobalt_draw_text(r, COBALT_FONT_HEADING, ROW_LABEL[i],
+                       row.x + m->pad_tile, row.y + (row_h - label_h) / 2,
+                       i == ACCOUNT_ROW_SIGN_OUT ? COBALT_COLOUR_ERROR
+                                                 : COBALT_COLOUR_TEXT);
+
+      if (i == ACCOUNT_ROW_LANG) {
+         int value_w = 0;
+         cobalt_text_size(r, COBALT_FONT_HEADING, lang_value, &value_w, NULL);
+         cobalt_draw_text(r, COBALT_FONT_HEADING, lang_value,
+                          row.x + row.w - m->pad_tile - value_w,
+                          row.y + (row_h - label_h) / 2,
+                          COBALT_COLOUR_ACCENT_TEXT);
+      }
 
       if (surface == COBALT_SURFACE_DRC) {
          s_account_hit[i] = row;

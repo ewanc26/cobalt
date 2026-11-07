@@ -4,7 +4,10 @@
  * header band, and soft grey text. */
 SDL_Color COBALT_COLOUR_BG_TOP     = { 0xF2, 0xF5, 0xF6, 0xFF };
 SDL_Color COBALT_COLOUR_BG_BOTTOM  = { 0xDC, 0xE3, 0xE7, 0xFF };
-SDL_Color COBALT_COLOUR_BAND_TOP   = { 0x2F, 0x78, 0xD9, 0xFF };
+/* One step darker than the original 0x2F78D9: the caption-size note beside a
+ * page title is white on this colour, and 4.37:1 missed the 4.5:1 minimum for
+ * normal text. 0x2E74D3 measures 4.61:1 and is not distinguishable by eye. */
+SDL_Color COBALT_COLOUR_BAND_TOP   = { 0x2E, 0x74, 0xD3, 0xFF };
 SDL_Color COBALT_COLOUR_BAND_BOTTOM = { 0x0F, 0x4C, 0xB0, 0xFF };
 SDL_Color COBALT_COLOUR_TILE       = { 0xFF, 0xFF, 0xFF, 0xFF };
 SDL_Color COBALT_COLOUR_TILE_EDGE  = { 0xCF, 0xD8, 0xDC, 0xFF };
@@ -100,7 +103,7 @@ apply_palette(void)
    } else {
       COBALT_COLOUR_BG_TOP = (SDL_Color) { 0xF2, 0xF5, 0xF6, 0xFF };
       COBALT_COLOUR_BG_BOTTOM = (SDL_Color) { 0xDC, 0xE3, 0xE7, 0xFF };
-      COBALT_COLOUR_BAND_TOP = (SDL_Color) { 0x2F, 0x78, 0xD9, 0xFF };
+      COBALT_COLOUR_BAND_TOP = (SDL_Color) { 0x2E, 0x74, 0xD3, 0xFF };
       COBALT_COLOUR_BAND_BOTTOM = (SDL_Color) { 0x0F, 0x4C, 0xB0, 0xFF };
       COBALT_COLOUR_TILE = (SDL_Color) { 0xFF, 0xFF, 0xFF, 0xFF };
       COBALT_COLOUR_TILE_EDGE = (SDL_Color) { 0xCF, 0xD8, 0xDC, 0xFF };
@@ -155,6 +158,11 @@ cobalt_theme_generation(void)
  * TV metrics assume a living-room viewing distance: fewer, larger things.
  * The 28px body size is roughly the smallest that stays comfortable on a 720p
  * output at typical seating distance.
+ *
+ * The edge is 5% of the width (64 of 1280), the overscan-safe margin Android TV
+ * specifies as 48dp at its 960-wide reference layout, and the same 5% Fire TV
+ * asks apps to keep text and focus out of. At 48px (3.75%) a title or the first
+ * letter of a row sat inside the region an older set may crop.
  */
 static const cobalt_metrics TV_METRICS = {
    .width        = COBALT_TV_WIDTH,
@@ -163,7 +171,7 @@ static const cobalt_metrics TV_METRICS = {
    .font_heading = 34,
    .font_body    = 28,
    .font_caption = 22,
-   .pad_edge     = 48,
+   .pad_edge     = 64,
    .pad_tile     = 24,
    .gap          = 20,
    .tile_radius  = 16,

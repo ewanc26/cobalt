@@ -7,7 +7,7 @@ void
 cobalt_app_draw_diagnostics(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   cobalt_app_draw_header(r, "Diagnostics");
+   cobalt_draw_page_title(r, "Diagnostics", "Paths, network and libraries");
 
    /*
     * This screen exists because there is no emulator (AGENTS.md §10). It is

@@ -247,8 +247,10 @@ cobalt_popup_draw(cobalt_popup *p, cobalt_render *r, cobalt_surface_id surface)
          const int icon_w = cobalt_draw_text(
             r, COBALT_FONT_ICON, icon_for(p->items[i].kind), row.x + pad,
             text_y, i == p->selected ? COBALT_COLOUR_ACCENT : COBALT_COLOUR_TEXT_DIM);
-         cobalt_draw_text(r, COBALT_FONT_BODY, p->items[i].label,
-                          row.x + pad + icon_w + pad, text_y, COBALT_COLOUR_TEXT);
+         const int label_x = row.x + pad + icon_w + pad;
+         cobalt_draw_text_fitted(r, COBALT_FONT_BODY, p->items[i].label, label_x,
+                                 text_y, row.x + row.w - label_x,
+                                 COBALT_COLOUR_TEXT);
          if (touchable) {
             p->hit[i] = row;
             p->hit_valid = true;

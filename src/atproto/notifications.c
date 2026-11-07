@@ -80,6 +80,64 @@ cobalt_notification_subject_is_self(const char *reason)
           strcmp(reason, "quote") == 0 || strcmp(reason, "subscribed-post") == 0;
 }
 
+/* The reasons the official client groups. A reply always keeps its own row:
+ * two replies are two pieces of writing, not two copies of one event. Follows
+ * stay separate here as well, because follow-backs are meant to be distinct
+ * and the server does not say which is which. */
+static bool
+notification_groupable(const cobalt_notification *n)
+{
+   return strcmp(n->reason, "like") == 0 || strcmp(n->reason, "repost") == 0 ||
+          strcmp(n->reason, "like-via-repost") == 0 ||
+          strcmp(n->reason, "repost-via-repost") == 0;
+}
+
+/* Two days, the window the official client uses for one burst of activity. */
+#define GROUP_WINDOW_SECONDS (48 * 60 * 60)
+
+static bool
+notification_same_group(const cobalt_notification *a, const cobalt_notification *b)
+{
+   if (!notification_groupable(a) || strcmp(a->reason, b->reason) != 0) {
+      return false;
+   }
+   if (!a->subject_uri[0] || strcmp(a->subject_uri, b->subject_uri) != 0) {
+      return false;
+   }
+   if (a->posted_at <= 0 || b->posted_at <= 0) {
+      return false;
+   }
+   int64_t span = a->posted_at - b->posted_at;
+   if (span < 0) {
+      span = -span;
+   }
+   return span <= GROUP_WINDOW_SECONDS;
+}
+
+void
+cobalt_notifications_group(cobalt_notifications *list)
+{
+   if (!list || list->count < 2) {
+      return;
+   }
+
+   int write = 0;
+   for (int read = 0; read < list->count; read++) {
+      if (write > 0 &&
+          notification_same_group(&list->items[write - 1], &list->items[read])) {
+         cobalt_notification *into = &list->items[write - 1];
+         into->group_count += list->items[read].group_count;
+         into->unread = into->unread || list->items[read].unread;
+         continue;
+      }
+      if (write != read) {
+         list->items[write] = list->items[read];
+      }
+      write++;
+   }
+   list->count = write;
+}
+
 #ifdef COBALT_HAS_WOLFRAM
 
 int
@@ -122,6 +180,9 @@ cobalt_notifications_append_from_wolfram(
        * plain truncation could cut a multi-byte sequence into tofu. */
       cobalt_feed_copy_text(item->summary, sizeof(item->summary),
                             cobalt_notification_summary(src->reason));
+      snprintf(item->reason, sizeof(item->reason), "%s",
+               src->reason ? src->reason : "");
+      item->group_count = 1;
 
       /* A like has no words; a reply does. Both are normal. */
       wf_post_record rec;
@@ -137,6 +198,7 @@ cobalt_notifications_append_from_wolfram(
       if (created && wf_time_parse_rfc3339(created, &epoch) == WF_OK && now > 0) {
          wf_time_relative(epoch, now, item->age, sizeof(item->age));
       }
+      item->posted_at = epoch;
       wf_post_record_free(&rec);
 
       const char *subject = cobalt_notification_subject_is_self(src->reason)
@@ -168,6 +230,10 @@ cobalt_notifications_append_from_wolfram(
       out->cursor[0] = '\0';
       out->has_more = false;
    }
+
+   /* Merge after the cursor decision: grouping must not make a full window
+    * look pageable again. */
+   cobalt_notifications_group(out);
 
    return added;
 }

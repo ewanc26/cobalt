@@ -40,6 +40,13 @@ typedef struct {
 void cobalt_profile_view_init(cobalt_profile_view *view);
 void cobalt_profile_view_rewind(cobalt_profile_view *view);
 
+/*
+ * The tab `delta` steps from `current`, wrapping. Likes is skipped unless the
+ * profile is your own, so the cycle matches the visible strip. Exposed for the
+ * shoulder buttons and for a host test that does not need a session.
+ */
+int cobalt_profile_tab_step(int current, bool is_self, int delta);
+
 cobalt_profile_action cobalt_profile_view_update(cobalt_profile_view *view,
                                                  const cobalt_input *in);
 

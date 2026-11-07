@@ -138,28 +138,6 @@ cobalt_timeline_update_feed(cobalt_timeline *view, const cobalt_input *in,
 
 /* --- drawing --- */
 
-static void
-draw_empty(cobalt_render *r, const cobalt_metrics *m, int top,
-                const char *empty_headline, const char *empty_detail)
-{
-   const char *headline = cobalt_session_busy() ? "Loading..." : empty_headline;
-   const char *detail = cobalt_session_busy() ? "" : empty_detail;
-
-   SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge,
-                     m->font_body * 5 };
-   cobalt_draw_tile(r, &card, 0.0f);
-
-   cobalt_draw_text(r, COBALT_FONT_HEADING, headline, card.x + m->pad_tile,
-                    card.y + m->pad_tile, COBALT_COLOUR_TEXT);
-   if (detail[0]) {
-      cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, detail,
-                               card.x + m->pad_tile,
-                               card.y + m->pad_tile +
-                                  cobalt_font_line_height(r, COBALT_FONT_HEADING),
-                               card.w - 2 * m->pad_tile, 2, COBALT_COLOUR_TEXT_DIM);
-   }
-}
-
 void
 cobalt_timeline_draw_feed(cobalt_timeline *view, cobalt_render *r,
                           cobalt_surface_id surface, const cobalt_feed *feed,
@@ -175,8 +153,6 @@ cobalt_timeline_draw_feed(cobalt_timeline *view, cobalt_render *r,
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
    /* Header. */
-   cobalt_draw_text(r, COBALT_FONT_TITLE, title, m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_HEADER_TEXT);
    {
       char subtitle[96];
       if (cobalt_session_busy()) {
@@ -187,18 +163,19 @@ cobalt_timeline_draw_feed(cobalt_timeline *view, cobalt_render *r,
       } else {
          snprintf(subtitle, sizeof(subtitle), "%s", cobalt_session_handle());
       }
-      SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
-                       m->pad_edge + cobalt_font_line_height(r, COBALT_FONT_TITLE) -
-                          m->line_gap,
-                       dim);
+      cobalt_draw_page_title(r, title, subtitle);
    }
 
    const int top = cobalt_content_top(r);
-   const int bottom = m->height - m->pad_edge - 24;
+   /* Stop where the footer strip starts, so a card is never fitted under the
+    * hints and then painted over by them. */
+   const int bottom = cobalt_content_bottom(r);
 
    if (feed->count == 0) {
-      draw_empty(r, m, top, empty_headline, empty_detail);
+      const bool busy = cobalt_session_busy();
+      cobalt_draw_empty_state(r, top, bottom,
+                              busy ? "Loading..." : empty_headline,
+                              busy ? "" : empty_detail);
       cobalt_listnav_draw_begin(&view->nav, touchable);
       cobalt_listnav_draw_empty(&view->nav, touchable);
       return;

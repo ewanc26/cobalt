@@ -142,10 +142,11 @@ draw_member_row(cobalt_render *r, const cobalt_actor *actor,
       return;
    }
 
-   cobalt_draw_text(r, COBALT_FONT_BODY, actor->display_name, text_left,
-                    text_y, COBALT_COLOUR_TEXT);
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, actor->handle, text_left,
-                    text_y + name_h, COBALT_COLOUR_TEXT_DIM);
+   const int text_w = right - text_left;
+   cobalt_draw_text_fitted(r, COBALT_FONT_BODY, actor->display_name, text_left,
+                           text_y, text_w, COBALT_COLOUR_TEXT);
+   cobalt_draw_text_fitted(r, COBALT_FONT_CAPTION, actor->handle, text_left,
+                           text_y + name_h, text_w, COBALT_COLOUR_TEXT_DIM);
 }
 
 static void
@@ -158,10 +159,10 @@ draw_feed_row(cobalt_render *r, int index, const char *uri, const SDL_Rect *rect
    snprintf(label, sizeof(label), "Included feed %d", index + 1);
    cobalt_draw_text(r, COBALT_FONT_BODY, label, rect->x + m->pad_tile,
                     rect->y + m->pad_tile, COBALT_COLOUR_TEXT);
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, uri, rect->x + m->pad_tile,
-                    rect->y + m->pad_tile +
-                       cobalt_font_line_height(r, COBALT_FONT_BODY),
-                    COBALT_COLOUR_TEXT_DIM);
+   cobalt_draw_text_fitted(r, COBALT_FONT_CAPTION, uri, rect->x + m->pad_tile,
+                           rect->y + m->pad_tile +
+                              cobalt_font_line_height(r, COBALT_FONT_BODY),
+                           rect->w - 2 * m->pad_tile, COBALT_COLOUR_TEXT_DIM);
 }
 
 static int
@@ -170,21 +171,13 @@ draw_pack_header(cobalt_render *r, const cobalt_starter_pack *pack,
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int left = m->pad_edge;
-   const int right = m->width - m->pad_edge;
-   const int width = right - left;
+   const int width = m->width - 2 * m->pad_edge;
    const bool reader = cobalt_render_reader(r);
    int y = top;
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE,
-                    pack->name[0] ? pack->name : "Starter pack", left, y,
-                    COBALT_COLOUR_HEADER_TEXT);
-   y += cobalt_font_line_height(r, COBALT_FONT_TITLE);
-
-   if (pack->creator.handle[0]) {
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, pack->creator.handle, left, y,
-                       COBALT_COLOUR_TEXT_DIM);
-      y += cobalt_font_line_height(r, COBALT_FONT_CAPTION);
-   }
+   /* The name and creator belong in the title band, where every other screen
+    * puts its title; this block carries what the band has no room for. Drawing
+    * the name here in HEADER_TEXT was white on the light ground — 1.1:1. */
    if (reader && pack->description[0]) {
       cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, pack->description, left,
                                y, width, 2, COBALT_COLOUR_TEXT_DIM);
@@ -227,6 +220,8 @@ cobalt_starter_pack_view_draw(cobalt_starter_pack_view *view, cobalt_render *r,
    members = cobalt_session_starter_pack_members();
    m = cobalt_render_metrics(r);
    rows = cobalt_starter_pack_row_count(pack, members);
+   cobalt_draw_page_title(r, pack->name[0] ? pack->name : "Starter pack",
+                          pack->creator.handle[0] ? pack->creator.handle : NULL);
    top = cobalt_content_top(r);
    bottom = cobalt_content_bottom(r);
 
@@ -235,16 +230,11 @@ cobalt_starter_pack_view_draw(cobalt_starter_pack_view *view, cobalt_render *r,
    cobalt_listnav_draw_begin(&view->nav, touchable);
 
    if (rows == 0) {
-      SDL_Rect card = { m->pad_edge, y, m->width - 2 * m->pad_edge,
-                        m->font_body * 4 };
-      const char *message = cobalt_session_busy()
-                               ? "Loading starter pack..."
-                               : "This starter pack has no available members or feeds.";
-      cobalt_draw_tile(r, &card, 0.0f);
-      cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, message,
-                               card.x + m->pad_tile, card.y + m->pad_tile,
-                               card.w - 2 * m->pad_tile, 2,
-                               COBALT_COLOUR_TEXT);
+      const bool busy = cobalt_session_busy();
+      cobalt_draw_empty_state(r, y, bottom,
+                              busy ? "Loading starter pack..." : "Nothing to show",
+                              busy ? "" : "This pack has no available members "
+                                           "or feeds.");
       cobalt_listnav_draw_empty(&view->nav, touchable);
       return;
    }
