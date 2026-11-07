@@ -560,15 +560,57 @@ cobalt_header_height(cobalt_render *r)
       return 0;
    }
    const cobalt_metrics *m = r->m;
-   return m->pad_edge + TTF_FontLineSkip(r->fonts[COBALT_FONT_TITLE]) - m->line_gap +
-          TTF_FontLineSkip(r->fonts[COBALT_FONT_CAPTION]) + m->gap / 2 +
-          (m->width < 1000 ? 10 : 0);
+   /* One line of title type with a little air above and below. The band used
+    * to stack a caption under the title, which on the GamePad was a fifth of
+    * the panel and pushed the last row of the taller screens off the bottom.
+    * The screen's own note now sits beside the title, not under it. */
+   return m->pad_edge / 2 + TTF_FontLineSkip(r->fonts[COBALT_FONT_TITLE]) +
+          m->pad_edge / 4;
 }
 
 int
 cobalt_content_top(cobalt_render *r)
 {
    return cobalt_header_height(r) + r->m->gap;
+}
+
+void
+cobalt_draw_page_title_colour(cobalt_render *r, const char *title, const char *note,
+                               SDL_Color note_colour)
+{
+   if (!r || !title) {
+      return;
+   }
+
+   const cobalt_metrics *m = r->m;
+   const int title_h = cobalt_font_line_height(r, COBALT_FONT_TITLE);
+   const int band = cobalt_header_height(r);
+   /* Centred in the band so the single line of type sits in it rather than at
+    * the top edge with all the padding below. */
+   const int y = (band > title_h) ? (band - title_h) / 2 : m->pad_edge / 4;
+
+   cobalt_draw_text(r, COBALT_FONT_TITLE, title, m->pad_edge, y,
+                    COBALT_COLOUR_HEADER_TEXT);
+
+   if (!note || !note[0]) {
+      return;
+   }
+
+   int title_w = 0;
+   cobalt_text_size(r, COBALT_FONT_TITLE, title, &title_w, NULL);
+   const int note_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+   /* Bottom-aligned to the title's baseline: the two faces have different line
+    * heights, so matching their bottoms is what keeps them on one line. */
+   cobalt_draw_text(r, COBALT_FONT_CAPTION, note,
+                    m->pad_edge + title_w + m->pad_tile, y + title_h - note_h,
+                    note_colour);
+}
+
+void
+cobalt_draw_page_title(cobalt_render *r, const char *title, const char *note)
+{
+   cobalt_draw_page_title_colour(r, title, note,
+                                 (SDL_Color) { 0xFF, 0xFF, 0xFF, 0xFF });
 }
 
 /* One-pixel-wide ramp baked on first use, so the band is one draw call, not a
@@ -810,6 +852,96 @@ cobalt_content_bottom(cobalt_render *r)
 }
 
 int
+cobalt_list_fill(int available, int count, int gap, int natural, int *row_h)
+{
+   if (row_h) {
+      *row_h = natural;
+   }
+   if (count < 1 || natural < 1 || available < 1) {
+      return 0;
+   }
+
+   /* A list that fills the panel keeps its natural rows and scrolls; growing
+    * them would hide as many items as it showed. */
+   const int fit = (available + gap) / (natural + gap);
+   if (count > fit) {
+      return 0;
+   }
+
+   /* Otherwise share the panel between the rows, but by no more than half
+    * again their natural height: one conversation should read as a roomy row,
+    * not as a card the size of the screen. */
+   const int cap = natural + natural / 2;
+   int h = (available + gap) / count - gap;
+   if (h > cap) {
+      h = cap;
+   }
+   if (h < natural) {
+      h = natural;
+   }
+   if (row_h) {
+      *row_h = h;
+   }
+
+   /* Whatever the cap left unspent is split above and below, so a short list
+    * sits in the panel rather than against the title band. */
+   const int used = count * (h + gap) - gap;
+   const int slack = available - used;
+   return slack > 0 ? slack / 2 : 0;
+}
+
+void
+cobalt_draw_empty_state(cobalt_render *r, int top, int bottom,
+                        const char *headline, const char *detail)
+{
+   if (!r || !headline || !headline[0]) {
+      return;
+   }
+   const cobalt_metrics *m = r->m;
+   const int width = m->width - 2 * m->pad_edge;
+   const int text_w = width - 2 * m->pad_tile;
+   if (text_w <= 0 || bottom <= top) {
+      return;
+   }
+
+   /* Size the tile to what it says rather than to the panel: an empty state
+    * with a paragraph of blank card under one line reads as a rendering bug.
+    * Two lines of guidance is the most that fits at this width anyway. */
+   const int head_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
+   const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+   int lines = 0;
+   if (detail && detail[0]) {
+      lines = cobalt_text_wrapped_lines(r, COBALT_FONT_CAPTION, detail, text_w);
+      if (lines > 2) {
+         lines = 2;
+      }
+   }
+   int card_h = 2 * m->pad_tile + head_h;
+   if (lines > 0) {
+      card_h += m->line_gap + lines * caption_h;
+   }
+
+   /* Centred as a block, which is what the guidance for empty states asks
+    * for: a message floating under the title reads as content that failed
+    * to load. */
+   int y = top + (bottom - top - card_h) / 2;
+   if (y < top) {
+      y = top;
+   }
+
+   const SDL_Rect card = { m->pad_edge, y, width, card_h };
+   cobalt_draw_tile(r, &card, 0.0f);
+   cobalt_draw_text(r, COBALT_FONT_HEADING, headline, card.x + m->pad_tile,
+                    card.y + m->pad_tile, COBALT_COLOUR_TEXT);
+   if (lines > 0) {
+      cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, detail,
+                               card.x + m->pad_tile,
+                               card.y + m->pad_tile + head_h + m->line_gap,
+                               text_w, lines, COBALT_COLOUR_TEXT_DIM);
+   }
+}
+
+int
 cobalt_pill_width(cobalt_render *r, const char *key, const char *label)
 {
    const int pill_h = cobalt_pill_height(r);
@@ -929,6 +1061,13 @@ cobalt_draw_hints(cobalt_render *r, const char *spec)
       if (colon) {
          *colon = '\0';
          snprintf(h->key, sizeof h->key, "%s", seg);
+         /* "A / touch" is two ways to do one thing, and only the GamePad has
+          * the second. The TV keeps the button name alone, so its footer never
+          * names a surface it cannot use. */
+         if (r->surface == COBALT_SURFACE_TV) {
+            char *touch = strstr(h->key, " / ");
+            if (touch) *touch = '\0';
+         }
          snprintf(h->label, sizeof h->label, "%s", colon + 2);
          cobalt_text_size(r, font, h->key, &h->kw, NULL);
       } else {
@@ -1307,27 +1446,52 @@ cobalt_draw_typing_panel(cobalt_render *r, const SDL_Rect *area,
    }
 
    const cobalt_metrics *m = r->m;
-   cobalt_draw_tile(r, area, 0.0f);
 
    const int left = area->x + m->pad_tile;
    const int width = area->w - 2 * m->pad_tile;
-   int y = area->y + m->pad_tile;
    if (width <= 0) {
       return;
    }
 
+   const int caption_h = (caption && caption[0])
+                            ? cobalt_font_line_height(r, COBALT_FONT_CAPTION)
+                            : 0;
+   const int line = cobalt_font_line_height(r, COBALT_FONT_BODY) + m->line_gap;
+   const int max_lines = line > 0
+                            ? (area->h - 2 * m->pad_tile - caption_h) / line
+                            : 0;
+   if (max_lines < 1) {
+      return;
+   }
+
+   /* Size the panel to what it has to say and centre it, the same way the
+    * shared empty state does: two lines of text should not leave a blank
+    * card from the title band down to the footer. A long draft grows the
+    * panel until it fills the room, then wraps within the lines that fit. */
+   int lines = 1;
+   if (text && text[0]) {
+      lines = cobalt_text_wrapped_lines(r, COBALT_FONT_BODY, text, width);
+      if (lines < 1) {
+         lines = 1;
+      }
+      if (lines > max_lines) {
+         lines = max_lines;
+      }
+   }
+
+   SDL_Rect panel = *area;
+   panel.h = 2 * m->pad_tile + caption_h + lines * line;
+   if (panel.h > area->h) {
+      panel.h = area->h;
+   }
+   panel.y = area->y + (area->h - panel.h) / 2;
+   cobalt_draw_tile(r, &panel, 0.0f);
+
+   int y = panel.y + m->pad_tile;
    if (caption && caption[0]) {
       cobalt_draw_text(r, COBALT_FONT_CAPTION, caption, left, y,
                        COBALT_COLOUR_TEXT_DIM);
-      y += cobalt_font_line_height(r, COBALT_FONT_CAPTION);
-   }
-
-   const int line = cobalt_font_line_height(r, COBALT_FONT_BODY) + m->line_gap;
-   /* Lines that fit under the caption, counted from the body's own metrics so
-    * a panel with no room draws nothing rather than spilling off its tile. */
-   const int lines = line > 0 ? (area->y + area->h - m->pad_tile - y) / line : 0;
-   if (lines < 1) {
-      return;
+      y += caption_h;
    }
 
    if (text && text[0]) {
@@ -1897,6 +2061,56 @@ utf8_prev(const char *s, size_t pos)
       i--;
    }
    return i;
+}
+
+int
+cobalt_draw_text_fitted(cobalt_render *r, cobalt_font_id font_id, const char *utf8,
+                        int x, int y, int max_width, SDL_Color colour)
+{
+   char fitted[512];
+   size_t len;
+   size_t cut;
+   int width = 0;
+   int ellipsis_w = 0;
+   bool overlong;
+
+   if (!r || !utf8 || !utf8[0] || max_width <= 0) {
+      return 0;
+   }
+
+   len = strlen(utf8);
+   overlong = len >= sizeof(fitted) - 4;
+   if (overlong) {
+      len = sizeof(fitted) - 4;
+      while (len > 0 && ((unsigned char) utf8[len] & 0xC0) == 0x80) {
+         len--;
+      }
+   }
+   memcpy(fitted, utf8, len);
+   fitted[len] = '\0';
+
+   cobalt_text_size(r, font_id, fitted, &width, NULL);
+   if (!overlong && width <= max_width) {
+      return cobalt_draw_text(r, font_id, fitted, x, y, colour);
+   }
+
+   cobalt_text_size(r, font_id, "...", &ellipsis_w, NULL);
+   if (ellipsis_w > max_width) {
+      return 0;
+   }
+
+   cut = len;
+   while (cut > 0) {
+      cut = utf8_prev(fitted, cut);
+      fitted[cut] = '\0';
+      cobalt_text_size(r, font_id, fitted, &width, NULL);
+      if (width + ellipsis_w <= max_width) {
+         break;
+      }
+   }
+
+   memcpy(fitted + cut, "...", 4);
+   return cobalt_draw_text(r, font_id, fitted, x, y, colour);
 }
 
 /* Draw one wrapped line whose first byte is at `base` in the whole text,

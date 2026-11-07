@@ -146,9 +146,9 @@ draw_quote_card(cobalt_render *r, const cobalt_post *post, int x, int y,
    }
 
    int ty = y + pad;
-   const int name_w = cobalt_draw_text(r, COBALT_FONT_CAPTION,
-                                       post->quote.author, tx, ty,
-                                       COBALT_COLOUR_TEXT);
+   const int name_w = cobalt_draw_text_fitted(r, COBALT_FONT_CAPTION,
+                                              post->quote.author, tx, ty, tw,
+                                              COBALT_COLOUR_TEXT);
    const int hx = tx + name_w + pad / 2;
    int hw = 0;
    cobalt_text_size(r, COBALT_FONT_CAPTION, post->quote.handle, &hw, NULL);
@@ -189,7 +189,10 @@ cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines
       text_lines = 1;
    }
 
-   int h = m->pad_tile;
+   /* A remote card is one line of text over a footer, so it takes half a tile
+    * of padding at each end: at full tile padding three cards miss the 480-line
+    * panel by a few pixels, which is a whole post off the screen. */
+   int h = compact ? m->pad_tile / 2 : m->pad_tile;
    if (post->reposted_by[0] || post->pinned) {
       h += caption_h;
    }
@@ -210,7 +213,11 @@ cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines
        post->viewer_repost[0]) {
       h += caption_h;
    }
-   h += m->pad_tile;
+   /* The remote is a list to scan, not read: its cards are one line of text
+    * and a footer, and at full tile padding the third card on a 480-line panel
+    * misses the cut by a handful of pixels. A half tile under the last row is
+    * enough air, and it puts a third post on the screen. */
+   h += compact ? m->pad_tile / 2 : m->pad_tile;
 
    /* The avatar column can be taller than the text beside it — a one-line post
     * with no engagement is shorter than the picture next to it — so the card
@@ -742,7 +749,7 @@ cobalt_postcard_draw_scrolled(cobalt_render *r, const cobalt_post *post,
    if (right - left <= 0) {
       return;
    }
-   int y = rect->y + m->pad_tile;
+   int y = rect->y + (compact ? m->pad_tile / 2 : m->pad_tile);
 
    if (post->reposted_by[0] || post->pinned) {
       char banner[COBALT_POST_NAME_MAX + 16];
@@ -764,16 +771,21 @@ cobalt_postcard_draw_scrolled(cobalt_render *r, const cobalt_post *post,
 
    /* Author row. The age is right-aligned, so it is measured and placed from
     * the right edge rather than flowed after the handle, whose width varies
-    * wildly with the display name. */
-   const int name_w = cobalt_draw_text(r, COBALT_FONT_BODY, post->author,
-                                       text_left, y, COBALT_COLOUR_TEXT);
-
+    * wildly with the display name. The name is fitted first so a long one
+    * cannot overrun the age or the card's right edge. */
    int age_w = 0;
    if (post->age[0]) {
       cobalt_text_size(r, COBALT_FONT_CAPTION, post->age, &age_w, NULL);
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, post->age, right - age_w,
-                       y + (body_h - caption_h) / 2, COBALT_COLOUR_TEXT_DIM);
       age_w += m->pad_tile;
+   }
+   const int name_w = cobalt_draw_text_fitted(r, COBALT_FONT_BODY, post->author,
+                                              text_left, y, text_width - age_w,
+                                              COBALT_COLOUR_TEXT);
+   if (post->age[0]) {
+      int drawn_age_w = 0;
+      cobalt_text_size(r, COBALT_FONT_CAPTION, post->age, &drawn_age_w, NULL);
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, post->age, right - drawn_age_w,
+                       y + (body_h - caption_h) / 2, COBALT_COLOUR_TEXT_DIM);
    }
 
    /* The handle fills whatever is left between the name and the age, and is

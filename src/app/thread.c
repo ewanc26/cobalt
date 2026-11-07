@@ -224,8 +224,6 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
    const int detail_x = m->pad_edge + list_w + m->gap;
    const int detail_w = m->width - m->pad_edge - detail_x;
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE, "Thread", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_HEADER_TEXT);
    {
       char subtitle[96];
       if (cobalt_session_busy()) {
@@ -237,12 +235,7 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
       } else {
          snprintf(subtitle, sizeof(subtitle), "Nothing to show");
       }
-      SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
-                       m->pad_edge +
-                          cobalt_font_line_height(r, COBALT_FONT_TITLE) -
-                          m->line_gap,
-                       dim);
+      cobalt_draw_page_title(r, "Thread", subtitle);
    }
 
    const int top = cobalt_content_top(r);
@@ -251,14 +244,11 @@ cobalt_thread_view_draw(cobalt_thread_view *view, cobalt_render *r,
    cobalt_listnav_draw_begin(&view->nav, touchable);
 
    if (thread->count == 0) {
-      SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge,
-                        m->font_body * 4 };
-      cobalt_draw_tile(r, &card, 0.0f);
-      cobalt_draw_text(r, COBALT_FONT_BODY,
-                       cobalt_session_busy() ? "Loading the conversation..."
-                                             : "This conversation is unavailable.",
-                       card.x + m->pad_tile, card.y + m->pad_tile,
-                       COBALT_COLOUR_TEXT);
+      const bool busy = cobalt_session_busy();
+      cobalt_draw_empty_state(r, top, bottom,
+                              busy ? "Loading the conversation..."
+                                   : "This conversation is unavailable",
+                              "");
       cobalt_listnav_draw_empty(&view->nav, touchable);
       return;
    }

@@ -152,11 +152,12 @@ draw_row(cobalt_render *r, const cobalt_actor *actor, const SDL_Rect *rect,
    const int handle_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
    const int side = ROW_AVATAR_SIDE(m);
    const int text_y = y + (side - (name_h + handle_h)) / 2;
+   const int text_w = right - text_left;
 
-   cobalt_draw_text(r, COBALT_FONT_BODY, actor->display_name, text_left,
-                    text_y, COBALT_COLOUR_TEXT);
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, actor->handle, text_left,
-                    text_y + name_h, COBALT_COLOUR_TEXT_DIM);
+   cobalt_draw_text_fitted(r, COBALT_FONT_BODY, actor->display_name, text_left,
+                           text_y, text_w, COBALT_COLOUR_TEXT);
+   cobalt_draw_text_fitted(r, COBALT_FONT_CAPTION, actor->handle, text_left,
+                           text_y + name_h, text_w, COBALT_COLOUR_TEXT_DIM);
 }
 
 static void
@@ -216,9 +217,9 @@ draw_editing(cobalt_search_view *view, cobalt_render *r,
    const char *shown = empty ? (view->posts ? "Search posts..."
                                             : "Search accounts...")
                              : display;
-   cobalt_draw_text(r, COBALT_FONT_BODY, shown, box.x + m->pad_tile,
-                    box.y + m->pad_tile,
-                    empty ? COBALT_COLOUR_TEXT_DIM : COBALT_COLOUR_TEXT);
+   cobalt_draw_text_fitted(r, COBALT_FONT_BODY, shown, box.x + m->pad_tile,
+                           box.y + m->pad_tile, box.w - 2 * m->pad_tile,
+                           empty ? COBALT_COLOUR_TEXT_DIM : COBALT_COLOUR_TEXT);
 
    SDL_Rect keys = { m->pad_edge, box.y + box.h + m->gap,
                      m->width - 2 * m->pad_edge,
@@ -240,14 +241,10 @@ draw_browsing(cobalt_search_view *view, cobalt_render *r,
    cobalt_listnav_draw_begin(&view->nav, touchable);
 
    if (results->count == 0) {
-      SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge,
-                        m->font_body * 4 };
-      cobalt_draw_tile(r, &card, 0.0f);
-      cobalt_draw_text(r, COBALT_FONT_BODY,
-                       cobalt_session_busy() ? "Searching..."
-                                             : "No accounts found.",
-                       card.x + m->pad_tile, card.y + m->pad_tile,
-                       COBALT_COLOUR_TEXT);
+      const bool busy = cobalt_session_busy();
+      cobalt_draw_empty_state(r, top, bottom,
+                              busy ? "Searching..." : "No accounts found",
+                              busy ? "" : "Try another name or handle.");
       cobalt_listnav_draw_empty(&view->nav, touchable);
       return;
    }
@@ -281,9 +278,7 @@ cobalt_search_view_draw(cobalt_search_view *view, cobalt_render *r,
       return;
    }
 
-   const cobalt_metrics *m = cobalt_render_metrics(r);
-   cobalt_draw_text(r, COBALT_FONT_TITLE, "Search", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_HEADER_TEXT);
+   cobalt_draw_page_title(r, "Search", NULL);
 
    if (view->browsing) {
       draw_browsing(view, r, surface);

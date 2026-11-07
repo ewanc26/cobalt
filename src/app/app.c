@@ -916,8 +916,13 @@ draw_back_pill(cobalt_render *r, cobalt_surface_id surface)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int w = cobalt_pill_width(r, "B", "Back");
-   SDL_Rect pill = { m->width - m->pad_edge - w, m->pad_edge, w,
-                     cobalt_pill_height(r) };
+   const int pill_h = cobalt_pill_height(r);
+   const int band = cobalt_header_height(r);
+   /* Centred in the band: a fingertip-sized pill is taller than the one-line
+    * band is at its top edge, and hanging it off m->pad_edge would push it out
+    * over the content. */
+   const int y = (band > pill_h) ? (band - pill_h) / 2 : m->pad_edge / 4;
+   SDL_Rect pill = { m->width - m->pad_edge - w, y, w, pill_h };
    cobalt_draw_pill(r, "B", "Back", pill.x, pill.y);
    if (surface == COBALT_SURFACE_DRC) {
       s_back_hit = pill;
@@ -1598,26 +1603,12 @@ cobalt_app_update(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
 void
 cobalt_app_draw_header(cobalt_render *r, const char *subtitle)
 {
-   const cobalt_metrics *m = cobalt_render_metrics(r);
+   char note[128];
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE, "Cobalt", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_HEADER_TEXT);
-
-   int title_h = cobalt_font_line_height(r, COBALT_FONT_TITLE);
-   {
-      char ver[24];
-      int title_w = 0;
-      snprintf(ver, sizeof ver, "v%s", cobalt_version());
-      cobalt_text_size(r, COBALT_FONT_TITLE, "Cobalt", &title_w, NULL);
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, ver,
-                       m->pad_edge + title_w + m->pad_tile,
-                       m->pad_edge + title_h -
-                          cobalt_font_line_height(r, COBALT_FONT_CAPTION) * 3 / 2,
-                       (SDL_Color) { 0xFF, 0xFF, 0xFF, 0xB0 });
-   }
-   SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
-                    m->pad_edge + title_h - m->line_gap, dim);
+   snprintf(note, sizeof note, "v%s  \xC2\xB7  %s", cobalt_version(),
+            subtitle ? subtitle : "");
+   cobalt_draw_page_title_colour(r, "Cobalt", note,
+                                 (SDL_Color) { 0xFF, 0xFF, 0xFF, 0xB0 });
 }
 
 /* The one-line status the home and account screens share. */
@@ -1684,7 +1675,7 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
    switch (app->screen) {
       case COBALT_SCREEN_ENTROPY:
-         cobalt_app_draw_header(r, "Set up");
+         cobalt_draw_page_title(r, "Set up", "Build this console's seed");
          cobalt_entropy_view_draw(&app->entropy, r, surface, cobalt_content_top(r));
          break;
 
@@ -1730,7 +1721,7 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
          break;
 
       case COBALT_SCREEN_PROFILE_EDIT:
-         cobalt_app_draw_header(r, "Edit profile");
+         cobalt_draw_page_title(r, "Edit profile", "Display name and bio");
          cobalt_profile_edit_draw(&app->profile_edit, r, surface);
          break;
 

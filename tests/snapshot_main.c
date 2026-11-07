@@ -258,13 +258,8 @@ static cobalt_input g_in;
 static const char *g_dir;
 
 static void
-frame(cobalt_button press)
+draw_frame(void)
 {
-   uint32_t now = SDL_GetTicks();
-   cobalt_input_begin_frame(&g_in, now);
-   if (press != COBALT_BTN_COUNT) g_in.pressed[press] = true;
-   cobalt_input_end_frame(&g_in, now);
-   cobalt_app_update(g_app, &g_in, now);
    cobalt_render_begin(g_tv);
    cobalt_app_draw(g_app, g_tv, COBALT_SURFACE_TV);
    cobalt_render_end(g_tv);
@@ -274,14 +269,49 @@ frame(cobalt_button press)
 }
 
 static void
+frame(cobalt_button press)
+{
+   uint32_t now = SDL_GetTicks();
+   cobalt_input_begin_frame(&g_in, now);
+   if (press != COBALT_BTN_COUNT) g_in.pressed[press] = true;
+   cobalt_input_end_frame(&g_in, now);
+   cobalt_app_update(g_app, &g_in, now);
+   draw_frame();
+}
+
+static void
 settle(int n)
 {
    for (int i = 0; i < n; i++) { frame(COBALT_BTN_COUNT); SDL_Delay(16); }
 }
 
+/* Pumps frames until `cond` is true, or `timeout_ms` of wall clock passes.
+ *
+ * Scene transitions wait on a network job, and a fixed settle raced it: when
+ * the mock PDS answered slower than the settle, the check below read the old
+ * screen and every later key went to the wrong one, turning one slow fetch
+ * into dozens of failures. Waiting for the state the next check needs removes
+ * that race; a timeout names the condition that never became true. */
+#define WAIT_UNTIL(cond, timeout_ms) do {                                      \
+   const uint32_t wait_deadline = SDL_GetTicks() + (uint32_t) (timeout_ms);    \
+   int wait_frames = 0;                                                        \
+   while (!(cond) && SDL_GetTicks() < wait_deadline) {                         \
+      frame(COBALT_BTN_COUNT);                                                 \
+      SDL_Delay(16);                                                           \
+      wait_frames++;                                                           \
+   }                                                                           \
+   if (!(cond)) {                                                              \
+      printf("wait: %s still false after %d ms (%d frames)\n", #cond,          \
+             (int) (timeout_ms), wait_frames);                                 \
+   }                                                                           \
+} while (0)
+
 static void
 shoot(const char *scene)
 {
+   /* WAIT_UNTIL can change state without drawing again, so read the current
+    * state here rather than the last frame that happened to be presented. */
+   draw_frame();
    cobalt_render *rs[2] = { g_tv, g_drc };
    const char *names[2] = { "tv", "drc" };
    for (int i = 0; i < 2; i++) {
@@ -353,6 +383,19 @@ tap_rect_centre(const SDL_Rect *r)
    tap(r->x + r->w / 2, r->y + r->h / 2);
 }
 
+/* Taps the Cancel key of an open keyboard, using the rects recorded while it
+ * was drawn. Cancel is the key before Emoji on both function rows, so this
+ * works for a handle field and a multiline reply alike. Fixed coordinates
+ * drifted as soon as the typing panel was sized to its content. */
+static void
+tap_keyboard_cancel(const cobalt_keyboard *kb)
+{
+   CHECK(kb->hit_valid && kb->hit_count >= 2);
+   if (kb->hit_valid && kb->hit_count >= 2) {
+      tap_rect_centre(&kb->hit[kb->hit_count - 2]);
+   }
+}
+
 /* A finger pressed at (x, from), dragged to (x, to) and lifted. The touch state
  * lives across frames, which is what the screens read to drag a list. */
 static void
@@ -388,10 +431,12 @@ open_home_item(int idx)
 {
    go_home();
    {
-      /* The GamePad list steps one row at a time, TV or not. */
+      /* Both screens use the same four-column grid, so up and down move one
+       * whole row and left and right move within it. */
       const int start = cobalt_app_home_selection(g_app);
       frame(COBALT_BTN_DOWN); settle(2);
-      CHECK(cobalt_app_home_selection(g_app) == (start + 1) % COBALT_HOME_MENU_COUNT);
+      CHECK(cobalt_app_home_selection(g_app) ==
+            (start + COBALT_HOME_COLS) % COBALT_HOME_MENU_COUNT);
       frame(COBALT_BTN_UP); settle(2);
       CHECK(cobalt_app_home_selection(g_app) == start);
    }
@@ -401,8 +446,25 @@ open_home_item(int idx)
    }
    if (cobalt_app_home_selection(g_app) != idx) printf("nav: wanted %d got %d\n", idx, cobalt_app_home_selection(g_app));
    CHECK(cobalt_app_home_selection(g_app) == idx);
-   settle(3);
+   /* Most entries open a screen; "TV display" changes the display mode and
+    * stays on Home, so either change means the press was accepted. */
+   const cobalt_display_mode display_before = cobalt_app_display(g_app);
    frame(COBALT_BTN_CONFIRM);
+   {
+      const uint32_t deadline = SDL_GetTicks() + 5000;
+      while (cobalt_app_screen(g_app) == COBALT_SCREEN_HOME &&
+             cobalt_app_display(g_app) == display_before &&
+             SDL_GetTicks() < deadline) {
+         frame(COBALT_BTN_COUNT);
+         SDL_Delay(16);
+      }
+      if (cobalt_app_screen(g_app) == COBALT_SCREEN_HOME &&
+          cobalt_app_display(g_app) == display_before) {
+         printf("open_home_item(%d): nothing opened (selection %d, state %d, popup %p)\n",
+                idx, cobalt_app_home_selection(g_app), (int) cobalt_session_state(),
+                (const void *) cobalt_app_popup(g_app));
+      }
+   }
 }
 
 
@@ -441,7 +503,7 @@ open_timeline(void)
 {
    go_home();
    open_home_item(0);
-   settle(40);
+   WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE, 5000);
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
    CHECK(popup() == NULL);
 }
@@ -615,7 +677,8 @@ main(int argc, char **argv)
       printf("sign-in did not finish within 10 s against the mock PDS (state %d)\n",
              (int) cobalt_session_state());
    CHECK(cobalt_session_state() == COBALT_AUTH_SIGNED_IN);
-   settle(30);
+   WAIT_UNTIL(cobalt_session_feed()->count >= 11 && !cobalt_session_busy(), 5000);
+   settle(2);
    shoot("timeline");
    /* The gallery and enhanced external views are separate embed shapes, not
     * extra fields on the images/link shapes the older parser reads. */
@@ -687,7 +750,8 @@ main(int argc, char **argv)
       int sel0, scr0, sel1, scr1;
       cobalt_app_timeline_position(g_app, &sel0, &scr0);
       CHECK(sel0 > 0);
-      frame(COBALT_BTN_CONFIRM); settle(30);
+      frame(COBALT_BTN_CONFIRM);
+      WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_THREAD, 5000);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_THREAD);
       frame(COBALT_BTN_BACK); settle(10);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
@@ -695,7 +759,8 @@ main(int argc, char **argv)
       CHECK(sel1 == sel0 && scr1 == scr0);
       /* And through the More menu to a profile and back. */
       frame(COBALT_BTN_ALT_Y); settle(5);
-      frame(COBALT_BTN_CONFIRM); settle(30);
+      frame(COBALT_BTN_CONFIRM);
+      WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE, 5000);
       frame(COBALT_BTN_BACK); settle(10);
       cobalt_app_timeline_position(g_app, &sel1, &scr1);
       printf("timeline position %d/%d -> %d/%d, screen %d\n", sel0, scr0, sel1, scr1,
@@ -706,7 +771,8 @@ main(int argc, char **argv)
    settle(20);
 
    frame(COBALT_BTN_CONFIRM);
-   settle(30);
+   WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_THREAD, 5000);
+   settle(2);
    shoot("thread");
    /* The thread's More menu offers the conversation mute, chosen from the
     * root rather than the reply the cursor is on. */
@@ -743,7 +809,7 @@ main(int argc, char **argv)
       CHECK(p != NULL && p->open && p->hit_valid);
       CHECK(p->hit[0].w > 0 && p->hit[0].h > 0);
       tap_rect_centre(&p->hit[0]);
-      settle(40);
+      WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE, 5000);
       CHECK(cobalt_app_popup(g_app) == NULL);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE);
       /* The profile's More menu carries what X, Y and + used to do (cobalt#109). */
@@ -796,11 +862,13 @@ main(int argc, char **argv)
       CHECK(prof >= 0);
       if (prof >= 0) {
          popup_select(prof);
-         frame(COBALT_BTN_CONFIRM); settle(40);
+         frame(COBALT_BTN_CONFIRM);
+         WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE, 5000);
       }
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE);
       frame(COBALT_BTN_DOWN); settle(5);
-      frame(COBALT_BTN_CONFIRM); settle(40);
+      frame(COBALT_BTN_CONFIRM);
+      WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_THREAD, 5000);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_THREAD);
       frame(COBALT_BTN_BACK); settle(10);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE);
@@ -883,7 +951,8 @@ main(int argc, char **argv)
    {
       int sel0, sel;
       select_timeline(0);
-      frame(COBALT_BTN_CONFIRM); settle(30);
+      frame(COBALT_BTN_CONFIRM);
+      WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_THREAD, 5000);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_THREAD);
       settle(5);
       const int tmax = g_app->thread.detail_max;
@@ -997,11 +1066,26 @@ main(int argc, char **argv)
       const int prof = popup_index(COBALT_POPUP_PROFILE);
       CHECK(prof >= 0);
       popup_select(prof);
-      frame(COBALT_BTN_CONFIRM); settle(40);
+      frame(COBALT_BTN_CONFIRM);
+      WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE, 5000);
       CHECK(popup() == NULL);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_PROFILE);
    }
    shoot("profile");
+
+   /* The profile's tabs are a visible strip: R steps Posts -> Replies ->
+    * Media, each switch fetching the tab and rewinding the cursor. The mock
+    * serves the same posts for every filter, so the strip is what is checked. */
+   {
+      const int before = cobalt_session_profile_tab();
+      frame(COBALT_BTN_SHOULDER_R);
+      WAIT_UNTIL(cobalt_session_profile_tab() != before && !cobalt_session_busy(), 5000);
+      shoot("profile-replies");
+      frame(COBALT_BTN_SHOULDER_R);
+      WAIT_UNTIL(cobalt_session_profile_tab() == WF_PROFILE_TAB_MEDIA &&
+                 !cobalt_session_busy(), 5000);
+      shoot("profile-media");
+   }
 
    /* The profile editor on the host, with the write not yet sent. */
    {
@@ -1048,7 +1132,7 @@ main(int argc, char **argv)
    }
 
    open_home_item(7);
-   settle(40);
+   WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_NOTIFICATIONS, 5000);
    shoot("notifications");
 
    /* Y opens the More menu here as it does on the timeline (cobalt#109). */
@@ -1086,22 +1170,27 @@ main(int argc, char **argv)
 
    /* The DM inbox is read-only: the screen opens and says what it can do. */
    open_home_item(8);
-   settle(40);
+   /* The inbox fetch starts when the screen opens. X and Enter are refused
+    * while it runs, so wait for it to finish before driving the list. */
+   WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_MESSAGES &&
+              !cobalt_session_busy() &&
+              cobalt_session_chat_inbox()->count > 0, 5000);
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_MESSAGES);
    shoot("messages");
    /* X starts a conversation: the keyboard takes the list's place. */
    frame(COBALT_BTN_ALT_X);
    settle(5);
    shoot("messages-start");
-   /* Cancel, on the keyboard's function row: the GamePad's keys are 44 tall
-    * with a 6-pixel gap, so that row runs 383..427 in a keyboard starting at
-    * 183. Leaving the keyboard is how the test gets back to the list it opens
-    * from — an empty target does not leave it, by design. */
-   tap(670, 405);
-   settle(5);
+   /* Cancel, on the keyboard's function row. The rect comes from the last
+    * draw, so it follows the content-sized panel. Leaving the keyboard is how
+    * the test gets back to the list it opens from — an empty target does not
+    * leave it, by design. */
+   tap_keyboard_cancel(&g_app->messages.start.kb);
+   WAIT_UNTIL(!g_app->messages.start.editing, 1000);
+   settle(2);
    /* Opening the conversation fetches its messages and shows them as bubbles. */
    frame(COBALT_BTN_CONFIRM);
-   settle(40);
+   WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_CHAT_THREAD, 5000);
    CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_CHAT_THREAD);
    shoot("chat-thread");
    /* Dragging the conversation goes back through it, as Up does: a finger
@@ -1123,10 +1212,10 @@ main(int argc, char **argv)
    frame(COBALT_BTN_CONFIRM);
    settle(5);
    shoot("chat-reply");
-   /* Cancel on the reply keyboard, which sits against the bottom edge rather
-    * than under a text box: its function row runs 436..480. */
-   tap(696, 458);
-   settle(5);
+   /* Cancel on the reply keyboard, from the rect its last draw recorded. */
+   tap_keyboard_cancel(&g_app->chat_view.kb);
+   WAIT_UNTIL(!g_app->chat_view.replying, 1000);
+   settle(2);
 
    frame(COBALT_BTN_BACK);
    settle(10);
@@ -1256,8 +1345,9 @@ main(int argc, char **argv)
    frame(COBALT_BTN_CONFIRM);
    settle(5);
    open_home_item(5);
-   settle(10);
-   settle(30);
+   WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_FEEDS &&
+              !cobalt_session_busy() &&
+              cobalt_session_saved_feeds()->count == 2, 5000);
    CHECK(cobalt_session_saved_feeds()->count == 2);
    CHECK(strcmp(cobalt_session_saved_feeds()->feeds[0].label, "Cat Pics") == 0);
    CHECK(strcmp(cobalt_session_saved_feeds()->feeds[1].label, "poetry") == 0);
@@ -1285,7 +1375,9 @@ main(int argc, char **argv)
    frame(COBALT_BTN_BACK);
    settle(10);
    open_home_item(6);
-   settle(40);
+   WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_LISTS &&
+              !cobalt_session_busy(), 5000);
+   settle(2);
    shoot("lists");
 
    /* Tapping the header's Back pill on the GamePad leaves the screen. */
@@ -1297,7 +1389,9 @@ main(int argc, char **argv)
 
    /* Go back in for the inline editor and member actions. */
    open_home_item(6);
-   settle(40);
+   WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_LISTS &&
+              !cobalt_session_busy(), 5000);
+   settle(2);
    frame(COBALT_BTN_ALT_Y);
    settle(5);
    shoot("lists-edit");
@@ -1445,28 +1539,6 @@ main(int argc, char **argv)
          settle(10);
          CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_TIMELINE);
       }
-   }
-
-   /* The GamePad's Home list is fourteen rows at six visible, so the bottom
-    * half is only reachable by dragging: it moves a row per 44-pixel row of
-    * travel. */
-   {
-      go_home();
-      settle(4);
-      const int before = cobalt_app_home_selection(g_app);
-      int want = before + 2;
-      if (want > HOME_MENU_COUNT - 1) want = HOME_MENU_COUNT - 1;
-
-      drag_to(300, 320, 320 - 2 * 44);
-      settle(3);
-      if (cobalt_app_home_selection(g_app) != want) {
-         printf("home drag: wanted %d got %d\n", want, cobalt_app_home_selection(g_app));
-      }
-      CHECK(cobalt_app_home_selection(g_app) == want);
-
-      drag_to(300, 120, 120 + 44);
-      settle(3);
-      CHECK(cobalt_app_home_selection(g_app) == want - 1);
    }
 
    /* Split play gives each screen a job, and the roles follow the display
@@ -1711,9 +1783,12 @@ main(int argc, char **argv)
 
       open_home_item(8);
       settle(40);
+      WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_MESSAGES &&
+                 !cobalt_session_busy() &&
+                 cobalt_session_chat_inbox()->count > 0, 5000);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_MESSAGES);
       frame(COBALT_BTN_CONFIRM);
-      settle(40);
+      WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_CHAT_THREAD, 5000);
       CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_CHAT_THREAD);
       CHECK((read_pixel(g_tv, 2, 200) & 0x00FFFFFFu) == 0);
       shoot("high-contrast-chat");

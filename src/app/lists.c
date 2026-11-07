@@ -409,10 +409,11 @@ draw_actor_row(cobalt_render *r, const cobalt_actor *actor,
 
    const int left = rect->x + m->pad_tile;
    const int right = rect->x + rect->w - m->pad_tile;
-   const int y = rect->y + m->pad_tile;
+   const int side = ROW_AVATAR_SIDE(m);
+   const int y = rect->y + (rect->h - side) / 2;
 
    cobalt_avatar_draw(r, actor->avatar, actor->display_name, actor->handle,
-                      left, y, ROW_AVATAR_SIDE(m));
+                      left, y, side);
    const int text_left = left + ROW_AVATAR_SIDE(m) + ROW_AVATAR_GAP(m);
    if (right - text_left <= 0) {
       return;
@@ -420,13 +421,13 @@ draw_actor_row(cobalt_render *r, const cobalt_actor *actor,
 
    const int name_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
    const int handle_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
-   const int side = ROW_AVATAR_SIDE(m);
    const int text_y = y + (side - (name_h + handle_h)) / 2;
+   const int text_w = right - text_left;
 
-   cobalt_draw_text(r, COBALT_FONT_BODY, actor->display_name, text_left,
-                    text_y, COBALT_COLOUR_TEXT);
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, actor->handle, text_left,
-                    text_y + name_h, COBALT_COLOUR_TEXT_DIM);
+   cobalt_draw_text_fitted(r, COBALT_FONT_BODY, actor->display_name, text_left,
+                           text_y, text_w, COBALT_COLOUR_TEXT);
+   cobalt_draw_text_fitted(r, COBALT_FONT_CAPTION, actor->handle, text_left,
+                           text_y + name_h, text_w, COBALT_COLOUR_TEXT_DIM);
 }
 
 static void
@@ -437,26 +438,26 @@ draw_list_row(cobalt_render *r, const cobalt_list_summary *list,
 
    const int left = rect->x + m->pad_tile;
    const int right = rect->x + rect->w - m->pad_tile;
-   const int y = rect->y + m->pad_tile;
+   const int side = ROW_AVATAR_SIDE(m);
+   const int y = rect->y + (rect->h - side) / 2;
 
-   cobalt_avatar_draw(r, list->avatar, list->name, list->name, left, y,
-                      ROW_AVATAR_SIDE(m));
+   cobalt_avatar_draw(r, list->avatar, list->name, list->name, left, y, side);
    const int text_left = left + ROW_AVATAR_SIDE(m) + ROW_AVATAR_GAP(m);
    if (right - text_left <= 0) {
       return;
    }
 
    const int name_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
-   const int side = ROW_AVATAR_SIDE(m);
    const bool has_desc = list->description[0] != '\0';
    const int desc_h = has_desc ? cobalt_font_line_height(r, COBALT_FONT_CAPTION) : 0;
    const int text_y = y + (side - (name_h + desc_h)) / 2;
+   const int text_w = right - text_left;
 
-   cobalt_draw_text(r, COBALT_FONT_BODY, list->name, text_left, text_y,
-                    COBALT_COLOUR_TEXT);
+   cobalt_draw_text_fitted(r, COBALT_FONT_BODY, list->name, text_left, text_y,
+                           text_w, COBALT_COLOUR_TEXT);
    if (has_desc) {
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, list->description, text_left,
-                       text_y + name_h, COBALT_COLOUR_TEXT_DIM);
+      cobalt_draw_text_fitted(r, COBALT_FONT_CAPTION, list->description, text_left,
+                              text_y + name_h, text_w, COBALT_COLOUR_TEXT_DIM);
    }
 }
 
@@ -483,9 +484,9 @@ draw_editor(cobalt_lists_view *view, cobalt_render *r,
    const int width = m->width - 2 * m->pad_edge;
    const int label_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE,
-                    view->creating ? "New list" : "Edit list", m->pad_edge,
-                    m->pad_edge, COBALT_COLOUR_HEADER_TEXT);
+   cobalt_draw_page_title(r, view->creating ? "New list" : "Edit list",
+                          view->creating ? "Name it, then add people"
+                                         : "Name and description");
 
    if (view->keyboard_active) {
       const bool purpose = view->edit_field == 2;
@@ -553,8 +554,7 @@ draw_add_member(cobalt_lists_view *view, cobalt_render *r,
    const int width = m->width - 2 * m->pad_edge;
    const int label_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE, "Add member", m->pad_edge,
-                    m->pad_edge, COBALT_COLOUR_HEADER_TEXT);
+   cobalt_draw_page_title(r, "Add member", "Handle or DID");
 
    SDL_Rect field = { m->pad_edge, top, width,
                       m->pad_tile + label_h +
@@ -586,8 +586,7 @@ draw_list_of_lists(cobalt_lists_view *view, cobalt_render *r,
    const cobalt_list_summary_list *lists = cobalt_session_lists();
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE, "Your lists", m->pad_edge,
-                    m->pad_edge, COBALT_COLOUR_HEADER_TEXT);
+   cobalt_draw_page_title(r, "Your lists", NULL);
 
    const int top = cobalt_content_top(r);
    const int bottom = cobalt_content_bottom(r);
@@ -595,21 +594,31 @@ draw_list_of_lists(cobalt_lists_view *view, cobalt_render *r,
    cobalt_listnav_draw_begin(&view->nav, touchable);
 
    if (lists->count == 0) {
-      SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge,
-                        m->font_body * 4 };
-      cobalt_draw_tile(r, &card, 0.0f);
-      cobalt_draw_text(r, COBALT_FONT_BODY,
-                       cobalt_session_busy() ? "Loading..."
-                                             : "You haven't made any lists yet.",
-                       card.x + m->pad_tile, card.y + m->pad_tile,
-                       COBALT_COLOUR_TEXT);
+      const bool busy = cobalt_session_busy();
+      cobalt_draw_empty_state(r, top, bottom,
+                              busy ? "Loading..." : "No lists yet",
+                              busy ? "" : "Lists keep the accounts you follow "
+                                           "together. Press X to make one.");
       cobalt_listnav_draw_empty(&view->nav, touchable);
       draw_hint_line(view, r, "X: create   B: back");
       return;
    }
 
-   const int h = row_height(m);
+   const int gap = m->gap / 2;
+   int h = row_height(m);
    int y = top;
+   /* On the GamePad one list would leave most of the panel blank under it, so
+    * the rows grow into that space. The TV keeps its rows under the title:
+    * there is room for the list to run, and a single card centred on a large
+    * screen reads as a stray panel rather than a roomy row. */
+   if (surface == COBALT_SURFACE_DRC) {
+      int rows = lists->count - view->nav.scroll;
+      const int fit = (bottom - top + gap) / (h + gap);
+      if (rows > fit) {
+         rows = fit > 0 ? fit : 1;
+      }
+      y += cobalt_list_fill(bottom - top, rows, gap, h, &h);
+   }
    int last_fitted = view->nav.scroll;
 
    for (int i = view->nav.scroll; i < lists->count; i++) {
@@ -623,7 +632,7 @@ draw_list_of_lists(cobalt_lists_view *view, cobalt_render *r,
       cobalt_listnav_draw_add(&view->nav, touchable, &rect, i);
 
       last_fitted = i;
-      y += h + m->gap / 2;
+      y += h + gap;
    }
 
    cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);
@@ -641,8 +650,7 @@ draw_members(cobalt_lists_view *view, cobalt_render *r,
    const cobalt_actor_list *members = cobalt_session_list_members();
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE, view->open_name, m->pad_edge,
-                    m->pad_edge, COBALT_COLOUR_HEADER_TEXT);
+   cobalt_draw_page_title(r, view->open_name, NULL);
 
    const int top = cobalt_content_top(r);
    const int bottom = cobalt_content_bottom(r);
@@ -650,21 +658,26 @@ draw_members(cobalt_lists_view *view, cobalt_render *r,
    cobalt_listnav_draw_begin(&view->nav, touchable);
 
    if (members->count == 0) {
-      SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge,
-                        m->font_body * 4 };
-      cobalt_draw_tile(r, &card, 0.0f);
-      cobalt_draw_text(r, COBALT_FONT_BODY,
-                       cobalt_session_busy() ? "Loading..."
-                                             : "This list has no members.",
-                       card.x + m->pad_tile, card.y + m->pad_tile,
-                       COBALT_COLOUR_TEXT);
+      const bool busy = cobalt_session_busy();
+      cobalt_draw_empty_state(r, top, bottom,
+                              busy ? "Loading..." : "No members yet",
+                              busy ? "" : "Press Y to add accounts to this list.");
       cobalt_listnav_draw_empty(&view->nav, touchable);
       draw_hint_line(view, r, "Y: add member   B: back");
       return;
    }
 
-   const int h = row_height(m);
+   const int gap = m->gap / 2;
+   int h = row_height(m);
    int y = top;
+   if (surface == COBALT_SURFACE_DRC) {
+      int rows = members->count - view->nav.scroll;
+      const int fit = (bottom - top + gap) / (h + gap);
+      if (rows > fit) {
+         rows = fit > 0 ? fit : 1;
+      }
+      y += cobalt_list_fill(bottom - top, rows, gap, h, &h);
+   }
    int last_fitted = view->nav.scroll;
 
    for (int i = view->nav.scroll; i < members->count; i++) {
@@ -678,7 +691,7 @@ draw_members(cobalt_lists_view *view, cobalt_render *r,
       cobalt_listnav_draw_add(&view->nav, touchable, &rect, i);
 
       last_fitted = i;
-      y += h + m->gap / 2;
+      y += h + gap;
    }
 
    cobalt_listnav_draw_end(&view->nav, touchable, last_fitted);

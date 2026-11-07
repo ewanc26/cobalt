@@ -15,6 +15,11 @@
 /* Row 0 is the header card; posts start at 1. */
 #define HEADER_ROW 0
 
+/* Tab pills recorded by the last GamePad draw, and only on the GamePad: the TV
+ * has no touch. Indexed by the tab enum. */
+static SDL_Rect s_tab_hit[WF_PROFILE_TAB_COUNT];
+static bool s_tab_hit_valid;
+
 void
 cobalt_profile_view_init(cobalt_profile_view *view)
 {
@@ -32,6 +37,24 @@ cobalt_profile_view_rewind(cobalt_profile_view *view)
       return;
    }
    cobalt_listnav_rewind(&view->nav);
+}
+
+int
+cobalt_profile_tab_step(int current, bool is_self, int delta)
+{
+   const int count = is_self ? WF_PROFILE_TAB_COUNT
+                             : WF_PROFILE_TAB_COUNT - 1;   /* no Likes */
+   if (count <= 0) {
+      return WF_PROFILE_TAB_POSTS;
+   }
+   if (current < 0 || current >= count) {
+      current = WF_PROFILE_TAB_POSTS;
+   }
+   int next = (current + delta) % count;
+   if (next < 0) {
+      next += count;
+   }
+   return next;
 }
 
 const cobalt_post *
@@ -71,8 +94,40 @@ cobalt_profile_view_update(cobalt_profile_view *view, const cobalt_input *in)
       return COBALT_PROFILE_VIEW_STAY;
    }
 
-   /* Followers, following, the tab and, on a post, the post's own actions live
-    * in the More menu, the same Y as the timeline and thread (cobalt#109). */
+   /* Shoulders cycle the visible tabs, so changing one does not require the
+    * More menu. The strip is the primary control; this is the same action on
+    * a controller, where there is no pointer. */
+   if (cobalt_input_pressed(in, COBALT_BTN_SHOULDER_L) ||
+       cobalt_input_pressed(in, COBALT_BTN_SHOULDER_R)) {
+      const int delta = cobalt_input_pressed(in, COBALT_BTN_SHOULDER_R) ? 1 : -1;
+      const int next = cobalt_profile_tab_step(cobalt_session_profile_tab(),
+                                               profile->is_self, delta);
+      if (next != cobalt_session_profile_tab() &&
+          cobalt_session_begin_profile_tab(next)) {
+         cobalt_profile_view_rewind(view);
+      }
+      return COBALT_PROFILE_VIEW_STAY;
+   }
+
+   /* Touch: the strip's rects come from the last GamePad draw. Likes is not
+    * drawn on someone else's profile, and its slot stays empty there. */
+   if (s_tab_hit_valid && in->touch_ended) {
+      for (int tab = 0; tab < WF_PROFILE_TAB_COUNT; tab++) {
+         if (tab == WF_PROFILE_TAB_LIKES && !profile->is_self) {
+            continue;
+         }
+         if (cobalt_input_tapped(in, &s_tab_hit[tab])) {
+            if (tab != cobalt_session_profile_tab() &&
+                cobalt_session_begin_profile_tab(tab)) {
+               cobalt_profile_view_rewind(view);
+            }
+            return COBALT_PROFILE_VIEW_STAY;
+         }
+      }
+   }
+
+   /* Followers, following and, on a post, the post's own actions live in the
+    * More menu, the same Y as the timeline and thread (cobalt#109). */
    if (profile->loaded && cobalt_input_pressed(in, COBALT_BTN_ALT_Y)) {
       return COBALT_PROFILE_VIEW_MENU;
    }
@@ -147,35 +202,107 @@ header_avatar_side(cobalt_render *r, const cobalt_metrics *m)
           cobalt_font_line_height(r, COBALT_FONT_CAPTION);
 }
 
+/*
+ * A wide (TV) header puts the bio and the counts beside the avatar and the
+ * follow button at the right edge, instead of stacking everything below the
+ * name. On a 16:9 screen the stacked card was 266px tall and left the right
+ * half empty — tall enough that not one post fitted under it. The same words
+ * beside the avatar are a 150px card and the first post comes back.
+ *
+ * Shared by header_height and draw_header so the reserved box and the drawing
+ * cannot disagree.
+ */
+typedef struct {
+   int avatar;
+   int text_left;
+   int text_width;
+   int text_h;
+   int bio_lines;
+   int button_w;
+} wide_header;
+
+static wide_header
+wide_header_measure(cobalt_render *r, const cobalt_profile *profile,
+                    const cobalt_metrics *m)
+{
+   wide_header w = { 0 };
+   const int card_w = m->width - 2 * m->pad_edge;
+   const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+   const int heading_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
+
+   w.avatar = header_avatar_side(r, m);
+   w.text_left = m->pad_edge + m->pad_tile + w.avatar + m->pad_tile / 2;
+   int right = m->pad_edge + card_w - m->pad_tile;
+
+   if (!profile->is_self) {
+      const char *label = profile->viewer_following[0] ? "Following" : "Follow";
+      int label_w = 0;
+      cobalt_text_size(r, COBALT_FONT_BODY, label, &label_w, NULL);
+      w.button_w = label_w + 2 * m->pad_tile;
+      if (w.button_w > card_w / 3) {
+         w.button_w = card_w / 3;
+      }
+      right -= w.button_w + m->gap;
+   }
+
+   w.text_width = right - w.text_left;
+   if (w.text_width < 0) {
+      w.text_width = 0;
+   }
+
+   /* Height follows the bio's actual wrap, up to the two lines the design
+    * allows; a one-line bio must not reserve a second line it never draws. */
+   if (profile->description[0] && w.text_width > 0) {
+      w.bio_lines = cobalt_text_wrapped_lines(r, COBALT_FONT_CAPTION,
+                                              profile->description,
+                                              w.text_width);
+      if (w.bio_lines > 2) {
+         w.bio_lines = 2;
+      }
+   }
+
+   w.text_h = heading_h + w.bio_lines * (caption_h + m->line_gap) + caption_h;
+   return w;
+}
+
+/* The counts, with mute/block appended on someone else's profile: a remote
+ * has no separate status line, so Left and Right must change something the
+ * person holding it can read. */
+static void
+format_counts_line(const cobalt_profile *profile, char *out, size_t size)
+{
+   snprintf(out, size, "%s \xC2\xB7 %s", profile->counts, profile->post_count);
+   if (profile->is_self) {
+      return;
+   }
+   const bool muted = profile->viewer_muted;
+   const bool blocking = profile->viewer_blocking[0] != '\0';
+   if (!muted && !blocking) {
+      return;
+   }
+   const size_t used = strlen(out);
+   if (used + 24 < size) {
+      snprintf(out + used, size - used, " \xC2\xB7 %s%s%s",
+               muted ? "Muted" : "", (muted && blocking) ? " / " : "",
+               blocking ? "Blocked" : "");
+   }
+}
+
 static int
 header_height(cobalt_render *r, const cobalt_profile *profile,
               const cobalt_metrics *m)
 {
    const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
    const int heading_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
-   const bool compact = compact_header(r);
 
-   int h = m->pad_tile + heading_h + caption_h;   /* name, handle */
-
-   /* The name and handle sit beside the avatar; anything below it clears the
-    * whole column, so the header grows when the avatar is the taller of the
-    * two rather than letting the circle overrun the bio. */
-   const int beside = heading_h + caption_h;
-   const int avatar = header_avatar_side(r, m);
-   if (avatar > beside) {
-      h += avatar - beside;
+   if (compact_header(r)) {
+      /* Handle, name and counts; the bio and big avatar stay on the TV. */
+      return 2 * m->pad_tile + heading_h + 2 * caption_h;
    }
 
-   if (profile->description[0] && !compact) {
-      h += 2 * (caption_h + m->line_gap);
-   }
-   h += caption_h;                                /* counts */
-   if (!profile->is_self && !compact) {
-      h += m->font_body * 2 + m->gap;             /* follow button */
-      h += caption_h + m->gap / 2;                /* mute/block status line */
-   }
-   h += m->pad_tile;
-   return h;
+   const wide_header w = wide_header_measure(r, profile, m);
+   const int inner = w.text_h > w.avatar ? w.text_h : w.avatar;
+   return 2 * m->pad_tile + inner;
 }
 
 static void
@@ -187,7 +314,62 @@ draw_header(cobalt_render *r, const cobalt_profile *profile,
    const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
    const int heading_h = cobalt_font_line_height(r, COBALT_FONT_HEADING);
    const int left = rect->x + m->pad_tile;
-   const int width = rect->w - 2 * m->pad_tile;
+
+   if (!compact_header(r)) {
+      const wide_header w = wide_header_measure(r, profile, m);
+      const int inner = w.text_h > w.avatar ? w.text_h : w.avatar;
+      const int avatar_y = rect->y + (rect->h - w.avatar) / 2;
+      cobalt_avatar_draw(r, profile->avatar, profile->display_name,
+                         profile->handle, left, avatar_y, w.avatar);
+
+      int wy = rect->y + m->pad_tile + (inner - w.text_h) / 2;
+      const int name_w = cobalt_draw_text(r, COBALT_FONT_HEADING,
+                                          profile->display_name, w.text_left, wy,
+                                          COBALT_COLOUR_TEXT);
+      int handle_w = 0;
+      cobalt_text_size(r, COBALT_FONT_CAPTION, profile->handle, &handle_w, NULL);
+      const int handle_x = w.text_left + name_w + m->pad_tile;
+      if (profile->handle[0] &&
+          handle_x + handle_w <= w.text_left + w.text_width) {
+         cobalt_draw_text(r, COBALT_FONT_CAPTION, profile->handle, handle_x,
+                          wy + heading_h - caption_h,
+                          COBALT_COLOUR_TEXT_DIM);
+      }
+      wy += heading_h;
+
+      if (w.bio_lines > 0) {
+         cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION,
+                                  profile->description, w.text_left, wy,
+                                  w.text_width, w.bio_lines,
+                                  COBALT_COLOUR_TEXT);
+         wy += w.bio_lines * (caption_h + m->line_gap);
+      }
+
+      char line[COBALT_POST_META_MAX + 48];
+      format_counts_line(profile, line, sizeof(line));
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, line, w.text_left, wy,
+                       COBALT_COLOUR_TEXT_DIM);
+
+      /* Follow sits at the right edge, centred on the card: the far end of a
+       * wide header is otherwise empty, and reaching it is a pointer action,
+       * not a list row. */
+      if (!profile->is_self) {
+         const bool following = profile->viewer_following[0] != '\0';
+         SDL_Rect button = { rect->x + rect->w - m->pad_tile - w.button_w,
+                             rect->y + (rect->h - m->font_body * 2) / 2,
+                             w.button_w, m->font_body * 2 };
+         cobalt_draw_tile(r, &button, focused ? 1.0f : 0.0f);
+         const int label_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
+         cobalt_draw_text_centred(r, COBALT_FONT_BODY,
+                                  following ? "Following" : "Follow",
+                                  button.x,
+                                  button.y + (button.h - label_h) / 2, button.w,
+                                  following ? COBALT_COLOUR_TEXT_DIM
+                                            : COBALT_COLOUR_ACCENT_TEXT);
+      }
+      return;
+   }
+
    int y = rect->y + m->pad_tile;
 
    const int avatar = header_avatar_side(r, m);
@@ -204,60 +386,52 @@ draw_header(cobalt_render *r, const cobalt_profile *profile,
    const int beside = heading_h + caption_h;
    y += (avatar > beside) ? avatar : beside;
 
-   const bool compact = compact_header(r);
-   if (profile->description[0] && !compact) {
-      cobalt_draw_text_wrapped(r, COBALT_FONT_CAPTION, profile->description,
-                               left, y, width, 2, COBALT_COLOUR_TEXT);
-      y += 2 * (caption_h + m->line_gap);
-   }
-
    char line[COBALT_POST_META_MAX + 48];
-   snprintf(line, sizeof(line), "%s \xC2\xB7 %s", profile->counts,
-            profile->post_count);
-   /* A remote has no separate status line, so mute and block ride along with
-    * the counts: otherwise pressing Left or Right on the pad changes nothing
-    * the person holding it can see. */
-   const bool muted = profile->viewer_muted;
-   const bool blocking = profile->viewer_blocking[0] != '\0';
-   if (compact && !profile->is_self && (muted || blocking)) {
-      const size_t used = strlen(line);
-      if (used + 24 < sizeof(line)) {
-         snprintf(line + used, sizeof(line) - used, " \xC2\xB7 %s%s%s",
-                  muted ? "Muted" : "", (muted && blocking) ? " / " : "",
-                  blocking ? "Blocked" : "");
-      }
-   }
+   format_counts_line(profile, line, sizeof(line));
    cobalt_draw_text(r, COBALT_FONT_CAPTION, line, left, y, COBALT_COLOUR_TEXT_DIM);
-   y += caption_h;
+}
 
-   if (!profile->is_self && !compact) {
-      const bool following = profile->viewer_following[0] != '\0';
-      SDL_Rect button = { left, y + m->gap / 2, width / 2, m->font_body * 2 };
-      cobalt_draw_tile(r, &button, focused ? 1.0f : 0.0f);
+/* The profile's tabs, as the app's pill strip. The active tab is marked with
+ * an accent underline rather than colour alone: the position survives a
+ * colour-blind eye and the high-contrast palette, and it keeps every label at
+ * full text contrast. Returns the strip's height. */
+static int
+draw_tab_strip(cobalt_render *r, const cobalt_metrics *m, int y, bool touchable)
+{
+   const int pill_h = cobalt_pill_height(r);
+   const int gap = m->gap / 2;
+   const int active = cobalt_session_profile_tab();
+   const bool is_self = cobalt_session_profile()->is_self;
+   int x = m->pad_edge;
 
-      const int label_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
-      cobalt_draw_text_centred(r, COBALT_FONT_BODY,
-                               following ? "Following" : "Follow", button.x,
-                               button.y + (button.h - label_h) / 2, button.w,
-                               following ? COBALT_COLOUR_TEXT_DIM
-                                         : COBALT_COLOUR_ACCENT_TEXT);
-      y += button.h + m->gap;
-
-      /* Mute/block have no dedicated buttons — Left/Right on this row,
-       * exactly like a post row's like/repost — so the only thing drawn here
-       * is the current state, and only when it says something (an unmuted,
-       * unblocked account, the common case, gets nothing to read). */
-      if (muted || blocking) {
-         char status[48];
-         if (muted && blocking) {
-            snprintf(status, sizeof(status), "Muted \xC2\xB7 Blocked");
-         } else {
-            snprintf(status, sizeof(status), "%s", muted ? "Muted" : "Blocked");
-         }
-         cobalt_draw_text(r, COBALT_FONT_CAPTION, status, left, y,
-                          COBALT_COLOUR_ACCENT_TEXT);
-      }
+   if (touchable) {
+      memset(s_tab_hit, 0, sizeof(s_tab_hit));
    }
+
+   for (int tab = 0; tab < WF_PROFILE_TAB_COUNT; tab++) {
+      if (tab == WF_PROFILE_TAB_LIKES && !is_self) {
+         continue;
+      }
+      const char *name = wf_profile_tab_name(tab);
+      const int w = cobalt_pill_width(r, NULL, name);
+      cobalt_draw_pill(r, NULL, name, x, y);
+      if (tab == active) {
+         SDL_Rect line = { x + pill_h / 4, y + pill_h - 3,
+                           w - pill_h / 2, 3 };
+         if (line.w > 0) {
+            cobalt_fill_rect(r, &line, COBALT_COLOUR_ACCENT);
+         }
+      }
+      if (touchable) {
+         s_tab_hit[tab] = (SDL_Rect){ x, y, w, pill_h };
+      }
+      x += w + gap;
+   }
+
+   if (touchable) {
+      s_tab_hit_valid = true;
+   }
+   return pill_h;
 }
 
 void
@@ -273,48 +447,40 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
    const cobalt_feed *feed = cobalt_session_author_feed();
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE, "Profile", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_HEADER_TEXT);
    {
-      SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
-      /* The tab is part of the screen's identity, not a button, so it belongs
-       * here with the handle rather than as a pill in the footer. */
+      /* The handle identifies the screen; the active tab has its own visible
+       * strip below the title. */
       char subtitle[96];
       if (cobalt_session_busy()) {
          snprintf(subtitle, sizeof(subtitle), "Loading...");
       } else {
-         snprintf(subtitle, sizeof(subtitle), "%s%s%s", profile->handle,
-                  profile->handle[0] ? "  \xC2\xB7  " : "",
-                  wf_profile_tab_name(cobalt_session_profile_tab()));
+         snprintf(subtitle, sizeof(subtitle), "%s", profile->handle);
       }
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle,
-                       m->pad_edge,
-                       m->pad_edge +
-                          cobalt_font_line_height(r, COBALT_FONT_TITLE) -
-                          m->line_gap,
-                       dim);
+      cobalt_draw_page_title(r, "Profile", subtitle);
    }
 
    const int top = cobalt_content_top(r);
    const int bottom = cobalt_content_bottom(r);
+   /* The tabs are pinned above the scrolling header, as on the other clients:
+    * they are how the screen is steered, so they must not scroll away with
+    * the card they filter. */
+   const int tabs_h = draw_tab_strip(r, m, top, touchable);
+   const int list_top = top + tabs_h + m->gap / 2;
 
    cobalt_listnav_draw_begin(&view->nav, touchable);
 
    if (!profile->loaded) {
-      SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge,
-                        m->font_body * 4 };
-      cobalt_draw_tile(r, &card, 0.0f);
-      cobalt_draw_text(r, COBALT_FONT_BODY,
-                       cobalt_session_busy() ? "Loading the profile..."
-                                             : "This profile is unavailable.",
-                       card.x + m->pad_tile, card.y + m->pad_tile,
-                       COBALT_COLOUR_TEXT);
+      const bool busy = cobalt_session_busy();
+      cobalt_draw_empty_state(r, list_top, bottom,
+                              busy ? "Loading the profile..."
+                                   : "This profile is unavailable",
+                              "");
       cobalt_listnav_draw_empty(&view->nav, touchable);
       return;
    }
 
    const int rows = feed->count + 1;
-   int y = top;
+   int y = list_top;
    int last_fitted = view->nav.scroll;
 
    for (int i = view->nav.scroll; i < rows; i++) {
@@ -358,15 +524,15 @@ cobalt_profile_view_draw(cobalt_profile_view *view, cobalt_render *r,
    char hint_text[160];
    if (view->nav.selected == HEADER_ROW) {
       if (profile->is_self) {
-         snprintf(hint_text, sizeof(hint_text), "Y: more");
+         snprintf(hint_text, sizeof(hint_text), "Y: more   L/R: tab");
       } else {
          snprintf(hint_text, sizeof(hint_text),
-                  "A: %s   Left: mute   Right: block   Y: more",
+                  "A: %s   Left: mute   Right: block   Y: more   L/R: tab",
                   profile->viewer_following[0] ? "unfollow" : "follow");
       }
    } else {
       snprintf(hint_text, sizeof(hint_text),
-               "A: thread   Left: like   Right: repost   Y: more");
+               "A: thread   Left: like   Right: repost   Y: more   L/R: tab");
    }
    cobalt_draw_hints(r, cobalt_session_busy() ? "Working..." : hint_text);
 }

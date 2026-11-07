@@ -51,13 +51,10 @@ _Static_assert((int) (sizeof(MENU) / sizeof(MENU[0])) == COBALT_HOME_MENU_COUNT,
 #define MENU_COUNT COBALT_HOME_MENU_COUNT
 
 
-/* Hit rectangles for the GamePad list, recomputed on draw so touch and the
+/* Hit rectangles for the GamePad grid, recomputed on draw so touch and the
  * drawn layout can never drift apart. */
 static SDL_Rect s_drc_hit[MENU_COUNT];
 static bool s_drc_hit_valid = false;
-/* The slice of the list the last GamePad draw put on screen, for dragging. */
-static int s_drc_first = 0;
-static int s_drc_visible = 0;
 
 
 /*
@@ -351,10 +348,11 @@ activate(cobalt_app *app, int index)
 void
 cobalt_app_update_home(cobalt_app *app, const cobalt_input *in)
 {
-   /* The GamePad is the controller and always shows the vertical list, so
-    * every direction steps by one whatever the TV is drawing; the TV grid just
-    * follows the highlight. */
-   const int vstep = 1;
+   /* Both surfaces draw the same four-column grid, so up and down move a whole
+    * row and left and right move within it. Deriving the step from the layout
+    * rather than the surface means the TV moves by the row the person can see,
+    * and a menu started on one screen keeps its spatial order on the other. */
+   const int vstep = COBALT_HOME_COLS;
 
    if (cobalt_input_pressed(in, COBALT_BTN_RIGHT)) {
       app->selected = (app->selected + 1) % MENU_COUNT;
@@ -367,15 +365,6 @@ cobalt_app_update_home(cobalt_app *app, const cobalt_input *in)
    }
    if (cobalt_input_pressed(in, COBALT_BTN_UP)) {
       app->selected = (app->selected + MENU_COUNT - vstep) % MENU_COUNT;
-   }
-
-   /* Touch drag scrolls the list. Thirteen rows at six visible would otherwise
-    * leave the bottom half of the menu unreachable by tapping, and a finger
-    * expects to drag a list. Only the rows on screen have hit rectangles; the
-    * average of those is the row pitch. */
-   if (s_drc_hit_valid && s_drc_visible > 0) {
-      cobalt_input_drag_list(in, &app->selected, MENU_COUNT,
-                              &s_drc_hit[s_drc_first], s_drc_visible);
    }
 
    if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
@@ -506,7 +495,7 @@ cobalt_app_draw_home_tv(cobalt_app *app, cobalt_render *r)
     * "Notifications" and "Queued posts" had to drop to the caption face, so
     * one row of the grid read at a different size from the other. The extra
     * row buys tiles wide enough to set every label in the body face. */
-   const int cols = 4;
+   const int cols = COBALT_HOME_COLS;
    const int rows = (MENU_COUNT + cols - 1) / cols;
    const int top = cobalt_content_top(r);
    const int tile_w = (m->width - 2 * m->pad_edge - m->gap * (cols - 1)) / cols;
@@ -517,10 +506,15 @@ cobalt_app_draw_home_tv(cobalt_app *app, cobalt_render *r)
    int tile_h = 110;
    {
       const int avail = cobalt_content_bottom(r) - top;
-      /* The focused tile's hint, then a notice that may wrap to two lines. */
-      const int detail_room =
-         m->font_body + 2 * cobalt_font_line_height(r, COBALT_FONT_CAPTION) +
-         3 * m->gap;
+      /* The focused tile's hint, then a notice that may wrap to two lines.
+       * The notice is only reserved when there is one: reserving it always
+       * left a dead band between the strip and the footer on every screen
+       * that had nothing to report — which is most of them. */
+      const int notice_room =
+         (app->notice[0] || cobalt_session_busy())
+            ? 2 * cobalt_font_line_height(r, COBALT_FONT_CAPTION)
+            : 0;
+      const int detail_room = m->font_body + 3 * m->gap + notice_room;
       const int fit = (avail - detail_room - (rows - 1) * m->gap) / rows;
       if (fit < 70) tile_h = 70;
       else if (fit < tile_h) tile_h = fit;
@@ -576,78 +570,75 @@ cobalt_app_draw_home_drc(cobalt_app *app, cobalt_render *r)
    cobalt_app_draw_header(r, cobalt_render_remote(r) ? "Remote for the TV"
                                                      : "Off-TV play");
 
-   /* A vertical list: denser than the TV row, and every row is a touch target
-    * comfortably larger than a fingertip. */
+   /* Four columns, four rows: the same grid as the TV, so an entry sits in the
+    * same place whichever screen is in hand, and all sixteen still fit without
+    * scrolling. The Wii U Menu's own pad grid is icon rows like this; at
+    * 854x480 four columns leave each tile a 64 px finger target instead of the
+    * forty-pixel strips that eight rows needed. */
    const int top = cobalt_content_top(r);
-   const int row_h = 44;
-   const int pitch = row_h + m->gap / 2;
+   const int bottom = cobalt_content_bottom(r);
    const int list_w = m->width - 2 * m->pad_edge;
+   const int cols = COBALT_HOME_COLS;
+   const int rows = (MENU_COUNT + cols - 1) / cols;
+   const int col_gap = m->gap;
+   const int row_gap = m->gap / 2;
+   const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
+   const int hint_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
 
-   /* Ten rows do not fit in 480px: show a window that follows the selection and
-    * leaves room under it for a notice and the footer. */
-   int visible = (m->height - top - m->pad_edge - (app->notice[0] ? 70 : 34)) / pitch;
-   if (visible < 1) visible = 1;
-   if (visible > MENU_COUNT) visible = MENU_COUNT;
-   static int first;
-   if (app->selected < first) first = app->selected;
-   if (app->selected >= first + visible) first = app->selected - visible + 1;
-   if (first > MENU_COUNT - visible) first = MENU_COUNT - visible;
-   if (first < 0) first = 0;
-   s_drc_first = first;
-   s_drc_visible = visible;
+   /* The focused entry's hint sits under the grid as it does on the TV, and a
+    * notice takes the next line when there is one. Both are reserved before
+    * the rows are sized, so neither is ever drawn over the footer. */
+   const int notice_reserve =
+      (app->notice[0] || cobalt_session_busy())
+         ? 2 * caption_h + row_gap
+         : 0;
+   const int detail_reserve = hint_h + m->gap + notice_reserve;
+   int row_h = (bottom - top - detail_reserve - (rows - 1) * row_gap) / rows;
+   if (row_h > 64) row_h = 64;   /* roomy, but still a grid, not a card stack */
+   if (row_h < 44) row_h = 44;   /* the panel's fingertip minimum */
+
+   const int col_w = (list_w - (cols - 1) * col_gap) / cols;
+   const int text_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
 
    for (int i = 0; i < MENU_COUNT; i++) {
-      if (i < first || i >= first + visible) {
-         SDL_Rect none = { 0, 0, 0, 0 };
-         s_drc_hit[i] = none;
-         continue;
-      }
-      SDL_Rect row = { m->pad_edge, top + (i - first) * pitch, list_w, row_h };
-      s_drc_hit[i] = row;
+      const int col = i % cols;
+      const int row = i / cols;
+      SDL_Rect tile = { m->pad_edge + col * (col_w + col_gap),
+                        top + row * (row_h + row_gap), col_w, row_h };
+      s_drc_hit[i] = tile;
 
-      cobalt_draw_tile(r, &row, app->focus[i]);
-
-      SDL_Color label = menu_enabled(i) ? COBALT_COLOUR_TEXT : COBALT_COLOUR_TEXT_DIM;
-      int text_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
+      cobalt_draw_tile(r, &tile, app->focus[i]);
       cobalt_draw_text(r, COBALT_FONT_BODY, menu_label(i),
-                       row.x + m->pad_tile, row.y + (row_h - text_h) / 2, label);
-
-      const char *hint_text = menu_hint(i);
-      int hint_w = 0;
-      cobalt_text_size(r, COBALT_FONT_CAPTION, hint_text, &hint_w, NULL);
-      if (hint_w > 0 && hint_w < list_w / 2) {
-         cobalt_draw_text(r, COBALT_FONT_CAPTION, hint_text,
-                          row.x + list_w - m->pad_tile - hint_w,
-                          row.y + (row_h - cobalt_font_line_height(r, COBALT_FONT_CAPTION)) / 2,
-                          COBALT_COLOUR_TEXT_DIM);
-      }
+                       tile.x + m->pad_tile, tile.y + (row_h - text_h) / 2,
+                       menu_enabled(i) ? COBALT_COLOUR_TEXT
+                                       : COBALT_COLOUR_TEXT_DIM);
    }
 
    s_drc_hit_valid = true;
 
-   char more[32] = "";
-   if (visible < MENU_COUNT) {
-      snprintf(more, sizeof more, "%d of %d", app->selected + 1, MENU_COUNT);
-   }
+   const int list_bottom = top + rows * row_h + (rows - 1) * row_gap;
+   const int hint_y = list_bottom + m->gap;
+   cobalt_draw_text_wrapped(r, COBALT_FONT_BODY, menu_hint(app->selected),
+                            m->pad_edge, hint_y, list_w, 1,
+                            COBALT_COLOUR_TEXT);
+   cobalt_app_draw_notice(app, r, hint_y + hint_h + row_gap, list_w);
 
-   const int list_bottom = top + visible * pitch;
-   cobalt_app_draw_notice(app, r, list_bottom + 4, list_w);
-
-   const SDL_Color hint = COBALT_COLOUR_TEXT_DIM;
    cobalt_draw_hints(r, app->display == COBALT_DISPLAY_DUAL ? "TV + GamePad" : "GamePad only");
-   if (more[0]) {
-      int w = 0;
-      cobalt_text_size(r, COBALT_FONT_CAPTION, more, &w, NULL);
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, more, m->width - m->pad_edge - w,
-                       footer_label_y(r), hint);
-   }
 }
 
 void
 cobalt_app_draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   cobalt_app_draw_header(r, "Feeds");
+   char subtitle[32];
+   const int saved = cobalt_session_saved_feeds()->count;
+   if (saved > 0) {
+      snprintf(subtitle, sizeof(subtitle), "%d saved feed%s", saved,
+               saved == 1 ? "" : "s");
+   } else {
+      snprintf(subtitle, sizeof(subtitle), "What's Hot");
+   }
+   cobalt_draw_page_title(r, "Feeds", subtitle);
 
    const int top = cobalt_content_top(r);
    /* 44 on the GamePad for the same reason as the account rows. */
