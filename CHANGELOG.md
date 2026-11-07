@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-07
+
 ### Added
 
 - Lists can now be created and edited from the Lists screen. X starts a new list, Y edits the selected one, and the inline editor changes the name, description and purpose (Curation or Moderation); a name is required and the rest may be cleared. List writes use Wolfram's `wf_agent_graph_create_list`, `wf_agent_graph_update_list` and `wf_agent_get_record_typed`, replacing the full record so `createdAt` and unknown fields survive. On a list's member screen, Y adds an account by handle or DID and X twice removes the selected member, with a clear working/failure line and a refetch only after success. Browsing and paging are unchanged. Host tests cover purpose mapping and editor validation, and snapshots cover the editor, list, member and add-member screens on both displays. ([#272](https://github.com/ewanc26/cobalt/issues/272))
@@ -341,7 +343,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/ewanc26/cobalt/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/ewanc26/cobalt/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/ewanc26/cobalt/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/ewanc26/cobalt/compare/v0.11.1...v0.12.0
