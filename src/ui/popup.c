@@ -221,8 +221,8 @@ cobalt_popup_draw(cobalt_popup *p, cobalt_render *r, cobalt_surface_id surface)
    cobalt_draw_tile(r, &p->panel, 0.0f);
 
    int y = p->panel.y + pad;
-   cobalt_draw_text(r, COBALT_FONT_HEADING, p->title, p->panel.x + pad, y,
-                    COBALT_COLOUR_TEXT_DIM);
+   cobalt_draw_text_fitted(r, COBALT_FONT_HEADING, p->title, p->panel.x + pad, y,
+                           w - 2 * pad, COBALT_COLOUR_TEXT_DIM);
    y += title_h + pad;
 
    if (touchable) {

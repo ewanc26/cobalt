@@ -381,15 +381,19 @@ draw_row(cobalt_render *r, const cobalt_chat_convo *item, const SDL_Rect *rect,
       }
    }
 
-   const int name_w = cobalt_draw_text(r, COBALT_FONT_BODY, item->name, left, y,
-                                       COBALT_COLOUR_TEXT);
-
-   /* The handle, or a plain "Group", sits after the name and is dropped when a
-    * long name has taken the row. */
+   /* The tag is measured first so the name is fitted to the room it leaves,
+    * rather than the name running underneath it. */
    const char *tag = item->group ? "Group" : item->handle;
+   int tag_w = 0;
    if (tag[0]) {
-      int tag_w = 0;
       cobalt_text_size(r, COBALT_FONT_CAPTION, tag, &tag_w, NULL);
+   }
+   const int name_room = (right - left) - (tag[0] ? tag_w + m->pad_tile / 2 : 0);
+   const int name_w = cobalt_draw_text_fitted(r, COBALT_FONT_BODY, item->name,
+                                              left, y, name_room,
+                                              COBALT_COLOUR_TEXT);
+
+   if (tag[0]) {
       const int tag_x = left + name_w + m->pad_tile / 2;
       if (tag_x + tag_w < right) {
          cobalt_draw_text(r, COBALT_FONT_CAPTION, tag, tag_x,

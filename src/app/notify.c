@@ -158,16 +158,22 @@ draw_row(cobalt_render *r, const cobalt_notification *item, const SDL_Rect *rect
       snprintf(who, sizeof who, "%s", item->actor);
    }
 
-   const int actor_w = cobalt_draw_text(r, COBALT_FONT_BODY, who,
-                                        text_left, y, COBALT_COLOUR_TEXT);
-
+   /* The age is right-aligned, so it is measured before the name is drawn and
+    * the name is fitted to the room it leaves. Drawing the name first let a
+    * long one run underneath the age. */
    int age_w = 0;
    if (item->age[0]) {
-      cobalt_text_size(r, COBALT_FONT_CAPTION, item->age, &age_w, NULL);
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, item->age, right - age_w,
+      int drawn_age_w = 0;
+      cobalt_text_size(r, COBALT_FONT_CAPTION, item->age, &drawn_age_w, NULL);
+      cobalt_draw_text(r, COBALT_FONT_CAPTION, item->age, right - drawn_age_w,
                        y + (body_h - caption_h) / 2, COBALT_COLOUR_TEXT_DIM);
-      age_w += m->pad_tile;
+      age_w = drawn_age_w + m->pad_tile;
    }
+
+   const int actor_w = cobalt_draw_text_fitted(r, COBALT_FONT_BODY, who,
+                                               text_left, y,
+                                               (right - age_w) - text_left,
+                                               COBALT_COLOUR_TEXT);
 
    /* "liked your post" sits right after the name and is dropped rather than
     * overlapped when a long display name has taken the row. */

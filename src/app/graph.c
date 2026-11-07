@@ -231,10 +231,11 @@ draw_row(cobalt_render *r, const cobalt_actor *actor, const SDL_Rect *rect,
    const int side = GRAPH_AVATAR_SIDE(m);
    const int text_y = y + (side - (name_h + handle_h)) / 2;
 
-   cobalt_draw_text(r, COBALT_FONT_BODY, actor->display_name, text_left,
-                    text_y, COBALT_COLOUR_TEXT);
-   cobalt_draw_text(r, COBALT_FONT_CAPTION, actor->handle, text_left,
-                    text_y + name_h, COBALT_COLOUR_TEXT_DIM);
+   cobalt_draw_text_fitted(r, COBALT_FONT_BODY, actor->display_name, text_left,
+                           text_y, right - text_left, COBALT_COLOUR_TEXT);
+   cobalt_draw_text_fitted(r, COBALT_FONT_CAPTION, actor->handle, text_left,
+                           text_y + name_h, right - text_left,
+                           COBALT_COLOUR_TEXT_DIM);
 }
 
 void
