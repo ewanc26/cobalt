@@ -171,6 +171,10 @@ struct cobalt_render {
 
    bool warned_long_string;
 
+   /* Bench only: run layout and text measurement without issuing draw calls.
+    * See cobalt_render_set_layout_only(). */
+   bool layout_only;
+
    /* Bench counters, see cobalt_render_text_work. */
    uint64_t text_measures;
    uint64_t text_wrap_passes;
@@ -690,6 +694,9 @@ build_band(cobalt_render *r, int h)
 static void
 draw_header_band(cobalt_render *r)
 {
+   if (r->layout_only) {
+      return;
+   }
    const cobalt_metrics *m = r->m;
    const int h = cobalt_header_height(r) ? cobalt_header_height(r) : m->pad_edge * 3;
    if (!r->band || r->band_h != h) {
@@ -707,6 +714,14 @@ draw_header_band(cobalt_render *r)
    SDL_Color shade = { 0x00, 0x00, 0x00, 0x14 };
    set_draw_colour(r, shade);
    SDL_RenderDrawLine(r->renderer, 0, h + 1, m->width, h + 1);
+}
+
+void
+cobalt_render_set_layout_only(cobalt_render *r, bool on)
+{
+   if (r) {
+      r->layout_only = on;
+   }
 }
 
 void
@@ -735,20 +750,22 @@ cobalt_render_begin(cobalt_render *r)
       r->theme_generation = cobalt_theme_generation();
    }
 
-   if (r->gradient) {
-      SDL_Rect dst = { 0, 0, r->m->width, r->m->height };
-      SDL_RenderCopy(r->renderer, r->gradient, NULL, &dst);
-      draw_header_band(r);
-   } else {
-      set_draw_colour(r, COBALT_COLOUR_BG_BOTTOM);
-      SDL_RenderClear(r->renderer);
+   if (!r->layout_only) {
+      if (r->gradient) {
+         SDL_Rect dst = { 0, 0, r->m->width, r->m->height };
+         SDL_RenderCopy(r->renderer, r->gradient, NULL, &dst);
+         draw_header_band(r);
+      } else {
+         set_draw_colour(r, COBALT_COLOUR_BG_BOTTOM);
+         SDL_RenderClear(r->renderer);
+      }
    }
 }
 
 void
 cobalt_render_end(cobalt_render *r)
 {
-   if (r) {
+   if (r && !r->layout_only) {
       const uint32_t t0 = SDL_GetTicks();
       SDL_RenderPresent(r->renderer);
       const uint32_t dt = SDL_GetTicks() - t0;
@@ -772,6 +789,9 @@ cobalt_render_end(cobalt_render *r)
 static void
 fill_opaque(cobalt_render *r, const SDL_Rect *rect, SDL_Color colour)
 {
+   if (r->layout_only) {
+      return;
+   }
    if (colour.a == 0xFF) {
       SDL_SetRenderDrawBlendMode(r->renderer, SDL_BLENDMODE_NONE);
       SDL_RenderFillRect(r->renderer, rect);
@@ -784,7 +804,7 @@ fill_opaque(cobalt_render *r, const SDL_Rect *rect, SDL_Color colour)
 void
 cobalt_fill_rect(cobalt_render *r, const SDL_Rect *rect, SDL_Color colour)
 {
-   if (!r || !rect) {
+   if (!r || !rect || r->layout_only) {
       return;
    }
    set_draw_colour(r, colour);
@@ -795,6 +815,9 @@ cobalt_fill_rect(cobalt_render *r, const SDL_Rect *rect, SDL_Color colour)
 static void
 blit_shape(cobalt_render *r, SDL_Texture *tex, const SDL_Rect *dst, SDL_Color colour)
 {
+   if (r->layout_only) {
+      return;
+   }
    SDL_SetTextureColorMod(tex, colour.r, colour.g, colour.b);
    SDL_SetTextureAlphaMod(tex, colour.a);
    SDL_RenderCopy(r->renderer, tex, NULL, dst);
@@ -812,7 +835,7 @@ blit_shape(cobalt_render *r, SDL_Texture *tex, const SDL_Rect *dst, SDL_Color co
 static void
 draw_rounded_shape(cobalt_render *r, const SDL_Rect *rect, int radius, SDL_Color colour)
 {
-   if (!r || !rect || rect->w <= 0 || rect->h <= 0) {
+   if (!r || !rect || rect->w <= 0 || rect->h <= 0 || r->layout_only) {
       return;
    }
 
@@ -1225,7 +1248,7 @@ void
 cobalt_fill_rounded_rect(cobalt_render *r, const SDL_Rect *rect, int radius,
                          SDL_Color colour)
 {
-   if (!r || !rect || rect->w <= 0 || rect->h <= 0) {
+   if (!r || !rect || rect->w <= 0 || rect->h <= 0 || r->layout_only) {
       return;
    }
 
@@ -1292,7 +1315,7 @@ static void
 fill_rounded_ring(cobalt_render *r, const SDL_Rect *rect, int radius, int thickness,
                   SDL_Color colour)
 {
-   if (!r || !rect || rect->w <= 0 || rect->h <= 0) {
+   if (!r || !rect || rect->w <= 0 || rect->h <= 0 || r->layout_only) {
       return;
    }
 
@@ -1349,7 +1372,7 @@ static void
 fill_tile_shadow(cobalt_render *r, const SDL_Rect *shadow, const SDL_Rect *body,
                  int radius, SDL_Color colour)
 {
-   if (!r || !shadow || !body || shadow->w <= 0 || shadow->h <= 0) {
+   if (!r || !shadow || !body || shadow->w <= 0 || shadow->h <= 0 || r->layout_only) {
       return;
    }
 
@@ -1552,7 +1575,7 @@ cobalt_draw_typing_panel(cobalt_render *r, const SDL_Rect *area,
 void
 cobalt_draw_texture(cobalt_render *r, SDL_Texture *texture, const SDL_Rect *dst)
 {
-   if (!r || !r->renderer || !texture || !dst) {
+   if (!r || !r->renderer || !texture || !dst || r->layout_only) {
       return;
    }
    SDL_RenderCopy(r->renderer, texture, NULL, dst);
@@ -2068,6 +2091,15 @@ cobalt_draw_text(cobalt_render *r, cobalt_font_id font_id, const char *utf8,
 {
    if (!r || !utf8 || utf8[0] == '\0') {
       return 0;
+   }
+
+   if (r->layout_only) {
+      /* Measure, because the width is what the layout places the next element
+       * against; skip the glyph rasterisation and the copy the blitter pays
+       * for. Measuring fills the same cache a drawn frame would use. */
+      int w = 0;
+      cobalt_text_size(r, font_id, utf8, &w, NULL);
+      return w;
    }
 
    text_entry *e = cache_lookup(r, font_id, utf8, colour);
