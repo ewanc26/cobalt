@@ -46,7 +46,7 @@ cobalt_credits_view_draw(cobalt_render *r)
    const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
    const int pad = m->pad_tile / 2;
 
-   cobalt_app_draw_header(r, "Credits");
+   cobalt_draw_page_title(r, "Credits", "The stack behind Cobalt");
 
    int y = cobalt_content_top(r);
    y += cobalt_draw_text_wrapped(

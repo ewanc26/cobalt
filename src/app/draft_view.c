@@ -89,8 +89,8 @@ cobalt_draft_view_draw(const cobalt_draft_view *view, const cobalt_drafts *draft
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
    const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE, "Drafts", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_HEADER_TEXT);
+   cobalt_draw_page_title(r, "Drafts",
+                          drafts->count == 0 ? "Nothing saved" : NULL);
 
    if (drafts->count == 0) {
       cobalt_draw_text_wrapped(r, COBALT_FONT_BODY,

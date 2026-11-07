@@ -369,7 +369,8 @@ draw_row(cobalt_render *r, const cobalt_chat_convo *item, const SDL_Rect *rect,
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
    const int left = rect->x + m->pad_tile;
    const int right = rect->x + rect->w - m->pad_tile;
-   int y = rect->y + m->pad_tile;
+   const int content_h = body_h + (item->preview[0] ? caption_h + m->line_gap : 0);
+   int y = rect->y + (rect->h - content_h) / 2;
 
    /* Unread conversations get the same accent bar as unread notifications. */
    if (item->unread > 0) {
@@ -497,7 +498,8 @@ draw_group_create(cobalt_messages_view *view, cobalt_render *r,
  * list shows `empty` on a card. */
 static void
 draw_list(cobalt_render *r, cobalt_surface_id surface, cobalt_listnav *nav,
-          const cobalt_chat_inbox *list, const char *empty, const char *hint)
+          const cobalt_chat_inbox *list, const char *empty,
+          const char *empty_detail, const char *hint)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int top = cobalt_content_top(r);
@@ -508,21 +510,32 @@ draw_list(cobalt_render *r, cobalt_surface_id surface, cobalt_listnav *nav,
    cobalt_listnav_draw_begin(nav, touchable);
 
    if (list->count == 0) {
-      SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge, m->font_body * 4 };
-      cobalt_draw_tile(r, &card, 0.0f);
-      cobalt_draw_text(r, COBALT_FONT_BODY, busy ? "Loading..." : empty,
-                       card.x + m->pad_tile, card.y + m->pad_tile, COBALT_COLOUR_TEXT);
+      cobalt_draw_empty_state(r, top, bottom, busy ? "Loading..." : empty,
+                              busy ? "" : empty_detail);
       cobalt_listnav_draw_empty(nav, touchable);
       cobalt_draw_hints(r, busy ? "Working..." : hint);
       return;
    }
 
+   const int gap = m->gap / 2;
+   const int first = nav->scroll < list->count ? nav->scroll : 0;
+   int h = row_height(r, &list->items[first], m);
    int y = top;
+   /* A short inbox grows its rows into the GamePad's panel and centres what
+    * is left over, instead of leaving the lower half of the screen empty. The
+    * TV keeps its rows under the title. */
+   if (surface == COBALT_SURFACE_DRC) {
+      int rows = list->count - nav->scroll;
+      const int fit = (bottom - top + gap) / (h + gap);
+      if (rows > fit) {
+         rows = fit > 0 ? fit : 1;
+      }
+      y += cobalt_list_fill(bottom - top, rows, gap, h, &h);
+   }
    int last_fitted = nav->scroll;
 
    for (int i = nav->scroll; i < list->count; i++) {
       const cobalt_chat_convo *item = &list->items[i];
-      const int h = row_height(r, item, m);
 
       if (y + h > bottom && i > nav->scroll) {
          break;
@@ -533,7 +546,7 @@ draw_list(cobalt_render *r, cobalt_surface_id surface, cobalt_listnav *nav,
       cobalt_listnav_draw_add(nav, touchable, &rect, i);
 
       last_fitted = i;
-      y += h + m->gap / 2;
+      y += h + gap;
    }
 
    cobalt_listnav_draw_end(nav, touchable, last_fitted);
@@ -544,11 +557,8 @@ draw_list(cobalt_render *r, cobalt_surface_id surface, cobalt_listnav *nav,
 static void
 draw_requests(cobalt_messages_view *view, cobalt_render *r, cobalt_surface_id surface)
 {
-   const cobalt_metrics *m = cobalt_render_metrics(r);
    const cobalt_chat_inbox *requests = cobalt_session_chat_requests();
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE, "Message requests", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_HEADER_TEXT);
    {
       char subtitle[96];
       if (cobalt_session_busy()) {
@@ -556,14 +566,11 @@ draw_requests(cobalt_messages_view *view, cobalt_render *r, cobalt_surface_id su
       } else {
          cobalt_chat_requests_count_label(requests->count, subtitle, sizeof(subtitle));
       }
-      SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
-                       m->pad_edge + cobalt_font_line_height(r, COBALT_FONT_TITLE) -
-                          m->line_gap,
-                       dim);
+      cobalt_draw_page_title(r, "Message requests", subtitle);
    }
 
-   draw_list(r, surface, &view->requests_nav, requests, "No message requests.",
+   draw_list(r, surface, &view->requests_nav, requests, "No message requests",
+             "Requests wait here until you accept or decline them.",
              "A: accept   X: decline   B: inbox   +: refresh");
 }
 
@@ -580,11 +587,8 @@ cobalt_messages_view_draw(cobalt_messages_view *view, cobalt_render *r,
       return;
    }
 
-   const cobalt_metrics *m = cobalt_render_metrics(r);
    const cobalt_chat_inbox *inbox = cobalt_session_chat_inbox();
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE, "Messages", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_HEADER_TEXT);
    {
       char subtitle[96];
       if (cobalt_session_busy()) {
@@ -594,11 +598,7 @@ cobalt_messages_view_draw(cobalt_messages_view *view, cobalt_render *r,
       } else {
          snprintf(subtitle, sizeof(subtitle), "%s", cobalt_session_handle());
       }
-      SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
-                       m->pad_edge + cobalt_font_line_height(r, COBALT_FONT_TITLE) -
-                          m->line_gap,
-                       dim);
+      cobalt_draw_page_title(r, "Messages", subtitle);
    }
 
    if (view->start.editing) {
@@ -611,6 +611,7 @@ cobalt_messages_view_draw(cobalt_messages_view *view, cobalt_render *r,
       return;
    }
 
-   draw_list(r, surface, &view->nav, inbox, "No messages yet.",
+   draw_list(r, surface, &view->nav, inbox, "No messages yet",
+             "Press X to start a conversation.",
              "X: new message   R: new group   Y: requests   +: refresh");
 }

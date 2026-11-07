@@ -2461,6 +2461,78 @@ test_notification_wording(void)
    CHECK(list.unread == 0);
 }
 
+static void
+make_notification(cobalt_notification *n, const char *actor, const char *reason,
+                  const char *subject, int64_t posted_at, bool unread)
+{
+   memset(n, 0, sizeof(*n));
+   snprintf(n->actor, sizeof(n->actor), "%s", actor);
+   snprintf(n->reason, sizeof(n->reason), "%s", reason);
+   if (subject) {
+      snprintf(n->subject_uri, sizeof(n->subject_uri), "%s", subject);
+   }
+   n->posted_at = posted_at;
+   n->group_count = 1;
+   n->unread = unread;
+}
+
+static void
+test_notification_grouping(void)
+{
+   begin("notification grouping");
+
+   /*
+    * Five people liking one post should read as one row, not five, as in the
+    * official client. The window is 48 hours, the subject has to match, and
+    * only adjacent rows merge so the list keeps the server's order.
+    */
+   static cobalt_notifications list;
+   memset(&list, 0, sizeof(list));
+   list.count = 7;
+   list.unread = 1;
+
+   const int64_t t = 200000;
+   make_notification(&list.items[0], "Ewan", "like", "at://post/1", t, true);
+   make_notification(&list.items[1], "Bob", "like", "at://post/1", t - 1000, false);
+   /* Older than the window, so the next burst starts a new row. */
+   make_notification(&list.items[2], "Ana", "like", "at://post/1", t - 173000, false);
+   make_notification(&list.items[3], "Zed", "like", "at://post/1", t - 172000, false);
+   make_notification(&list.items[4], "Bob", "follow", "", t - 1000, false);
+   make_notification(&list.items[5], "Ana", "like", "at://post/2", t - 1000, false);
+   make_notification(&list.items[6], "Zed", "repost", "at://post/1", t - 1000, false);
+
+   cobalt_notifications_group(&list);
+
+   CHECK(list.count == 5);
+   /* The newest pair merges, and keeps the newest actor and its unread state. */
+   CHECK_STR(list.items[0].actor, "Ewan");
+   CHECK(list.items[0].group_count == 2);
+   CHECK(list.items[0].unread);
+   CHECK_STR(list.items[0].subject_uri, "at://post/1");
+   /* The older pair is its own row, and the badge still counts notifications. */
+   CHECK(list.items[1].group_count == 2);
+   CHECK(!list.items[1].unread);
+   CHECK(list.unread == 1);
+   /* A follow, a like of another post and a repost keep their own rows. */
+   CHECK_STR(list.items[2].reason, "follow");
+   CHECK(list.items[2].group_count == 1);
+   CHECK_STR(list.items[3].subject_uri, "at://post/2");
+   CHECK(list.items[3].group_count == 1);
+   CHECK_STR(list.items[4].reason, "repost");
+   CHECK(list.items[4].group_count == 1);
+
+   /* Grouping again changes nothing: a draw or a page can call it twice. */
+   cobalt_notifications_group(&list);
+   CHECK(list.count == 5);
+   CHECK(list.items[0].group_count == 2);
+
+   /* One row, or a list with no subjects, is already grouped. */
+   list.count = 1;
+   cobalt_notifications_group(&list);
+   CHECK(list.count == 1);
+   cobalt_notifications_group(NULL);
+}
+
 /* --- regressions --- */
 
 static void
@@ -2576,6 +2648,36 @@ test_profile_tabs(void)
 
   /* Names, filters and the cycle are Wolfram's and tested there. */
   CHECK(!cobalt_session_begin_profile_tab(WF_PROFILE_TAB_MEDIA));
+
+  begin("profile tab strip cycle");
+
+  /* Someone else's profile has Posts, Replies and Media; Likes is your own
+   * screen only, so it is skipped by the step as well as by the draw. */
+  CHECK(cobalt_profile_tab_step(WF_PROFILE_TAB_POSTS, false, 1) ==
+        WF_PROFILE_TAB_REPLIES);
+  CHECK(cobalt_profile_tab_step(WF_PROFILE_TAB_REPLIES, false, 1) ==
+        WF_PROFILE_TAB_MEDIA);
+  CHECK(cobalt_profile_tab_step(WF_PROFILE_TAB_MEDIA, false, 1) ==
+        WF_PROFILE_TAB_POSTS);
+  CHECK(cobalt_profile_tab_step(WF_PROFILE_TAB_POSTS, false, -1) ==
+        WF_PROFILE_TAB_MEDIA);
+  CHECK(cobalt_profile_tab_step(WF_PROFILE_TAB_POSTS, false, -2) ==
+        WF_PROFILE_TAB_REPLIES);
+
+  /* Your own profile includes Likes, at the end of the strip. */
+  CHECK(cobalt_profile_tab_step(WF_PROFILE_TAB_MEDIA, true, 1) ==
+        WF_PROFILE_TAB_LIKES);
+  CHECK(cobalt_profile_tab_step(WF_PROFILE_TAB_LIKES, true, 1) ==
+        WF_PROFILE_TAB_POSTS);
+  CHECK(cobalt_profile_tab_step(WF_PROFILE_TAB_POSTS, true, -1) ==
+        WF_PROFILE_TAB_LIKES);
+
+  /* A stale or unexpected tab lands on Posts rather than out of the array. */
+  CHECK(cobalt_profile_tab_step(-1, false, 1) == WF_PROFILE_TAB_REPLIES);
+  CHECK(cobalt_profile_tab_step(WF_PROFILE_TAB_COUNT, false, 1) ==
+        WF_PROFILE_TAB_REPLIES);
+  CHECK(cobalt_profile_tab_step(WF_PROFILE_TAB_POSTS, true, 0) ==
+        WF_PROFILE_TAB_POSTS);
 }
 
 static void
@@ -4265,6 +4367,7 @@ main(int argc, char **argv)
    test_palette_contrast();
    test_post_refuses_partial_refs();
    test_notification_wording();
+   test_notification_grouping();
    test_chat_inbox_counterpart();
    test_chat_requests_count_label();
    test_chat_request_rows();

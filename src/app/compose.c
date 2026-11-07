@@ -513,8 +513,6 @@ cobalt_compose_update(cobalt_compose *compose, const cobalt_input *in)
 static void
 draw_header(cobalt_compose *compose, cobalt_render *r)
 {
-   const cobalt_metrics *m = cobalt_render_metrics(r);
-
    char title_buf[32];
    const char *title = cobalt_compose_is_reply(compose)  ? "Reply"
                        : cobalt_compose_is_quote(compose) ? "Quote post"
@@ -523,9 +521,6 @@ draw_header(cobalt_compose *compose, cobalt_render *r)
       snprintf(title_buf, sizeof(title_buf), "Thread: post %d", compose->thread_count + 1);
       title = title_buf;
    }
-   cobalt_draw_text(r, COBALT_FONT_TITLE, title, m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_HEADER_TEXT);
-
    char subtitle[COBALT_POST_NAME_MAX + 40];
    const int remaining = cobalt_compose_remaining(compose);
    if (cobalt_compose_is_reply(compose)) {
@@ -539,12 +534,9 @@ draw_header(cobalt_compose *compose, cobalt_render *r)
    }
 
    /* The counter turns red before it is a problem, not after. */
-   SDL_Color colour = { 0xFF, 0xFF, 0xFF, 0xFF };
-   cobalt_draw_text(r, remaining < 0 ? COBALT_FONT_CAPTION : COBALT_FONT_CAPTION,
-                    subtitle, m->pad_edge,
-                    m->pad_edge + cobalt_font_line_height(r, COBALT_FONT_TITLE) -
-                       m->line_gap,
-                    remaining < 0 ? COBALT_COLOUR_ERROR : colour);
+   cobalt_draw_page_title_colour(r, title, subtitle,
+                                 remaining < 0 ? COBALT_COLOUR_ERROR
+                                               : (SDL_Color) { 0xFF, 0xFF, 0xFF, 0xFF });
 }
 
 static void

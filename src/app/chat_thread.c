@@ -413,11 +413,10 @@ draw_bubbles(cobalt_chat_thread_view *view, cobalt_render *r, const cobalt_metri
    const int bottom = view->replying ? typing_top - m->gap : footer_top - m->gap;
 
    if (thread->count == 0) {
-      SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge, m->font_body * 4 };
-      cobalt_draw_tile(r, &card, 0.0f);
-      cobalt_draw_text(r, COBALT_FONT_BODY,
-                       cobalt_session_busy() ? "Loading..." : "No messages to show.",
-                       card.x + m->pad_tile, card.y + m->pad_tile, COBALT_COLOUR_TEXT);
+      const bool busy = cobalt_session_busy();
+      cobalt_draw_empty_state(r, top, bottom,
+                              busy ? "Loading..." : "No messages yet",
+                              busy ? "" : "Send a message to start the conversation.");
       return;
    }
 
@@ -523,8 +522,6 @@ draw_join_requests(cobalt_chat_thread_view *view, cobalt_render *r,
    const cobalt_chat_join_requests *requests = cobalt_session_chat_join_requests();
    const bool busy = cobalt_session_busy();
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE, "Join requests", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_HEADER_TEXT);
    {
       char subtitle[96];
       if (busy) {
@@ -532,11 +529,7 @@ draw_join_requests(cobalt_chat_thread_view *view, cobalt_render *r,
       } else {
          cobalt_chat_requests_count_label(requests->count, subtitle, sizeof(subtitle));
       }
-      SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
-                       m->pad_edge + cobalt_font_line_height(r, COBALT_FONT_TITLE) -
-                          m->line_gap,
-                       dim);
+      cobalt_draw_page_title(r, "Join requests", subtitle);
    }
 
    const int top = cobalt_content_top(r);
@@ -546,10 +539,10 @@ draw_join_requests(cobalt_chat_thread_view *view, cobalt_render *r,
    cobalt_listnav_draw_begin(&view->join_nav, touchable);
 
    if (requests->count == 0) {
-      SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge, m->font_body * 4 };
-      cobalt_draw_tile(r, &card, 0.0f);
-      cobalt_draw_text(r, COBALT_FONT_BODY, busy ? "Loading..." : "No join requests.",
-                       card.x + m->pad_tile, card.y + m->pad_tile, COBALT_COLOUR_TEXT);
+      cobalt_draw_empty_state(r, top, bottom,
+                              busy ? "Loading..." : "No join requests",
+                              busy ? "" : "Requests to join this group "
+                                           "appear here.");
       cobalt_listnav_draw_empty(&view->join_nav, touchable);
       cobalt_draw_hints(r, busy ? "Working..." : "+: refresh");
       return;
@@ -664,16 +657,9 @@ draw_group_info(cobalt_chat_thread_view *view, cobalt_render *r,
    const int bottom = cobalt_content_bottom(r);
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE, "Group", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_HEADER_TEXT);
    {
       const char *subtitle = group->loaded ? group->name : "Loading...";
-      SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle[0] ? subtitle : view->title,
-                       m->pad_edge,
-                       m->pad_edge + cobalt_font_line_height(r, COBALT_FONT_TITLE) -
-                          m->line_gap,
-                       dim);
+      cobalt_draw_page_title(r, "Group", subtitle[0] ? subtitle : view->title);
    }
 
    if (view->editing) {
@@ -682,12 +668,12 @@ draw_group_info(cobalt_chat_thread_view *view, cobalt_render *r,
    }
 
    if (!group->loaded) {
-      SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge, m->font_body * 4 };
-      cobalt_draw_tile(r, &card, 0.0f);
-      cobalt_draw_text(r, COBALT_FONT_BODY,
-                       cobalt_session_busy() ? "Loading..." : "Group details are unavailable.",
-                       card.x + m->pad_tile, card.y + m->pad_tile, COBALT_COLOUR_TEXT);
-      cobalt_draw_hints(r, cobalt_session_busy() ? "Working..." : "+: refresh");
+      const bool busy = cobalt_session_busy();
+      cobalt_draw_empty_state(r, top, bottom,
+                              busy ? "Loading..." : "Group unavailable",
+                              busy ? "" : "The details for this group could "
+                                           "not be loaded.");
+      cobalt_draw_hints(r, busy ? "Working..." : "+: refresh");
       return;
    }
 
@@ -729,11 +715,8 @@ draw_group_info(cobalt_chat_thread_view *view, cobalt_render *r,
    cobalt_listnav_draw_begin(&view->member_nav, touchable);
 
    if (group->member_count == 0) {
-      SDL_Rect empty = { m->pad_edge, y, m->width - 2 * m->pad_edge, m->font_body * 3 };
-      cobalt_draw_tile(r, &empty, 0.0f);
-      cobalt_draw_text(r, COBALT_FONT_BODY, "No members to show.",
-                       empty.x + m->pad_tile, empty.y + m->pad_tile,
-                       COBALT_COLOUR_TEXT);
+      cobalt_draw_empty_state(r, y, bottom, "No members yet",
+                              "This group has no members to show.");
       cobalt_listnav_draw_empty(&view->member_nav, touchable);
    } else {
       const int row_h = m->pad_tile + body_h + m->pad_tile;
@@ -787,17 +770,11 @@ cobalt_chat_thread_view_draw(cobalt_chat_thread_view *view, cobalt_render *r,
       return;
    }
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE, "Messages", m->pad_edge, m->pad_edge,
-                    COBALT_COLOUR_HEADER_TEXT);
    {
       char subtitle[128];
       snprintf(subtitle, sizeof(subtitle), "%s",
                cobalt_session_busy() ? "Loading..." : view->title);
-      SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
-                       m->pad_edge + cobalt_font_line_height(r, COBALT_FONT_TITLE) -
-                          m->line_gap,
-                       dim);
+      cobalt_draw_page_title(r, "Messages", subtitle);
    }
 
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);

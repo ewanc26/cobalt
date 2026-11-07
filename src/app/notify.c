@@ -147,7 +147,18 @@ draw_row(cobalt_render *r, const cobalt_notification *item, const SDL_Rect *rect
       return;
    }
 
-   const int actor_w = cobalt_draw_text(r, COBALT_FONT_BODY, item->actor,
+   /* One row can stand for several notifications, as in the official client:
+    * "Ewan Croft and 3 others liked your post". The avatar and the row's
+    * subject stay those of the newest notification in the group. */
+   char who[COBALT_POST_NAME_MAX + 32];
+   if (item->group_count > 1) {
+      snprintf(who, sizeof who, "%s and %d other%s", item->actor,
+               item->group_count - 1, item->group_count == 2 ? "" : "s");
+   } else {
+      snprintf(who, sizeof who, "%s", item->actor);
+   }
+
+   const int actor_w = cobalt_draw_text(r, COBALT_FONT_BODY, who,
                                         text_left, y, COBALT_COLOUR_TEXT);
 
    int age_w = 0;
@@ -191,8 +202,6 @@ cobalt_notify_view_draw(cobalt_notify_view *view, cobalt_render *r,
    const cobalt_notifications *list = cobalt_session_notifications();
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE, "Notifications", m->pad_edge,
-                    m->pad_edge, COBALT_COLOUR_HEADER_TEXT);
    {
       char subtitle[96];
       if (cobalt_session_busy()) {
@@ -202,12 +211,7 @@ cobalt_notify_view_draw(cobalt_notify_view *view, cobalt_render *r,
       } else {
          snprintf(subtitle, sizeof(subtitle), "%s", cobalt_session_handle());
       }
-      SDL_Color dim = { 0xFF, 0xFF, 0xFF, 0xFF };
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, subtitle, m->pad_edge,
-                       m->pad_edge +
-                          cobalt_font_line_height(r, COBALT_FONT_TITLE) -
-                          m->line_gap,
-                       dim);
+      cobalt_draw_page_title(r, "Notifications", subtitle);
    }
 
    const int top = cobalt_content_top(r);
@@ -216,13 +220,9 @@ cobalt_notify_view_draw(cobalt_notify_view *view, cobalt_render *r,
    cobalt_listnav_draw_begin(&view->nav, touchable);
 
    if (list->count == 0) {
-      SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge,
-                        m->font_body * 4 };
-      cobalt_draw_tile(r, &card, 0.0f);
-      cobalt_draw_text(r, COBALT_FONT_BODY,
-                       cobalt_session_busy() ? "Loading..." : "Nothing new.",
-                       card.x + m->pad_tile, card.y + m->pad_tile,
-                       COBALT_COLOUR_TEXT);
+      const bool busy = cobalt_session_busy();
+      cobalt_draw_empty_state(r, top, bottom, busy ? "Loading..." : "Nothing new",
+                              busy ? "" : "Mentions, likes and follows show up here.");
       cobalt_listnav_draw_empty(&view->nav, touchable);
       return;
    }

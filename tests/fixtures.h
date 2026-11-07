@@ -127,7 +127,11 @@ register_fixtures(wf_mock_pds *pds)
       "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\",\"displayName\":\"Ewan Croft\"},"
       "\"reason\":\"like\",\"reasonSubject\":\"at://did:plc:abc/app.bsky.feed.post/1\",\"record\":{},"
       "\"isRead\":false,\"indexedAt\":\"2026-10-01T10:00:00.000Z\"},"
-      "{\"uri\":\"at://did:plc:abc/app.bsky.graph.follow/2\",\"cid\":\"c2\","
+      "{\"uri\":\"at://did:plc:abc/app.bsky.feed.like/2\",\"cid\":\"c2\","
+      "\"author\":{\"did\":\"did:plc:bob\",\"handle\":\"bob.test\",\"displayName\":\"Bob\"},"
+      "\"reason\":\"like\",\"reasonSubject\":\"at://did:plc:abc/app.bsky.feed.post/1\",\"record\":{},"
+      "\"isRead\":true,\"indexedAt\":\"2026-10-01T09:50:00.000Z\"},"
+      "{\"uri\":\"at://did:plc:abc/app.bsky.graph.follow/2\",\"cid\":\"c3\","
       "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"bob.test\",\"displayName\":\"Bob\"},"
       "\"reason\":\"follow\",\"record\":{},\"isRead\":true,\"indexedAt\":\"2026-10-01T09:00:00.000Z\"}]}");
    /* Direct messages: one conversation with a message from Bob, and the

@@ -249,8 +249,7 @@ cobalt_graph_view_draw(cobalt_graph_view *view, cobalt_render *r,
    const cobalt_actor_list *list = list_for(view->kind);
    const bool touchable = (surface == COBALT_SURFACE_DRC);
 
-   cobalt_draw_text(r, COBALT_FONT_TITLE, title_for(view->kind), m->pad_edge,
-                    m->pad_edge, COBALT_COLOUR_HEADER_TEXT);
+   cobalt_draw_page_title(r, title_for(view->kind), NULL);
 
    const int top = cobalt_content_top(r);
    const int bottom = cobalt_content_bottom(r);
@@ -258,14 +257,10 @@ cobalt_graph_view_draw(cobalt_graph_view *view, cobalt_render *r,
    cobalt_listnav_draw_begin(&view->nav, touchable);
 
    if (list->count == 0) {
-      SDL_Rect card = { m->pad_edge, top, m->width - 2 * m->pad_edge,
-                        m->font_body * 4 };
-      cobalt_draw_tile(r, &card, 0.0f);
-      cobalt_draw_text(r, COBALT_FONT_BODY,
-                       cobalt_session_busy() ? "Loading..."
-                                             : empty_message_for(view->kind),
-                       card.x + m->pad_tile, card.y + m->pad_tile,
-                       COBALT_COLOUR_TEXT);
+      const bool busy = cobalt_session_busy();
+      cobalt_draw_empty_state(r, top, bottom,
+                              busy ? "Loading..." : empty_message_for(view->kind),
+                              "");
       cobalt_listnav_draw_empty(&view->nav, touchable);
       return;
    }

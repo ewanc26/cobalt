@@ -51,6 +51,8 @@
 
 /* Entries on the home menu; app_home.c checks its table against this. */
 #define COBALT_HOME_MENU_COUNT 16
+/* One grid on both surfaces: the TV and the GamePad keep the same order. */
+#define COBALT_HOME_COLS 4
 /* How deep a chain of thread and profile screens can nest before the oldest
  * return is dropped. */
 #define COBALT_RETURN_DEPTH 16

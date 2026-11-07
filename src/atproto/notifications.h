@@ -34,6 +34,9 @@ typedef struct {
    char handle[COBALT_POST_NAME_MAX];   /* with a leading @ */
    char avatar[COBALT_POST_AVATAR_MAX]; /* URL, empty when unset */
    char summary[COBALT_NOTIFICATION_SUMMARY_MAX];  /* "liked your post" */
+   /* The lexicon reason, kept so adjacent rows that describe the same event
+    * can be merged without re-parsing the wording. */
+   char reason[32];
 
    /* The reply/mention text, when the notification is one. Empty otherwise —
     * a like carries no words of its own. */
@@ -48,6 +51,11 @@ typedef struct {
    char actor_did[96];
 
    bool unread;
+
+   /* 1, or how many notifications this row stands for once grouped. */
+   int group_count;
+   /* Epoch of the notification's timestamp; 0 when the server sent none. */
+   int64_t posted_at;
 } cobalt_notification;
 
 typedef struct {
@@ -78,6 +86,17 @@ const char *cobalt_notification_summary(const char *reason);
  * is the sort of thing worth pinning down in a test.
  */
 bool cobalt_notification_subject_is_self(const char *reason);
+
+/*
+ * Merge adjacent like/repost notifications about the same post posted within
+ * 48 hours of each other, as the official Bluesky client does: five people
+ * liking one post is one row, not five. Only adjacent rows merge, so the list
+ * stays in the order the server sent.
+ *
+ * `unread` keeps counting the notifications themselves, not the merged rows,
+ * so the "N new" badge does not shrink when rows are combined.
+ */
+void cobalt_notifications_group(cobalt_notifications *list);
 
 #ifdef COBALT_HAS_WOLFRAM
 struct wf_agent_notification_list;

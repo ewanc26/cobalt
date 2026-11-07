@@ -150,7 +150,7 @@ cobalt_settings_view_draw(cobalt_app *app, cobalt_render *r,
                           cobalt_surface_id surface)
 {
    const cobalt_metrics *m = cobalt_render_metrics(r);
-   cobalt_app_draw_header(r, "Settings");
+   cobalt_draw_page_title(r, "Settings", "Theme, text and contrast");
 
    const int top = cobalt_content_top(r);
    const int width = m->width - 2 * m->pad_edge;
