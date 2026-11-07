@@ -146,12 +146,18 @@ draw_quote_card(cobalt_render *r, const cobalt_post *post, int x, int y,
    }
 
    int ty = y + pad;
-   const int name_w = cobalt_draw_text_fitted(r, COBALT_FONT_CAPTION,
-                                              post->quote.author, tx, ty, tw,
-                                              COBALT_COLOUR_TEXT);
-   const int hx = tx + name_w + pad / 2;
+   /* The handle is measured first so the author's name is fitted to the room
+    * it leaves, instead of taking the whole line and dropping the handle. */
    int hw = 0;
    cobalt_text_size(r, COBALT_FONT_CAPTION, post->quote.handle, &hw, NULL);
+   int name_room = tw;
+   if (hw + pad / 2 < tw / 2) {
+      name_room = tw - hw - pad / 2;
+   }
+   const int name_w = cobalt_draw_text_fitted(r, COBALT_FONT_CAPTION,
+                                              post->quote.author, tx, ty, name_room,
+                                              COBALT_COLOUR_TEXT);
+   const int hx = tx + name_w + pad / 2;
    if (hx + hw <= tx + tw) {
       cobalt_draw_text(r, COBALT_FONT_CAPTION, post->quote.handle, hx, ty,
                        COBALT_COLOUR_TEXT_DIM);
@@ -758,8 +764,8 @@ cobalt_postcard_draw_scrolled(cobalt_render *r, const cobalt_post *post,
       } else {
          snprintf(banner, sizeof(banner), "Reposted by %s", post->reposted_by);
       }
-      cobalt_draw_text(r, COBALT_FONT_CAPTION, banner, left, y,
-                       COBALT_COLOUR_TEXT_DIM);
+      cobalt_draw_text_fitted(r, COBALT_FONT_CAPTION, banner, left, y,
+                              right - left, COBALT_COLOUR_TEXT_DIM);
       y += caption_h;
    }
 
