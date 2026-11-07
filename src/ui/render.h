@@ -319,7 +319,8 @@ void cobalt_render_flush_text_cache(cobalt_render *r);
  * How much text work this surface has done since the counters were reset:
  *
  *   measures       calls into TTF_SizeUTF8 — the wrapping walk is what makes
- *                  these expensive, so this is the number to move
+ *                  these expensive, so this is the number to move. A result
+ *                  served from the measurement cache is not counted.
  *   wrap_passes    strings walked to find their line breaks; what a wrap cache
  *                  turns into a hit is not counted here
  *   wrap_requests  calls to a wrapping entry point, hits and misses alike. A
