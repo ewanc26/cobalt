@@ -29,6 +29,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Changed
 
+- The host frame benchmark has a layout-only mode (`tests/bench_main ... --layout`): it still walks every layout, text-measurement and wrapping path but issues no SDL draw calls, so a scenario reports app-side microseconds instead of milliseconds that include the host's software blitter. In the measured run the steady timeline spends about 24 µs on layout against 1.5 ms for a drawn frame, and scrolling rises to about 120 µs as rows re-measure; normal mode and its output are unchanged. Host instrumentation only, with no Wii U timing implied. ([#289](https://github.com/ewanc26/cobalt/pull/289))
+
 - Text measurements are cached until the post scale changes, so an idle screen no longer calls `TTF_SizeUTF8` for the same labels, names and counters every frame. In the host frame benchmark the steady timeline falls from 121 measurements and 109 µs per frame to none; scrolling re-measures only the rows it reveals. Host-tested; the Wii U was not re-checked. ([#289](https://github.com/ewanc26/cobalt/pull/289))
 
 - Wolfram is pinned to v0.44.2. The host and console CI jobs check out the same tag, so development, emulator and release builds use one Wolfram version. ([#289](https://github.com/ewanc26/cobalt/pull/289))

@@ -9,7 +9,12 @@
  * It exists to compare a before against an after on one machine. Anything it
  * says still has to be confirmed on hardware (#24).
  *
- *   tests/bench_main [data-dir] [font-path] [frames]
+ *   tests/bench_main [data-dir] [font-path] [frames] [--layout]
+ *
+ * `--layout` runs the same scenarios with SDL draw calls skipped, so the
+ * numbers beside each screen are the app's own layout and text work instead of
+ * that work plus the host's software blitter. Compare it with a normal run on
+ * the same machine; neither is a Wii U frame time.
  */
 #include "app/app.h"
 #include "app/app_internal.h"
@@ -31,19 +36,35 @@ void cobalt_test_set_root(const char *path);
 static cobalt_render *g_tv, *g_drc;
 static cobalt_app *g_app;
 static cobalt_input g_in;
+static bool g_layout_only;
 
 /* What one scenario cost across its frames. */
 typedef struct {
    const char *name;
    uint32_t frames;
    double update_ms, tv_ms, drc_ms, worst_ms;
+   /* Layout-only mode reports microseconds: once the blitter is skipped, the
+    * millisecond clock is too coarse to show the app-side cost. */
+   double update_us, tv_us, drc_us, worst_us;
    uint64_t measures, wrap_passes, wrap_requests, measure_us;
 } bench_run;
+
+static uint64_t
+now_ns(void)
+{
+   static uint64_t freq;
+   if (freq == 0) {
+      freq = (uint64_t) SDL_GetPerformanceFrequency();
+      if (freq == 0) freq = 1;
+   }
+   return (uint64_t) ((double) SDL_GetPerformanceCounter() * 1e9 / (double) freq);
+}
 
 static void
 frame(cobalt_button press, bench_run *b)
 {
    const uint32_t now = SDL_GetTicks();
+   const uint64_t t0 = now_ns();
    cobalt_input_begin_frame(&g_in, now);
    if (press != COBALT_BTN_COUNT) g_in.pressed[press] = true;
    cobalt_input_end_frame(&g_in, now);
@@ -53,20 +74,20 @@ frame(cobalt_button press, bench_run *b)
       cobalt_render_reset_text_work(g_drc);
    }
 
-   const uint32_t t_update = SDL_GetTicks();
+   const uint64_t t_update = now_ns();
    cobalt_app_update(g_app, &g_in, now);
 
-   const uint32_t t_tv = SDL_GetTicks();
+   const uint64_t t_tv = now_ns();
    cobalt_render_begin(g_tv);
    cobalt_app_draw(g_app, g_tv, COBALT_SURFACE_TV);
    cobalt_render_end(g_tv);
 
-   const uint32_t t_drc = SDL_GetTicks();
+   const uint64_t t_drc = now_ns();
    cobalt_render_begin(g_drc);
    cobalt_app_draw(g_app, g_drc, COBALT_SURFACE_DRC);
    cobalt_render_end(g_drc);
 
-   const uint32_t t_end = SDL_GetTicks();
+   const uint64_t t_end = now_ns();
    if (!b) return;
 
    uint64_t m_tv = 0, w_tv = 0, q_tv = 0, u_tv = 0;
@@ -75,14 +96,19 @@ frame(cobalt_button press, bench_run *b)
    cobalt_render_text_work(g_drc, &m_drc, &w_drc, &q_drc, &u_drc);
 
    b->frames++;
-   b->update_ms += (double) (t_tv - t_update);
-   b->tv_ms += (double) (t_drc - t_tv);
-   b->drc_ms += (double) (t_end - t_drc);
+   b->update_ms += (double) (t_tv - t_update) / 1000000.0;
+   b->tv_ms += (double) (t_drc - t_tv) / 1000000.0;
+   b->drc_ms += (double) (t_end - t_drc) / 1000000.0;
+   b->update_us += (double) (t_tv - t_update) / 1000.0;
+   b->tv_us += (double) (t_drc - t_tv) / 1000.0;
+   b->drc_us += (double) (t_end - t_drc) / 1000.0;
    b->measures += m_tv + m_drc;
    b->wrap_passes += w_tv + w_drc;
    b->wrap_requests += q_tv + q_drc;
    b->measure_us += u_tv + u_drc;
-   if (t_end - now > b->worst_ms) b->worst_ms = (double) (t_end - now);
+   const double frame_us = (double) (t_end - t0) / 1000.0;
+   if (frame_us > b->worst_us) b->worst_us = frame_us;
+   if (frame_us / 1000.0 > b->worst_ms) b->worst_ms = frame_us / 1000.0;
 }
 
 static void
@@ -119,6 +145,14 @@ static void
 report(const bench_run *b)
 {
    const double f = b->frames ? (double) b->frames : 1.0;
+   if (g_layout_only) {
+      printf("%-14s %4u frames | us/frame  update %7.1f  tv %8.1f  drc %7.1f | worst %6.0f"
+             " | TTF_Size %6.1f %8.0f us  wraps %5.1f/%5.1f asked\n",
+             b->name, b->frames, b->update_us / f, b->tv_us / f, b->drc_us / f,
+             b->worst_us, (double) b->measures / f, (double) b->measure_us / f,
+             (double) b->wrap_passes / f, (double) b->wrap_requests / f);
+      return;
+   }
    printf("%-14s %4u frames | ms/frame  update %6.3f  tv %7.3f  drc %6.3f | worst %4.0f"
           " | TTF_Size %6.1f %8.0f us  wraps %5.1f/%5.1f asked\n",
           b->name, b->frames, b->update_ms / f, b->tv_ms / f, b->drc_ms / f,
@@ -153,9 +187,21 @@ measure(const char *name, int frames, cobalt_button press)
 int
 main(int argc, char **argv)
 {
-   const char *dir = argc > 1 ? argv[1] : "build/bench";
-   const char *font = argc > 2 ? argv[2] : "../romfs/font.ttf";
-   const int frames = argc > 3 ? atoi(argv[3]) : 300;
+   const char *pos[3] = { NULL, NULL, NULL };
+   int npos = 0;
+   for (int i = 1; i < argc; i++) {
+      if (strcmp(argv[i], "--layout") == 0) {
+         g_layout_only = true;
+      } else if (npos < 3) {
+         pos[npos++] = argv[i];
+      } else {
+         printf("bench: unexpected argument %s\n", argv[i]);
+         return 2;
+      }
+   }
+   const char *dir = pos[0] ? pos[0] : "build/bench";
+   const char *font = pos[1] ? pos[1] : "../romfs/font.ttf";
+   const int frames = pos[2] ? atoi(pos[2]) : 300;
 
    SDL_setenv("SDL_VIDEODRIVER", "dummy", 1);
    SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
@@ -171,6 +217,10 @@ main(int argc, char **argv)
    g_drc = cobalt_render_create(COBALT_SURFACE_DRC, font, false);
    if (!g_tv || !g_drc) { printf("renderer creation failed (%s)\n", font); return 1; }
    if (!cobalt_render_has_font(g_tv)) { printf("bench: no font at %s\n", font); return 1; }
+   if (g_layout_only) {
+      cobalt_render_set_layout_only(g_tv, true);
+      cobalt_render_set_layout_only(g_drc, true);
+   }
    g_app = cobalt_app_create();
    cobalt_input_init(&g_in);
 
@@ -205,8 +255,9 @@ main(int argc, char **argv)
       return 1;
    }
    const cobalt_feed *feed = cobalt_session_feed();
-   printf("cobalt bench: %d posts, %d frames/scenario, %dx%d TV, %dx%d GamePad\n",
-          feed->count, frames, 1280, 720, 854, 480);
+   printf("cobalt bench: %d posts, %d frames/scenario, %dx%d TV, %dx%d GamePad%s\n",
+          feed->count, frames, 1280, 720, 854, 480,
+          g_layout_only ? " [layout only: SDL draw calls skipped]" : "");
 
    /* The timeline: the dense scrolling list on both surfaces, and on the TV the
     * detail column beside it — the screen that wraps the most text. */

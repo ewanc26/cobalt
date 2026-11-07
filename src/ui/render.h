@@ -81,6 +81,15 @@ const cobalt_metrics *cobalt_render_metrics(const cobalt_render *r);
 bool cobalt_render_has_font(const cobalt_render *r);
 
 /*
+ * Bench only: run every layout and text-measurement path without issuing SDL
+ * draw calls, so tests/bench_main.c can time the app's own work apart from the
+ * host software blitter. Text still measures, wraps and caches as it would on
+ * a drawn frame; nothing is rasterised or presented. Do not enable this in the
+ * app: a layout-only pass leaves the screen untouched.
+ */
+void cobalt_render_set_layout_only(cobalt_render *r, bool on);
+
+/*
  * What this surface is for, in the current display mode.
  *
  * In split play the two screens divide the work: the TV reads and the GamePad
