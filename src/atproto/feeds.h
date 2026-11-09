@@ -20,7 +20,7 @@ extern "C" {
 #define COBALT_FEED_DISCOVERY_PAGE 25
 
 /* Maximum number of saved feeds (matches savedFeedsPrefV2 limit). */
-#define COBALT_SAVED_FEEDS_MAX 25
+#define COBALT_SAVED_FEEDS_MAX 16
 
 /* A discovered feed generator (app.bsky.feed.defs#generatorView). */
 typedef struct {
