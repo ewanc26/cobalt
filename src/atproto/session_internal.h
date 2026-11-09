@@ -71,74 +71,76 @@
 /* What a job carries in. Copied out of the request under the lock so the
  * worker never reads a buffer the main thread might be rewriting. */
 typedef struct {
-   char service[COBALT_SERVICE_MAX];
-   char identifier[COBALT_IDENTIFIER_MAX];
-   char password[COBALT_PASSWORD_MAX];
-   /* Timeline only: append the next page rather than replacing the feed. */
-   bool paging;
+    char service[COBALT_SERVICE_MAX];
+    char identifier[COBALT_IDENTIFIER_MAX];
+    char password[COBALT_PASSWORD_MAX];
+    /* Timeline only: append the next page rather than replacing the feed. */
+    bool paging;
 
-   /* Interactions and thread fetches: which post, and for an undo, which
-    * record of the viewer's own to delete. */
-   char uri[COBALT_POST_URI_MAX];
-   char cid[COBALT_POST_CID_MAX];
-   char record_uri[COBALT_POST_URI_MAX];
+    /* Interactions and thread fetches: which post, and for an undo, which
+     * record of the viewer's own to delete. */
+    char uri[COBALT_POST_URI_MAX];
+    char cid[COBALT_POST_CID_MAX];
+    char record_uri[COBALT_POST_URI_MAX];
 
-   /* Mute only: the target state (true = mute, false = unmute). Unlike
-    * follow/block, mute has no record URI for record_uri's emptiness to
-    * signal an undo with, so the direction is carried explicitly. */
-   bool flag;
+    /* Mute only: the target state (true = mute, false = unmute). Unlike
+     * follow/block, mute has no record URI for record_uri's emptiness to
+     * signal an undo with, so the direction is carried explicitly. */
+    bool flag;
 
-   /* Report only: `uri` is the subject post's AT-URI or, when this is true,
-    * the subject account's DID. `report_reason` is a moderation reason NSID. */
-   bool report_account;
-   char report_reason[COBALT_REPORT_REASON_MAX];
+    /* Report only: `uri` is the subject post's AT-URI or, when this is true,
+     * the subject account's DID. `report_reason` is a moderation reason NSID. */
+    bool report_account;
+    char report_reason[COBALT_REPORT_REASON_MAX];
 
-   /* A thread of new posts: how many, with the texts in s.thread_texts (too big
-    * to copy with every job; only one job runs at a time and a new one is
-    * refused while one is in flight). Zero for everything else. */
-   int thread_count;
+    /* A thread of new posts: how many, with the texts in s.thread_texts (too big
+     * to copy with every job; only one job runs at a time and a new one is
+     * refused while one is in flight). Zero for everything else. */
+    int thread_count;
 
-   /* Composing. `text` is the post body; the refs are empty for a new post. */
-   char text[COBALT_COMPOSE_TEXT_MAX];
-   char root_uri[COBALT_POST_URI_MAX];
-   char root_cid[COBALT_POST_CID_MAX];
+    /* Composing. `text` is the post body; the refs are empty for a new post. */
+    char text[COBALT_COMPOSE_TEXT_MAX];
+    char root_uri[COBALT_POST_URI_MAX];
+    char root_cid[COBALT_POST_CID_MAX];
 
-   /* Reply-control for a new top-level post; ignored on a reply. Matches
-    * `cobalt_reply_gate`: 0 everyone, 1 followed/mentioned, 2 nobody. */
-   int reply_gate;
+    /* Reply-control for a new top-level post; ignored on a reply. Matches
+     * `cobalt_reply_gate`: 0 everyone, 1 followed/mentioned, 2 nobody. */
+    int reply_gate;
 
-   /* Profile tab switches: a cobalt_profile_tab. */
-   int tab;
+    /* Profile tab switches: a cobalt_profile_tab. */
+    int tab;
 
-   /* Profile editing: the two text fields. Empty strings clear them. */
-   char display_name[COBALT_PROFILE_NAME_MAX + 1];
-   char description[COBALT_PROFILE_BIO_MAX];
+    /* Profile editing: the two text fields. Empty strings clear them. */
+    char display_name[COBALT_PROFILE_NAME_MAX + 1];
+    char description[COBALT_PROFILE_BIO_MAX];
 
-   /* Composing a quote post: `uri`/`cid` name the quoted post, not a parent. */
-   bool quote;
+    /* Composing a quote post: `uri`/`cid` name the quoted post, not a parent. */
+    bool quote;
 
-   /* Optional image to attach (SD path); empty for none. */
-   char attach_path[COBALT_ATTACH_PATH_MAX];
-   char attach_alt[COBALT_ATTACH_ALT_MAX];
+    /* Optional image to attach (SD path); empty for none. */
+    char attach_path[COBALT_ATTACH_PATH_MAX];
+    char attach_alt[COBALT_ATTACH_ALT_MAX];
 
-   /* Group join requests: the requester's DID, alongside `uri` = the convo id
-    * of the group. Empty for everything else. */
-   char member_did[COBALT_CHAT_TARGET_MAX];
+    /* Group join requests: the requester's DID, alongside `uri` = the convo id
+     * of the group. Empty for everything else. */
+    char member_did[COBALT_CHAT_TARGET_MAX];
 
-   /* Group creation: the group's name. Member handles and DIDs travel in
-    * `text`; rename and add use `text` for the new name or member list. */
-   char name[COBALT_CHAT_GROUP_NAME_MAX];
+    /* Group creation: the group's name. Member handles and DIDs travel in
+     * `text`; rename and add use `text` for the new name or member list. */
+    char name[COBALT_CHAT_GROUP_NAME_MAX];
 
-   /* List writes: `uri` is the list URI, `list_item_uri` the member record
-    * being removed, and `member_did` the handle or DID being added. */
-   char list_name[COBALT_POST_NAME_MAX];
-   char list_description[COBALT_POST_NAME_MAX];
-   char list_purpose[COBALT_LIST_PURPOSE_MAX];
-   char list_item_uri[COBALT_POST_URI_MAX];
+    /* List writes: `uri` is the list URI, `list_item_uri` the member record
+     * being removed, and `member_did` the handle or DID being added. */
+    char list_name[COBALT_POST_NAME_MAX];
+    char list_description[COBALT_POST_NAME_MAX];
+    char list_purpose[COBALT_LIST_PURPOSE_MAX];
+    char list_item_uri[COBALT_POST_URI_MAX];
 
-   /* Join-link jobs: create a new link, or toggle the existing one off/on. */
-   bool link_create;
-   bool link_disable;
+    /* Join-link jobs: create a new link, or toggle the existing one off/on. */
+    bool link_create;
+    bool link_disable;
+    /* Feed discovery: cursor for paging. */
+    char cursor[COBALT_CURSOR_MAX];
 } cobalt_job_input;
 
 /* How many thread roots one run remembers as muted. The server has no read
@@ -147,107 +149,107 @@ typedef struct {
 #define COBALT_MUTED_THREADS_MAX 16
 
 typedef struct {
-   bool initialised;
+    bool initialised;
 
-   /* The texts of a thread being posted; see job_input.thread_count. */
-   char thread_texts[COBALT_THREAD_POSTS_MAX][COBALT_COMPOSE_TEXT_MAX];
+    /* The texts of a thread being posted; see job_input.thread_count. */
+    char thread_texts[COBALT_THREAD_POSTS_MAX][COBALT_COMPOSE_TEXT_MAX];
 
-   /* Set once at init and read-only afterwards, so no locking. */
-   char ca_path[COBALT_PATH_MAX];
-   bool have_ca;
+    /* Set once at init and read-only afterwards, so no locking. */
+    char ca_path[COBALT_PATH_MAX];
+    bool have_ca;
 
-   /* The loaded profile's pinned post, so a tab switch can re-add it. */
-   char pinned_uri[COBALT_POST_URI_MAX];
+    /* The loaded profile's pinned post, so a tab switch can re-add it. */
+    char pinned_uri[COBALT_POST_URI_MAX];
 
-   /* Index into POST_LANGS; 0 is "none". Applied to each new agent. */
-   int post_lang;
-   const char *blocker;
+    /* Index into POST_LANGS; 0 is "none". Applied to each new agent. */
+    int post_lang;
+    const char *blocker;
 
-   SDL_mutex *lock;
-   SDL_cond *wake;
-   SDL_Thread *thread;
-   bool stop;
+    SDL_mutex *lock;
+    SDL_cond *wake;
+    SDL_Thread *thread;
+    bool stop;
 
-   cobalt_job_kind pending;
-   cobalt_job_input input;
+    cobalt_job_kind pending;
+    cobalt_job_input input;
 
-   bool busy;
-   bool have_result;
-   cobalt_job_result result;
+    bool busy;
+    bool have_result;
+    cobalt_job_result result;
 
-   /* Published by the worker, read by the UI. Guarded by `lock`. */
-   cobalt_auth_state state;
-   /* What `state` was before the in-flight request set it to WORKING. A job
-    * that fails leaves it alone, so a failed refresh does not sign the user
-    * out and a failed sign-in does not claim they are signed in. */
-   cobalt_auth_state resting_state;
-   char handle[COBALT_HANDLE_MAX];
-   char did[COBALT_DID_MAX];
-   char service[COBALT_SERVICE_MAX];
-   char pair_url[COBALT_OAUTH_URL_MAX];
-   char pair_code[COBALT_OAUTH_CODE_MAX];
+    /* Published by the worker, read by the UI. Guarded by `lock`. */
+    cobalt_auth_state state;
+    /* What `state` was before the in-flight request set it to WORKING. A job
+     * that fails leaves it alone, so a failed refresh does not sign the user
+     * out and a failed sign-in does not claim they are signed in. */
+    cobalt_auth_state resting_state;
+    char handle[COBALT_HANDLE_MAX];
+    char did[COBALT_DID_MAX];
+    char service[COBALT_SERVICE_MAX];
+    char pair_url[COBALT_OAUTH_URL_MAX];
+    char pair_code[COBALT_OAUTH_CODE_MAX];
 
-   /* Published by the worker alongside the auth state, and read by the
-    * timeline screen. Guarded by `lock` on write, read while idle. */
-   cobalt_feed feed;
-   /* Private bookmarks, kept out of the shared feed window. */
-   cobalt_feed bookmarks;
-   /* Named to stay clear of `thread`, which is the worker. */
-   cobalt_thread conversation;
-   cobalt_notifications notifications;
-   cobalt_chat_inbox chat;
-   /* Conversations the viewer has not accepted yet. Same shape as `chat`. */
-   cobalt_chat_inbox requests;
-   cobalt_chat_thread chat_thread;
-   /* A group's pending join requests, for the conversation last opened. */
-   cobalt_chat_join_requests join_requests;
-   /* The group whose management screen is open, or reset. */
-   cobalt_chat_group group;
-   /* Set by a successful CHAT_START, read by the app once it has ok. */
-   char chat_started[COBALT_CHAT_ID_MAX];
-   /* Set by a successful CHAT_GROUP_CREATE, read the same way. */
-   char chat_group_started[COBALT_CHAT_ID_MAX];
-   cobalt_profile profile;
-   cobalt_feed author_feed;
-   int profile_tab;
-   cobalt_actor_list muted;
-   cobalt_actor_list blocked;
-   /* Thread roots this client has muted in this run, so the Thread window's
-    * menu can name the state. The protocol has no "which threads are muted"
-    * read — app.bsky.feed.defs#threadContext carries no such flag — so a mute
-    * made on another client cannot be seen here. Cleared on sign-out, because
-    * the server-side mute belongs to the account. Guarded by `lock`. */
-   char muted_threads[COBALT_MUTED_THREADS_MAX][COBALT_POST_URI_MAX];
-   int muted_thread_count;
-   cobalt_actor_list followers;
-   cobalt_actor_list following;
-   char follow_actor[COBALT_POST_URI_MAX];
-   /* getLikes/getRepostedBy share this one list: only one is on screen at
-    * a time, and a fetch always resets it, so there is no cross-talk. */
-   cobalt_actor_list likes;
-   char likes_uri[COBALT_POST_URI_MAX];
-   /* What the shared feed window holds, so refresh and paging re-fetch the
-    * same source. Written and read on the UI thread only. */
-   int feed_source;            /* 0 home, 1 custom feed, 2 post search */
-   char feed_arg[COBALT_POST_URI_MAX];
-   cobalt_actor_list search;
-   cobalt_list_summary_list lists;
-   cobalt_saved_feeds saved_feeds;
-   cobalt_actor_list list_members;
-   /* The listitem record for each member row, filled by the same fetch. */
-   char list_member_uris[COBALT_ACTORS_MAX][COBALT_POST_URI_MAX];
-   cobalt_starter_pack starter_pack;
-   cobalt_actor_list starter_pack_members;
+    /* Published by the worker alongside the auth state, and read by the
+     * timeline screen. Guarded by `lock` on write, read while idle. */
+    cobalt_feed feed;
+    /* Private bookmarks, kept out of the shared feed window. */
+    cobalt_feed bookmarks;
+    /* Named to stay clear of `thread`, which is the worker. */
+    cobalt_thread conversation;
+    cobalt_notifications notifications;
+    cobalt_chat_inbox chat;
+    /* Conversations the viewer has not accepted yet. Same shape as `chat`. */
+    cobalt_chat_inbox requests;
+    cobalt_chat_thread chat_thread;
+    /* A group's pending join requests, for the conversation last opened. */
+    cobalt_chat_join_requests join_requests;
+    /* The group whose management screen is open, or reset. */
+    cobalt_chat_group group;
+    /* Set by a successful CHAT_START, read by the app once it has ok. */
+    char chat_started[COBALT_CHAT_ID_MAX];
+    /* Set by a successful CHAT_GROUP_CREATE, read the same way. */
+    char chat_group_started[COBALT_CHAT_ID_MAX];
+    cobalt_profile profile;
+    cobalt_feed author_feed;
+    int profile_tab;
+    cobalt_actor_list muted;
+    cobalt_actor_list blocked;
+    /* Thread roots this client has muted in this run, so the Thread window's
+     * menu can name the state. The protocol has no "which threads are muted"
+     * read — app.bsky.feed.defs#threadContext carries no such flag — so a mute
+     * made on another client cannot be seen here. Cleared on sign-out, because
+     * the server-side mute belongs to the account. Guarded by `lock`. */
+    char muted_threads[COBALT_MUTED_THREADS_MAX][COBALT_POST_URI_MAX];
+    int muted_thread_count;
+    cobalt_actor_list followers;
+    cobalt_actor_list following;
+    char follow_actor[COBALT_POST_URI_MAX];
+    /* getLikes/getRepostedBy share this one list: only one is on screen at
+     * a time, and a fetch always resets it, so there is no cross-talk. */
+    cobalt_actor_list likes;
+    char likes_uri[COBALT_POST_URI_MAX];
+    /* What the shared feed window holds, so refresh and paging re-fetch the
+     * same source. Written and read on the UI thread only. */
+    int feed_source;            /* 0 home, 1 custom feed, 2 post search */
+    char feed_arg[COBALT_POST_URI_MAX];
+    cobalt_actor_list search;
+    cobalt_list_summary_list lists;
+    cobalt_saved_feeds saved_feeds;
+    cobalt_actor_list list_members;
+    /* The listitem record for each member row, filled by the same fetch. */
+    char list_member_uris[COBALT_ACTORS_MAX][COBALT_POST_URI_MAX];
+    cobalt_starter_pack starter_pack;
+    cobalt_actor_list starter_pack_members;
 
 #ifdef COBALT_HAS_WOLFRAM
-   /* Owned by the worker while a job runs; only touched off-thread when idle. */
-   wf_agent *wf;
+    /* Owned by the worker while a job runs; only touched off-thread when idle. */
+    wf_agent *wf;
 #endif
 
-   /* Worker-only: the account's muted words and hide-reposts, fetched once per
-    * sign-in. */
-   cobalt_prefs prefs;
-   bool prefs_loaded;
+    /* Worker-only: the account's muted words and hide-reposts, fetched once per
+     * sign-in. */
+    cobalt_prefs prefs;
+    bool prefs_loaded;
 } cobalt_session_core;
 
 extern cobalt_session_core g_session;
