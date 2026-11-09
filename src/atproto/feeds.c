@@ -16,6 +16,7 @@
 #include "wolfram/feedgen_typed.h"
 #include "wolfram/actor_prefs_typed.h"
 
+
 #include <cJSON.h>
 #include <string.h>
 
@@ -55,34 +56,13 @@ copy_generator_from_agent(cobalt_feed_generator *out, const wf_agent_generator_v
     out->viewer_subscribed = false;
 }
 
-static void
-copy_generator_from_feedgen(cobalt_feed_generator *out, const wf_feedgen_generator_view *src)
-{
-    if (!out || !src) return;
-    snprintf(out->uri, sizeof out->uri, "%s", src->uri ? src->uri : "");
-    snprintf(out->did, sizeof out->did, "%s", src->creator.did ? src->creator.did : "");
-    snprintf(out->display_name, sizeof out->display_name, "%s",
-             src->display_name ? src->display_name : "");
-    snprintf(out->description, sizeof out->description, "%s",
-             src->description ? src->description : "");
-    snprintf(out->avatar, sizeof out->avatar, "%s",
-             src->avatar ? src->avatar : "");
-    out->has_like_count = src->has_like_count;
-    out->like_count = src->has_like_count ? (int64_t) src->like_count : 0;
-    out->has_viewer_like = false;
-    out->viewer_like = false;
-    out->has_subscriber_count = false;
-    out->subscriber_count = 0;
-    out->has_viewer_subscribed = false;
-    out->viewer_subscribed = false;
-}
 
 /* ------------------------------------------------------------------ */
 /* Feed discovery: suggested feeds */
 
 void
 cobalt_session_run_feed_discovery(const cobalt_job_input *in, cobalt_job_result *r,
-                                  cobalt_auth_state *state)
+                                   cobalt_auth_state *state)
 {
     (void) in;
     if (!g_session.wf) {
@@ -130,7 +110,7 @@ cobalt_session_run_feed_discovery(const cobalt_job_input *in, cobalt_job_result 
 
 void
 cobalt_session_run_feed_generator(const cobalt_job_input *in, cobalt_job_result *r,
-                                  cobalt_auth_state *state)
+                                   cobalt_auth_state *state)
 {
     if (!g_session.wf) {
         cobalt_session_set_message(r, "Sign in first.");
@@ -177,7 +157,7 @@ copy_saved_feed_entry(cobalt_saved_feed_entry *out, const wf_actor_pref_saved_fe
 
 void
 cobalt_session_run_saved_feeds_v2(const cobalt_job_input *in, cobalt_job_result *r,
-                                   cobalt_auth_state *state)
+                                    cobalt_auth_state *state)
 {
     (void) in;
     if (!g_session.wf) {
@@ -206,7 +186,7 @@ cobalt_session_run_saved_feeds_v2(const cobalt_job_input *in, cobalt_job_result 
         const wf_actor_pref_saved_feed *src = &prefs.saved_feeds_v2.items[i];
         if (src->type && strcmp(src->type, "feed") == 0) {
             copy_saved_feed_entry(&s_saved_feeds_v2.entries[s_saved_feeds_v2.count],
-                                  src);
+                                   src);
             s_saved_feeds_v2.count++;
         }
     }
@@ -226,7 +206,7 @@ cobalt_session_run_saved_feeds_v2(const cobalt_job_input *in, cobalt_job_result 
             wf_feedgen_generator_list gens = {0};
             const wf_status st =
                 wf_feedgen_get_feed_generators_typed(g_session.wf, uris, uri_count,
-                                                     &gens);
+                                                      &gens);
             if (st == WF_OK) {
                 SDL_LockMutex(g_session.lock);
                 for (size_t g = 0; g < gens.generator_count; g++) {
@@ -321,7 +301,7 @@ build_saved_feeds_v2_items(const char *feed_uri, bool pinned, bool remove)
 
 void
 cobalt_session_run_save_feed(const cobalt_job_input *in, cobalt_job_result *r,
-                             cobalt_auth_state *state)
+                              cobalt_auth_state *state)
 {
     if (!g_session.wf) {
         cobalt_session_set_message(r, "Sign in first.");
@@ -348,25 +328,18 @@ cobalt_session_run_save_feed(const cobalt_job_input *in, cobalt_job_result *r,
         return;
     }
 
-    wf_lex_app_bsky_actor_put_preferences_main_input input = {0};
-    input.prefs = json;
-
     wf_response res = {0};
-    const wf_status status =
-        wf_lex_app_bsky_actor_put_preferences_main_call(g_session.wf->client, &input,
-                                                        &res);
+    const wf_status status = wf_agent_put_preferences(g_session.wf, json, &res);
     free(json);
+    wf_response_free(&res);
 
     if (status != WF_OK) {
         COBALT_LOGW("session: feed save failed (%d)", (int) status);
         cobalt_session_set_message(r, "Could not save feed (wolfram status %d).",
                                    (int) status);
-        wf_response_free(&res);
         *state = COBALT_AUTH_SIGNED_IN;
         return;
     }
-
-    wf_response_free(&res);
 
     /* Invalidate cached saved feeds so the UI reloads */
     SDL_LockMutex(g_session.lock);
@@ -380,7 +353,7 @@ cobalt_session_run_save_feed(const cobalt_job_input *in, cobalt_job_result *r,
 
 void
 cobalt_session_run_remove_feed(const cobalt_job_input *in, cobalt_job_result *r,
-                                cobalt_auth_state *state)
+                                 cobalt_auth_state *state)
 {
     if (!g_session.wf) {
         cobalt_session_set_message(r, "Sign in first.");
@@ -406,25 +379,18 @@ cobalt_session_run_remove_feed(const cobalt_job_input *in, cobalt_job_result *r,
         return;
     }
 
-    wf_lex_app_bsky_actor_put_preferences_main_input input = {0};
-    input.prefs = json;
-
     wf_response res = {0};
-    const wf_status status =
-        wf_lex_app_bsky_actor_put_preferences_main_call(g_session.wf->client, &input,
-                                                        &res);
+    const wf_status status = wf_agent_put_preferences(g_session.wf, json, &res);
     free(json);
+    wf_response_free(&res);
 
     if (status != WF_OK) {
         COBALT_LOGW("session: feed removal failed (%d)", (int) status);
         cobalt_session_set_message(r, "Could not remove feed (wolfram status %d).",
                                    (int) status);
-        wf_response_free(&res);
         *state = COBALT_AUTH_SIGNED_IN;
         return;
     }
-
-    wf_response_free(&res);
 
     /* Invalidate cache */
     SDL_LockMutex(g_session.lock);
@@ -438,11 +404,11 @@ cobalt_session_run_remove_feed(const cobalt_job_input *in, cobalt_job_result *r,
 
 void
 cobalt_session_run_pin_feed(const cobalt_job_input *in, cobalt_job_result *r,
-                            cobalt_auth_state *state)
+                             cobalt_auth_state *state)
 {
     /* Reuse save_feed with the new pinned state */
     cobalt_job_input modified = *in;
-    modified.paging = in->cursor[0] == '1'; /* cursor encodes pinned as "1" or "0" */
+    modified.paging = in->paging; /* paging encodes pinned as true or false */
     cobalt_session_run_save_feed(&modified, r, state);
 }
 
@@ -518,6 +484,6 @@ cobalt_session_begin_pin_feed(const char *feed_uri, bool pinned)
 {
     cobalt_job_input in = {0};
     snprintf(in.uri, sizeof in.uri, "%s", feed_uri);
-    snprintf(in.cursor, sizeof in.cursor, "%d", pinned ? 1 : 0);
+    in.paging = pinned;
     return cobalt_session_submit(COBALT_JOB_PIN_FEED, &in);
 }
