@@ -522,6 +522,12 @@ run_job(cobalt_job_kind kind, const cobalt_job_input *in, cobalt_auth_state *sta
       case COBALT_JOB_LISTS:        cobalt_session_run_lists(in, &r, state);        break;
       case COBALT_JOB_STARTER_PACK: cobalt_session_run_starter_pack(in, &r, state); break;
       case COBALT_JOB_SAVED_FEEDS:  cobalt_session_run_saved_feeds(in, &r, state);  break;
+      case COBALT_JOB_FEED_DISCOVERY: cobalt_session_run_feed_discovery(in, &r, state); break;
+      case COBALT_JOB_FEED_GENERATOR: cobalt_session_run_feed_generator(in, &r, state); break;
+      case COBALT_JOB_SAVED_FEEDS_V2: cobalt_session_run_saved_feeds_v2(in, &r, state); break;
+      case COBALT_JOB_SAVE_FEED:      cobalt_session_run_save_feed(in, &r, state);      break;
+      case COBALT_JOB_REMOVE_FEED:    cobalt_session_run_remove_feed(in, &r, state);    break;
+      case COBALT_JOB_PIN_FEED:       cobalt_session_run_pin_feed(in, &r, state);       break;
       case COBALT_JOB_LIST_MEMBERS: cobalt_session_run_list_members(in, &r, state); break;
       case COBALT_JOB_LIST_CREATE: cobalt_session_run_list_create(in, &r, state); break;
       case COBALT_JOB_LIST_UPDATE: cobalt_session_run_list_update(in, &r, state); break;

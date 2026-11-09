@@ -17,6 +17,7 @@
 #include "atproto/session.h"
 #include "atproto/actors.h"
 #include "atproto/feed.h"
+#include "atproto/feeds.h"
 #include "atproto/prefs.h"
 #include "atproto/notifications.h"
 #include "atproto/chat.h"
@@ -38,7 +39,9 @@
 #include <wolfram/embed.h>
 #include <wolfram/failure.h>
 #include <wolfram/feed_gen_typed.h>
+#include <wolfram/feedgen_typed.h>
 #include <wolfram/feed_typed.h>
+#include <wolfram/unspecced_trends_typed.h>
 #include <wolfram/graph_typed.h>
 #include <wolfram/graph_write.h>
 #include <wolfram/identity_typed.h>
@@ -314,6 +317,12 @@ void cobalt_session_run_profile_update(const cobalt_job_input *in, cobalt_job_re
 void cobalt_session_run_profile_tab(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_reposted_by(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_saved_feeds(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_feed_discovery(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_feed_generator(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_saved_feeds_v2(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_save_feed(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_remove_feed(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
+void cobalt_session_run_pin_feed(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_search_actors(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_search_posts(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
 void cobalt_session_run_thread(const cobalt_job_input *in, cobalt_job_result *r, cobalt_auth_state *state);
