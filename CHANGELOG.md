@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Added
+
+- Feed discovery and management: suggested feed generators, the saved-feeds list with names, and save/remove/pin writes through putPreferences (reads go through Wolfram's `wf_agent_get_saved_feeds`). ([#273](https://github.com/ewanc26/cobalt/issues/273))
+
 ## [0.15.0] - 2026-11-07
 
 ### Added

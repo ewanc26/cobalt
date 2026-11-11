@@ -19,7 +19,7 @@ rules=(
   'parse_semver|cmp_pre|-|wf_update_compare_versions from wolfram/update.h (version comparison is Wolfram'"'"'s)'
   'image/jpeg|-|wf_attach_mime / wf_agent_upload_image_file from wolfram/attach.h (attachment types, limit and upload are Wolfram'"'"'s)'
   'threadgate#followingRule|-|wf_agent_set_reply_gate from wolfram/threadgate_postgate.h (the reply-gate rules are Wolfram'"'"'s)'
-  'savedFeedsPref|-|wf_agent_get_saved_feeds from wolfram/saved_feeds.h (the saved-feeds preference walk is Wolfram'"'"'s)'
+  'savedFeedsPref|src/atproto/feeds.c|wf_agent_get_saved_feeds from wolfram/saved_feeds.h for reads; writes are allowed only in src/atproto/feeds.c until Wolfram grows a write helper'
   'posts_with_replies|-|wf_profile_tab_* and wf_agent_get_profile_tab_typed from wolfram/profile_tab.h (the profile tabs are Wolfram'"'"'s)'
   'days_from_civil|civil_from_days|-|wf_time_* from wolfram/time.h (RFC 3339 and relative time are Wolfram'"'"'s)'
   'https://bsky\.app/chat|-|wf_chat_join_link_url from wolfram/chat_group.h (group join links are Wolfram-owned)'
