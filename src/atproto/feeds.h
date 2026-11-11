@@ -19,7 +19,7 @@ extern "C" {
 /* Maximum number of discovered feed generators per page. */
 #define COBALT_FEED_DISCOVERY_PAGE 25
 
-/* Maximum number of saved feeds (matches savedFeedsPrefV2 limit). */
+/* Maximum number of saved feeds (matches the v2 saved-feeds preference limit). */
 #define COBALT_SAVED_FEEDS_MAX 16
 
 /* A discovered feed generator (app.bsky.feed.defs#generatorView). */
@@ -47,14 +47,14 @@ typedef struct {
     cobalt_feed_generator generators[COBALT_FEED_DISCOVERY_PAGE];
 } cobalt_feed_discovery_page;
 
-/* A saved feed entry (from savedFeedsPrefV2#items where type == "feed"). */
+/* A saved feed entry (from the v2 saved-feeds preference items where type == "feed"). */
 typedef struct {
     char uri[COBALT_POST_URI_MAX];
     char display_name[COBALT_POST_NAME_MAX];
     bool pinned;
 } cobalt_saved_feed_entry;
 
-/* The account's saved feeds list (savedFeedsPrefV2). */
+/* The account's saved feeds list (the v2 saved-feeds preference). */
 typedef struct {
     int count;
     cobalt_saved_feed_entry entries[COBALT_SAVED_FEEDS_MAX];
@@ -72,13 +72,13 @@ bool cobalt_session_begin_feed_discovery(const char *cursor);
 /* Discovery: begin fetching a specific feed generator's details. */
 bool cobalt_session_begin_feed_generator(const char *feed_uri);
 
-/* Management: begin fetching the account's savedFeedsPrefV2. */
+/* Management: begin fetching the account's v2 saved-feeds preference. */
 bool cobalt_session_begin_saved_feeds_v2(void);
 
-/* Management: save a feed (add to savedFeedsPrefV2). */
+/* Management: save a feed (add to the v2 saved-feeds preference). */
 bool cobalt_session_begin_save_feed(const char *feed_uri, bool pinned);
 
-/* Management: remove a feed from savedFeedsPrefV2. */
+/* Management: remove a feed from the v2 saved-feeds preference. */
 bool cobalt_session_begin_remove_feed(const char *feed_uri);
 
 /* Management: pin/unpin a saved feed. */

@@ -3,8 +3,8 @@
  *
  * Feed discovery uses app.bsky.unspecced.getSuggestedFeeds (via
  * wf_agent_get_suggested_feeds_typed) to find popular generators.
- * Feed management reads/writes savedFeedsPrefV2 via
- * wf_agent_get_preferences_typed / wf_agent_put_preferences_json.
+ * Feed management reads the saved feeds via wf_agent_get_saved_feeds and
+ * writes the preference through putPreferences.
  */
 
 #include "atproto/feeds.h"
@@ -29,6 +29,8 @@ static cobalt_saved_feeds_v2 s_saved_feeds_v2;
 /* Session state for a single feed generator detail. */
 static cobalt_feed_generator s_feed_generator;
 static bool s_feed_generator_valid = false;
+
+#ifdef COBALT_HAS_WOLFRAM
 
 /* ------------------------------------------------------------------ */
 /* Feed generator view -> cobalt_feed_generator */
@@ -143,17 +145,7 @@ cobalt_session_run_feed_generator(const cobalt_job_input *in, cobalt_job_result 
 }
 
 /* ------------------------------------------------------------------ */
-/* Saved feeds v2: read savedFeedsPrefV2 */
-
-static void
-copy_saved_feed_entry(cobalt_saved_feed_entry *out, const wf_actor_pref_saved_feed *src)
-{
-    if (!out || !src) return;
-    snprintf(out->uri, sizeof out->uri, "%s", src->value ? src->value : "");
-    /* display_name is not in the pref; we'll fill it from getFeedGenerators */
-    out->display_name[0] = '\0';
-    out->pinned = src->has_pinned && src->pinned;
-}
+/* Saved feeds v2: the account's saved custom feeds, via Wolfram */
 
 void
 cobalt_session_run_saved_feeds_v2(const cobalt_job_input *in, cobalt_job_result *r,
@@ -166,9 +158,11 @@ cobalt_session_run_saved_feeds_v2(const cobalt_job_input *in, cobalt_job_result 
         return;
     }
 
-    wf_actor_preferences prefs = {0};
-    const wf_status status = wf_agent_get_actor_prefs_typed(g_session.wf, &prefs);
-
+    /* The saved-feeds preference walk is Wolfram's (wolfram/saved_feeds.h). */
+    wf_saved_feed feeds[COBALT_SAVED_FEEDS_MAX];
+    size_t n = 0;
+    const wf_status status =
+        wf_agent_get_saved_feeds(g_session.wf, feeds, COBALT_SAVED_FEEDS_MAX, &n);
     if (status != WF_OK) {
         COBALT_LOGW("session: saved feeds v2 fetch failed (%d)", (int) status);
         cobalt_session_set_message(r, "Could not load saved feeds (wolfram status %d).",
@@ -179,54 +173,13 @@ cobalt_session_run_saved_feeds_v2(const cobalt_job_input *in, cobalt_job_result 
 
     SDL_LockMutex(g_session.lock);
     memset(&s_saved_feeds_v2, 0, sizeof(s_saved_feeds_v2));
-
-    /* savedFeedsPrefV2: items[] with type=="feed" */
-    for (size_t i = 0; i < prefs.saved_feeds_v2.item_count &&
-         s_saved_feeds_v2.count < COBALT_SAVED_FEEDS_MAX; i++) {
-        const wf_actor_pref_saved_feed *src = &prefs.saved_feeds_v2.items[i];
-        if (src->type && strcmp(src->type, "feed") == 0) {
-            copy_saved_feed_entry(&s_saved_feeds_v2.entries[s_saved_feeds_v2.count],
-                                   src);
-            s_saved_feeds_v2.count++;
-        }
+    for (size_t i = 0; i < n && s_saved_feeds_v2.count < COBALT_SAVED_FEEDS_MAX; i++) {
+        cobalt_saved_feed_entry *e = &s_saved_feeds_v2.entries[s_saved_feeds_v2.count++];
+        snprintf(e->uri, sizeof e->uri, "%s", feeds[i].uri);
+        snprintf(e->display_name, sizeof e->display_name, "%s", feeds[i].name);
+        e->pinned = false;
     }
     SDL_UnlockMutex(g_session.lock);
-
-    /* Now resolve names via getFeedGenerators for any feed without a name */
-    if (s_saved_feeds_v2.count > 0) {
-        const char *uris[COBALT_SAVED_FEEDS_MAX];
-        int uri_count = 0;
-        for (int i = 0; i < s_saved_feeds_v2.count; i++) {
-            if (s_saved_feeds_v2.entries[i].display_name[0] == '\0' &&
-                s_saved_feeds_v2.entries[i].uri[0]) {
-                uris[uri_count++] = s_saved_feeds_v2.entries[i].uri;
-            }
-        }
-        if (uri_count > 0) {
-            wf_feedgen_generator_list gens = {0};
-            const wf_status st =
-                wf_feedgen_get_feed_generators_typed(g_session.wf, uris, uri_count,
-                                                      &gens);
-            if (st == WF_OK) {
-                SDL_LockMutex(g_session.lock);
-                for (size_t g = 0; g < gens.generator_count; g++) {
-                    const wf_feedgen_generator_view *v = &gens.generators[g];
-                    for (int i = 0; i < s_saved_feeds_v2.count; i++) {
-                        if (strcmp(v->uri, s_saved_feeds_v2.entries[i].uri) == 0 &&
-                            v->display_name && v->display_name[0]) {
-                            snprintf(s_saved_feeds_v2.entries[i].display_name,
-                                     sizeof(s_saved_feeds_v2.entries[i].display_name),
-                                     "%s", v->display_name);
-                        }
-                    }
-                }
-                SDL_UnlockMutex(g_session.lock);
-                wf_feedgen_generator_list_free(&gens);
-            }
-        }
-    }
-
-    wf_actor_preferences_free(&prefs);
 
     COBALT_LOGI("session: loaded %d saved feeds v2", s_saved_feeds_v2.count);
     *state = COBALT_AUTH_SIGNED_IN;
@@ -234,9 +187,9 @@ cobalt_session_run_saved_feeds_v2(const cobalt_job_input *in, cobalt_job_result 
 }
 
 /* ------------------------------------------------------------------ */
-/* Save/remove/pin feed: write savedFeedsPrefV2 */
+/* Save/remove/pin feed: write the v2 saved-feeds preference */
 
-/* Build a savedFeedsPrefV2 items array from the current state plus the
+/* Build the v2 saved-feeds items array from the current state plus the
  * change. Returns a cJSON array the caller must free. */
 static cJSON *
 build_saved_feeds_v2_items(const char *feed_uri, bool pinned, bool remove)
@@ -316,9 +269,31 @@ cobalt_session_run_save_feed(const cobalt_job_input *in, cobalt_job_result *r,
         return;
     }
 
-    /* Build the full preferences object */
-    cJSON *prefs = cJSON_CreateObject();
-    cJSON_AddItemToObject(prefs, "savedFeedsPrefV2", items);
+    /* putPreferences replaces the whole preferences array, so round-trip the
+     * current one and swap in the modified v2 saved-feeds preference. */
+    char *cur_json = NULL;
+    cJSON *prefs = NULL;
+    if (wf_agent_get_preferences(g_session.wf, &cur_json) == WF_OK && cur_json) {
+        prefs = cJSON_Parse(cur_json);
+        free(cur_json);
+    }
+    if (!prefs || !cJSON_IsArray(prefs)) {
+        if (prefs) cJSON_Delete(prefs);
+        prefs = cJSON_CreateArray();
+    }
+    cJSON *v2 = cJSON_CreateObject();
+    cJSON_AddItemToObject(v2, "$type", cJSON_CreateString("app.bsky.actor.defs#savedFeedsPrefV2"));
+    cJSON_AddItemToObject(v2, "items", items);
+    /* remove any existing v2 saved-feeds pref, then append the new one */
+    for (int i = cJSON_GetArraySize(prefs) - 1; i >= 0; i--) {
+        cJSON *it = cJSON_GetArrayItem(prefs, i);
+        cJSON *ty = cJSON_GetObjectItemCaseSensitive(it, "$type");
+        if (ty && cJSON_IsString(ty) && ty->valuestring &&
+            strstr(ty->valuestring, "savedFeedsPrefV2")) {
+            cJSON_DeleteItemFromArray(prefs, i);
+        }
+    }
+    cJSON_AddItemToArray(prefs, v2);
 
     char *json = cJSON_PrintUnformatted(prefs);
     cJSON_Delete(prefs);
@@ -368,8 +343,31 @@ cobalt_session_run_remove_feed(const cobalt_job_input *in, cobalt_job_result *r,
         return;
     }
 
-    cJSON *prefs = cJSON_CreateObject();
-    cJSON_AddItemToObject(prefs, "savedFeedsPrefV2", items);
+    /* putPreferences replaces the whole preferences array, so round-trip the
+     * current one and swap in the modified v2 saved-feeds preference. */
+    char *cur_json = NULL;
+    cJSON *prefs = NULL;
+    if (wf_agent_get_preferences(g_session.wf, &cur_json) == WF_OK && cur_json) {
+        prefs = cJSON_Parse(cur_json);
+        free(cur_json);
+    }
+    if (!prefs || !cJSON_IsArray(prefs)) {
+        if (prefs) cJSON_Delete(prefs);
+        prefs = cJSON_CreateArray();
+    }
+    cJSON *v2 = cJSON_CreateObject();
+    cJSON_AddItemToObject(v2, "$type", cJSON_CreateString("app.bsky.actor.defs#savedFeedsPrefV2"));
+    cJSON_AddItemToObject(v2, "items", items);
+    /* remove any existing v2 saved-feeds pref, then append the new one */
+    for (int i = cJSON_GetArraySize(prefs) - 1; i >= 0; i--) {
+        cJSON *it = cJSON_GetArrayItem(prefs, i);
+        cJSON *ty = cJSON_GetObjectItemCaseSensitive(it, "$type");
+        if (ty && cJSON_IsString(ty) && ty->valuestring &&
+            strstr(ty->valuestring, "savedFeedsPrefV2")) {
+            cJSON_DeleteItemFromArray(prefs, i);
+        }
+    }
+    cJSON_AddItemToArray(prefs, v2);
 
     char *json = cJSON_PrintUnformatted(prefs);
     cJSON_Delete(prefs);
@@ -411,6 +409,8 @@ cobalt_session_run_pin_feed(const cobalt_job_input *in, cobalt_job_result *r,
     modified.paging = in->paging; /* paging encodes pinned as true or false */
     cobalt_session_run_save_feed(&modified, r, state);
 }
+
+#endif /* COBALT_HAS_WOLFRAM */
 
 /* ------------------------------------------------------------------ */
 /* Public accessors */
