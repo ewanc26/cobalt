@@ -10,6 +10,7 @@
 #include "app/messages.h"
 #include "atproto/prefs.h"
 #include "atproto/session.h"
+#include "atproto/feeds.h"
 #include "input/input.h"
 #include "../../wolfram/test/mock_pds.h"
 
@@ -1195,6 +1196,117 @@ test_list_writes(void)
    cs_stop(&s);
 }
 
+/* Feed discovery and management: suggested generators, one generator's
+ * detail, the v2 saved-feeds list, and save/pin/remove round-trips including
+ * their failure messages. */
+static void
+test_feeds(void)
+{
+   cs_server s;
+   CHECK(cs_start(&s));
+   char svc[64];
+   snprintf(svc, sizeof svc, "http://127.0.0.1:%d", s.port);
+   cs_set(&s, "com.atproto.server.createSession", 200,
+      "{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\","
+      "\"accessJwt\":\"a.b.c\",\"refreshJwt\":\"d.e.f\",\"active\":true}");
+   cs_set(&s, "app.bsky.unspecced.getSuggestedFeeds", 200,
+      "{\"feeds\":["
+      "{\"uri\":\"at://did:plc:x/app.bsky.feed.generator/cats\",\"cid\":\"g1\","
+      "\"did\":\"did:web:x\",\"creator\":{\"did\":\"did:plc:x\",\"handle\":\"x.test\"},"
+      "\"displayName\":\"Cat Pics\",\"description\":\"Nothing but cats.\","
+      "\"likeCount\":4200,\"indexedAt\":\"2026-10-01T10:00:00.000Z\"},"
+      "{\"uri\":\"at://did:plc:y/app.bsky.feed.generator/dogs\",\"cid\":\"g2\","
+      "\"did\":\"did:web:y\",\"creator\":{\"did\":\"did:plc:y\",\"handle\":\"y.test\"},"
+      "\"displayName\":\"Dog Spotting\",\"description\":\"Good dogs only.\","
+      "\"likeCount\":980,\"indexedAt\":\"2026-10-02T10:00:00.000Z\"}]}");
+   cs_set(&s, "app.bsky.feed.getFeedGenerator", 200,
+      "{\"view\":{\"uri\":\"at://did:plc:x/app.bsky.feed.generator/cats\",\"cid\":\"g1\","
+      "\"did\":\"did:web:x\",\"creator\":{\"did\":\"did:plc:x\",\"handle\":\"x.test\"},"
+      "\"displayName\":\"Cat Pics\",\"description\":\"Nothing but cats, all day.\","
+      "\"likeCount\":4200,\"indexedAt\":\"2026-10-01T10:00:00.000Z\"},"
+      "\"isOnline\":true,\"isValid\":true}");
+   cs_set(&s, "app.bsky.actor.getPreferences", 200,
+      "{\"preferences\":[{\"$type\":\"app.bsky.actor.defs#savedFeedsPrefV2\",\"items\":["
+      "{\"type\":\"timeline\",\"value\":\"following\",\"pinned\":true,\"id\":\"a\"},"
+      "{\"type\":\"feed\",\"value\":\"at://did:plc:x/app.bsky.feed.generator/cats\",\"pinned\":true,\"id\":\"b\"},"
+      "{\"type\":\"feed\",\"value\":\"at://did:plc:x/app.bsky.feed.generator/poetry\",\"pinned\":false,\"id\":\"c\"}]}]}");
+   cs_set(&s, "app.bsky.actor.putPreferences", 200, "{}");
+
+   cobalt_job_result r;
+   CHECK(cobalt_session_begin_login(svc, "ewancroft.test", "app-pass"));
+   CHECK(wait_job(&r) && r.ok);
+
+   /* Discovery lists the suggested generators. */
+   CHECK(cobalt_session_begin_feed_discovery(NULL));
+   CHECK(wait_job(&r) && r.ok);
+   const cobalt_feed_discovery_page *page = cobalt_session_feed_discovery_results();
+   CHECK(page->count == 2);
+   CHECK_STR(page->generators[0].display_name, "Cat Pics");
+   CHECK_STR(page->generators[1].uri, "at://did:plc:y/app.bsky.feed.generator/dogs");
+   CHECK(page->generators[0].has_like_count && page->generators[0].like_count == 4200);
+   CHECK(!page->has_more);
+
+   /* One generator's detail, asked for by its URI. */
+   CHECK(cobalt_session_begin_feed_generator(page->generators[0].uri));
+   CHECK(wait_job(&r));
+   if (!r.ok) printf("feed generator failed: %s\n", r.message);
+   CHECK(r.ok);
+   const cobalt_feed_generator *g = cobalt_session_feed_generator();
+   CHECK(g != NULL);
+   CHECK_STR(g->display_name, "Cat Pics");
+   CHECK(g->has_like_count && g->like_count == 4200);
+   CHECK(cs_request_path_contains(&s, "app.bsky.feed.getFeedGenerator", "feed="));
+
+   /* The v2 saved-feeds list: two feeds, the first pinned. */
+   CHECK(cobalt_session_begin_saved_feeds_v2());
+   CHECK(wait_job(&r) && r.ok);
+   const cobalt_saved_feeds_v2 *v2 = cobalt_session_saved_feeds_v2();
+   CHECK(v2->count == 2);
+   CHECK_STR(v2->entries[0].uri, "at://did:plc:x/app.bsky.feed.generator/cats");
+   CHECK(v2->entries[0].pinned);
+   CHECK(!v2->entries[1].pinned);
+
+   /* Saving a feed round-trips the whole preferences array through
+    * putPreferences and invalidates the cached list. */
+   CHECK(cobalt_session_begin_save_feed("at://did:plc:y/app.bsky.feed.generator/dogs", false));
+   CHECK(wait_job(&r));
+   if (!r.ok) printf("save feed failed: %s\n", r.message);
+   CHECK(r.ok);
+   CHECK(cs_hits(&s, "app.bsky.actor.putPreferences") == 1);
+   CHECK(cs_request_contains(&s, "app.bsky.actor.putPreferences", "dogs"));
+   CHECK(cs_request_contains(&s, "app.bsky.actor.putPreferences", "savedFeedsPrefV2"));
+   CHECK(cobalt_session_saved_feeds_v2()->count == 0);
+   CHECK(cobalt_session_begin_saved_feeds_v2());
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cobalt_session_saved_feeds_v2()->count == 2);
+
+   /* Pin and remove are also putPreferences round-trips. */
+   CHECK(cobalt_session_begin_pin_feed("at://did:plc:x/app.bsky.feed.generator/poetry", true));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cobalt_session_begin_remove_feed("at://did:plc:x/app.bsky.feed.generator/poetry"));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(cs_hits(&s, "app.bsky.actor.putPreferences") == 3);
+
+   /* A failing mutation reports the failure. */
+   cs_set(&s, "app.bsky.actor.putPreferences", 400,
+      "{\"error\":\"InvalidRequest\",\"message\":\"too many feeds\"}");
+   CHECK(cobalt_session_begin_save_feed("at://did:plc:y/app.bsky.feed.generator/dogs", false));
+   CHECK(wait_job(&r));
+   CHECK(!r.ok);
+   CHECK(r.message[0] != '\0');
+
+   /* A failed discovery reports too, and the previous page is still held. */
+   cs_set(&s, "app.bsky.unspecced.getSuggestedFeeds", 500,
+      "{\"error\":\"InternalServerError\",\"message\":\"boom\"}");
+   CHECK(cobalt_session_begin_feed_discovery(NULL));
+   CHECK(wait_job(&r));
+   CHECK(!r.ok);
+   CHECK(r.message[0] != '\0');
+   CHECK(cobalt_session_feed_discovery_results()->count == 2);
+
+   cs_stop(&s);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -1337,10 +1449,12 @@ main(int argc, char **argv)
 
    test_notifications();
    test_message_requests();
+
    test_group_join_requests();
    test_group_create_and_join_link();
    test_group_management();
    test_list_writes();
+   test_feeds();
 
    wf_mock_pds_free(pds);
    printf("%d checks, %d failures\n", checks, failures);

@@ -22,6 +22,7 @@
 #include "app/entropyview.h"
 #include "app/graph.h"
 #include "app/lists.h"
+#include "app/feed_discovery.h"
 #include "app/starter_pack.h"
 #include "app/notify.h"
 #include "app/messages.h"
@@ -85,6 +86,7 @@ struct cobalt_app {
    cobalt_graph_view graph;
    cobalt_search_view search;
    cobalt_lists_view lists;
+   cobalt_feed_discovery_view feed_discovery;
    cobalt_starter_pack_view starter_pack;
    /* The link the open post menu would turn into a pack. Kept out of the popup
     * row because an AT-URI can exceed the popup's 128-byte argument. */
@@ -128,6 +130,9 @@ struct cobalt_app {
    /* Where B from a custom feed goes: the feed picker normally, or the starter
     * pack whose included feed was opened. */
    cobalt_screen feed_back;
+   /* A feed mutation finished: the v1 saved-feeds list is refreshed from the
+    * v2 result (one request at a time). */
+   bool feeds_dirty;
    /* ...or the results of a post search, which also must not pass for home. */
    bool viewing_search;
    /* The profile's selection and scroll when that list was opened, so backing
