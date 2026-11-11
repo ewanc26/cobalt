@@ -11,6 +11,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 - Feed discovery and management: suggested feed generators, the saved-feeds list with names, and save/remove/pin writes through putPreferences (reads go through Wolfram's `wf_agent_get_saved_feeds`). ([#273](https://github.com/ewanc26/cobalt/issues/273))
 
+## [0.16.0] - 2026-11-11
+
 ## [0.15.0] - 2026-11-07
 
 ### Added
@@ -347,7 +349,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/ewanc26/cobalt/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/ewanc26/cobalt/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/ewanc26/cobalt/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/ewanc26/cobalt/compare/v0.12.0...v0.13.0
