@@ -10,6 +10,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 
 - Feed discovery and management: suggested feed generators, the saved-feeds list with names, and save/remove/pin writes through putPreferences (reads go through Wolfram's `wf_agent_get_saved_feeds`). ([#273](https://github.com/ewanc26/cobalt/issues/273))
+- The Feeds screen now manages feeds, not just opens them: X opens Discover feeds, a list of suggested generators where A inspects one, and Y on a saved feed opens its detail. The detail screen shows the generator's avatar, description and like count, and offers A to open the feed, Y to save, R to pin/unpin and X twice to remove; saved feeds are starred in the picker. Feed mutations refresh both saved-feeds lists, and the v2 read parses the raw preferences so pinned flags and unknown preference types survive. Host e2e covers discovery, detail, the saved-feeds list and save/pin/remove round-trips including failures; snapshots cover the picker, discovery and detail screens on both displays. ([#273](https://github.com/ewanc26/cobalt/issues/273))
 
 ## [0.16.0] - 2026-11-11
 

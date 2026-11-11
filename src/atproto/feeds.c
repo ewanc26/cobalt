@@ -14,7 +14,6 @@
 #include "wolfram/unspecced_trends_typed.h"
 #include "wolfram/feed_gen_typed.h"
 #include "wolfram/feedgen_typed.h"
-#include "wolfram/actor_prefs_typed.h"
 
 
 #include <cJSON.h>
@@ -147,6 +146,29 @@ cobalt_session_run_feed_generator(const cobalt_job_input *in, cobalt_job_result 
 /* ------------------------------------------------------------------ */
 /* Saved feeds v2: the account's saved custom feeds, via Wolfram */
 
+/* The items array of the savedFeedsPrefV2 preference inside a raw preferences
+ * array, duplicated; NULL when there is none. */
+static cJSON *
+prefs_saved_feeds_v2_items(const cJSON *prefs)
+{
+    if (!prefs || !cJSON_IsArray(prefs)) {
+        return NULL;
+    }
+    for (int i = 0; i < cJSON_GetArraySize(prefs); i++) {
+        const cJSON *it = cJSON_GetArrayItem(prefs, i);
+        const cJSON *ty = cJSON_GetObjectItemCaseSensitive(it, "$type");
+        if (ty && cJSON_IsString(ty) && ty->valuestring &&
+            strstr(ty->valuestring, "savedFeedsPrefV2")) {
+            const cJSON *items = cJSON_GetObjectItemCaseSensitive(it, "items");
+            if (cJSON_IsArray(items)) {
+                return cJSON_Duplicate(items, true);
+            }
+            return NULL;
+        }
+    }
+    return NULL;
+}
+
 void
 cobalt_session_run_saved_feeds_v2(const cobalt_job_input *in, cobalt_job_result *r,
                                     cobalt_auth_state *state)
@@ -158,26 +180,84 @@ cobalt_session_run_saved_feeds_v2(const cobalt_job_input *in, cobalt_job_result 
         return;
     }
 
-    /* The saved-feeds preference walk is Wolfram's (wolfram/saved_feeds.h). */
-    wf_saved_feed feeds[COBALT_SAVED_FEEDS_MAX];
-    size_t n = 0;
-    const wf_status status =
-        wf_agent_get_saved_feeds(g_session.wf, feeds, COBALT_SAVED_FEEDS_MAX, &n);
-    if (status != WF_OK) {
+    /* Read the raw preferences rather than the strict typed parse: one
+     * preference type the parser rejects must not take the whole feed list
+     * down with it, and the pinned flags only exist in the raw v2 items. */
+    char *cur_json = NULL;
+    const wf_status status = wf_agent_get_preferences(g_session.wf, &cur_json);
+    if (status != WF_OK || !cur_json) {
         COBALT_LOGW("session: saved feeds v2 fetch failed (%d)", (int) status);
         cobalt_session_set_message(r, "Could not load saved feeds (wolfram status %d).",
                                    (int) status);
         *state = COBALT_AUTH_SIGNED_IN;
         return;
     }
+    cJSON *prefs = cJSON_Parse(cur_json);
+    free(cur_json);
+    if (!prefs || !cJSON_IsArray(prefs)) {
+        if (prefs) cJSON_Delete(prefs);
+        prefs = NULL;
+    }
 
     SDL_LockMutex(g_session.lock);
     memset(&s_saved_feeds_v2, 0, sizeof(s_saved_feeds_v2));
-    for (size_t i = 0; i < n && s_saved_feeds_v2.count < COBALT_SAVED_FEEDS_MAX; i++) {
-        cobalt_saved_feed_entry *e = &s_saved_feeds_v2.entries[s_saved_feeds_v2.count++];
-        snprintf(e->uri, sizeof e->uri, "%s", feeds[i].uri);
-        snprintf(e->display_name, sizeof e->display_name, "%s", feeds[i].name);
-        e->pinned = false;
+    if (prefs) {
+        cJSON *items = prefs_saved_feeds_v2_items(prefs);
+        if (items) {
+            for (int i = 0; i < cJSON_GetArraySize(items) &&
+                            s_saved_feeds_v2.count < COBALT_SAVED_FEEDS_MAX; i++) {
+                const cJSON *it = cJSON_GetArrayItem(items, i);
+                const cJSON *ty = cJSON_GetObjectItemCaseSensitive(it, "type");
+                const cJSON *val = cJSON_GetObjectItemCaseSensitive(it, "value");
+                const cJSON *pin = cJSON_GetObjectItemCaseSensitive(it, "pinned");
+                if (!ty || !val || !cJSON_IsString(ty) || !cJSON_IsString(val)) {
+                    continue;
+                }
+                if (strcmp(ty->valuestring, "feed") != 0 || !val->valuestring[0]) {
+                    continue;
+                }
+                cobalt_saved_feed_entry *e =
+                    &s_saved_feeds_v2.entries[s_saved_feeds_v2.count++];
+                snprintf(e->uri, sizeof e->uri, "%s", val->valuestring);
+                /* No display name in the v2 items: fall back to the record key. */
+                const char *key = strrchr(val->valuestring, '/');
+                snprintf(e->display_name, sizeof e->display_name, "%s",
+                         key ? key + 1 : val->valuestring);
+                e->pinned = pin && cJSON_IsTrue(pin);
+            }
+            cJSON_Delete(items);
+        } else {
+            /* Legacy savedFeedsPref (v1): a plain list of generator URIs. */
+            for (int i = 0; i < cJSON_GetArraySize(prefs) &&
+                            s_saved_feeds_v2.count < COBALT_SAVED_FEEDS_MAX; i++) {
+                const cJSON *it = cJSON_GetArrayItem(prefs, i);
+                const cJSON *ty = cJSON_GetObjectItemCaseSensitive(it, "$type");
+                if (!ty || !cJSON_IsString(ty) || !ty->valuestring ||
+                    strstr(ty->valuestring, "savedFeedsPrefV2") ||
+                    !strstr(ty->valuestring, "savedFeedsPref")) {
+                    continue;
+                }
+                const cJSON *saved = cJSON_GetObjectItemCaseSensitive(it, "saved");
+                if (!cJSON_IsArray(saved)) {
+                    continue;
+                }
+                for (int j = 0; j < cJSON_GetArraySize(saved) &&
+                                s_saved_feeds_v2.count < COBALT_SAVED_FEEDS_MAX; j++) {
+                    const cJSON *v = cJSON_GetArrayItem(saved, j);
+                    if (!cJSON_IsString(v) || !v->valuestring[0]) {
+                        continue;
+                    }
+                    cobalt_saved_feed_entry *e =
+                        &s_saved_feeds_v2.entries[s_saved_feeds_v2.count++];
+                    snprintf(e->uri, sizeof e->uri, "%s", v->valuestring);
+                    const char *key = strrchr(v->valuestring, '/');
+                    snprintf(e->display_name, sizeof e->display_name, "%s",
+                             key ? key + 1 : v->valuestring);
+                    e->pinned = false;
+                }
+            }
+        }
+        cJSON_Delete(prefs);
     }
     SDL_UnlockMutex(g_session.lock);
 
@@ -194,53 +274,58 @@ cobalt_session_run_saved_feeds_v2(const cobalt_job_input *in, cobalt_job_result 
 static cJSON *
 build_saved_feeds_v2_items(const char *feed_uri, bool pinned, bool remove)
 {
-    /* Fetch current preferences to preserve non-feed items */
-    wf_actor_preferences prefs = {0};
-    const wf_status status = wf_agent_get_actor_prefs_typed(g_session.wf, &prefs);
-    if (status != WF_OK) {
-        COBALT_LOGW("session: could not read preferences for feed save");
-        return NULL;
+    /* Build from the raw current preferences, copied verbatim, so unknown
+     * fields and other preference types survive the round-trip. */
+    char *cur_json = NULL;
+    cJSON *prefs = NULL;
+    if (wf_agent_get_preferences(g_session.wf, &cur_json) == WF_OK && cur_json) {
+        prefs = cJSON_Parse(cur_json);
+        free(cur_json);
+    }
+    if (!prefs || !cJSON_IsArray(prefs)) {
+        if (prefs) cJSON_Delete(prefs);
+        prefs = cJSON_CreateArray();
     }
 
-    cJSON *items = cJSON_AddArrayToObject(NULL, "items");
+    cJSON *items = cJSON_CreateArray();
     if (!items) {
-        wf_actor_preferences_free(&prefs);
+        cJSON_Delete(prefs);
         return NULL;
     }
 
-    /* Copy existing items, modifying the target feed */
-    for (size_t i = 0; i < prefs.saved_feeds_v2.item_count; i++) {
-        const wf_actor_pref_saved_feed *src = &prefs.saved_feeds_v2.items[i];
-        if (src->type && src->value) {
-            if (strcmp(src->type, "feed") == 0 &&
-                strcmp(src->value, feed_uri) == 0) {
+    bool seen = false;
+    cJSON *existing = prefs_saved_feeds_v2_items(prefs);
+    if (existing) {
+        for (int i = 0; i < cJSON_GetArraySize(existing); i++) {
+            cJSON *src = cJSON_GetArrayItem(existing, i);
+            const cJSON *ty = cJSON_GetObjectItemCaseSensitive(src, "type");
+            const cJSON *val = cJSON_GetObjectItemCaseSensitive(src, "value");
+            const bool is_target = ty && val && cJSON_IsString(ty) &&
+                                   cJSON_IsString(val) && val->valuestring &&
+                                   strcmp(ty->valuestring, "feed") == 0 &&
+                                   strcmp(val->valuestring, feed_uri) == 0;
+            if (is_target) {
+                seen = true;
                 if (remove) {
-                    /* Skip: removing this feed */
-                    continue;
+                    continue;   /* drop the item entirely */
                 }
-                /* Update pinned state */
-                cJSON *item = cJSON_CreateObject();
-                cJSON_AddStringToObject(item, "type", src->type);
-                cJSON_AddStringToObject(item, "value", src->value);
-                if (src->id) cJSON_AddStringToObject(item, "id", src->id);
-                cJSON_AddBoolToObject(item, "pinned", pinned);
+                cJSON *item = cJSON_Duplicate(src, true);
+                cJSON *pin = cJSON_GetObjectItemCaseSensitive(item, "pinned");
+                if (pin) {
+                    cJSON_ReplaceItemInObject(item, "pinned",
+                                              cJSON_CreateBool(pinned));
+                } else {
+                    cJSON_AddBoolToObject(item, "pinned", pinned);
+                }
                 cJSON_AddItemToArray(items, item);
             } else {
-                /* Copy unchanged */
-                cJSON *item = cJSON_CreateObject();
-                cJSON_AddStringToObject(item, "type", src->type);
-                cJSON_AddStringToObject(item, "value", src->value);
-                if (src->id) cJSON_AddStringToObject(item, "id", src->id);
-                if (src->has_pinned) {
-                    cJSON_AddBoolToObject(item, "pinned", src->pinned);
-                }
-                cJSON_AddItemToArray(items, item);
+                cJSON_AddItemToArray(items, cJSON_Duplicate(src, true));
             }
         }
+        cJSON_Delete(existing);
     }
 
-    if (!remove) {
-        /* Add new feed entry */
+    if (!remove && !seen) {
         cJSON *item = cJSON_CreateObject();
         cJSON_AddStringToObject(item, "type", "feed");
         cJSON_AddStringToObject(item, "value", feed_uri);
@@ -248,7 +333,7 @@ build_saved_feeds_v2_items(const char *feed_uri, bool pinned, bool remove)
         cJSON_AddItemToArray(items, item);
     }
 
-    wf_actor_preferences_free(&prefs);
+    cJSON_Delete(prefs);
     return items;
 }
 
