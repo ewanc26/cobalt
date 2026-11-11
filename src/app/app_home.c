@@ -267,6 +267,7 @@ activate(cobalt_app *app, int index)
          app->feeds_selected = 0;
          app->feeds_scroll = 0;
          if (signed_in()) {
+            /* The v2 list (pinned flags) is chained from this job's result. */
             cobalt_session_begin_saved_feeds();
          }
          app->screen = COBALT_SCREEN_FEEDS;
@@ -419,6 +420,21 @@ cobalt_app_update_feeds(cobalt_app *app, const cobalt_input *in)
       if (app->feeds_scroll < 0) {
          app->feeds_scroll = 0;
       }
+   }
+
+   if (cobalt_input_pressed(in, COBALT_BTN_ALT_X)) {
+      cobalt_feed_discovery_view_open(&app->feed_discovery);
+      app->screen = COBALT_SCREEN_FEED_DISCOVERY;
+      COBALT_LOGI("feeds: opening discovery");
+      return;
+   }
+
+   if (cobalt_input_pressed(in, COBALT_BTN_ALT_Y)) {
+      const feed_entry e = feed_at(app->feeds_selected);
+      cobalt_feed_discovery_view_open_feed(&app->feed_discovery, e.uri);
+      app->screen = COBALT_SCREEN_FEED_DISCOVERY;
+      COBALT_LOGI("feeds: managing %s", e.label);
+      return;
    }
 
    int activated = -1;
@@ -660,7 +676,13 @@ cobalt_app_draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surfa
       SDL_Rect row = { m->pad_edge, row_y, width, row_h };
       const bool focused = (app->feeds_selected == i);
       cobalt_draw_tile(r, &row, focused ? 1.0f : 0.0f);
-      cobalt_draw_text_centred(r, COBALT_FONT_HEADING, feed_at(i).label, row.x,
+      /* A star marks the pinned saved feeds; the fallback row is never pinned. */
+      char label[COBALT_POST_NAME_MAX + 4];
+      const feed_entry e = feed_at(i);
+      snprintf(label, sizeof(label), "%s%s",
+               cobalt_feed_saved_state(e.uri) == 1 ? "\xE2\x98\x85 " : "",
+               e.label);
+      cobalt_draw_text_centred(r, COBALT_FONT_HEADING, label, row.x,
                                row.y + (row_h - label_h) / 2, row.w,
                                COBALT_COLOUR_TEXT);
 
@@ -684,7 +706,7 @@ cobalt_app_draw_feeds(cobalt_app *app, cobalt_render *r, cobalt_surface_id surfa
 
    cobalt_app_draw_notice(app, r, row_y - m->gap / 2 + m->gap / 2, width);
 
-   cobalt_draw_hints(r, "A / touch: open");
+   cobalt_draw_hints(r, "A / touch: open   Y: manage   X: discover");
 }
 
 /* The TV's idle card in Off-TV mode: enough to show the app is alive and

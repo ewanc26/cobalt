@@ -166,6 +166,22 @@ register_fixtures(wf_mock_pds *pds)
       "{\"feeds\":[{\"uri\":\"at://did:plc:x/app.bsky.feed.generator/cats\",\"cid\":\"g1\","
       "\"did\":\"did:web:x\",\"creator\":{\"did\":\"did:plc:x\",\"handle\":\"x.test\"},"
       "\"displayName\":\"Cat Pics\",\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}]}");
+   wf_mock_pds_register(pds, "app.bsky.unspecced.getSuggestedFeeds",
+      "{\"feeds\":["
+      "{\"uri\":\"at://did:plc:x/app.bsky.feed.generator/cats\",\"cid\":\"g1\","
+      "\"did\":\"did:web:x\",\"creator\":{\"did\":\"did:plc:x\",\"handle\":\"x.test\",\"displayName\":\"X\"},"
+      "\"displayName\":\"Cat Pics\",\"description\":\"Nothing but cats, all day long.\","
+      "\"likeCount\":4200,\"indexedAt\":\"2026-10-01T10:00:00.000Z\"},"
+      "{\"uri\":\"at://did:plc:y/app.bsky.feed.generator/dogs\",\"cid\":\"g2\","
+      "\"did\":\"did:web:y\",\"creator\":{\"did\":\"did:plc:y\",\"handle\":\"y.test\",\"displayName\":\"Y\"},"
+      "\"displayName\":\"Dog Spotting\",\"description\":\"Good dogs only.\","
+      "\"likeCount\":980,\"indexedAt\":\"2026-10-02T10:00:00.000Z\"}]}");
+   wf_mock_pds_register(pds, "app.bsky.feed.getFeedGenerator",
+      "{\"view\":{\"uri\":\"at://did:plc:x/app.bsky.feed.generator/cats\",\"cid\":\"g1\","
+      "\"did\":\"did:web:x\",\"creator\":{\"did\":\"did:plc:x\",\"handle\":\"x.test\",\"displayName\":\"X\"},"
+      "\"displayName\":\"Cat Pics\",\"description\":\"Nothing but cats, all day long. Enough words here to wrap onto a second line on the detail screen so the layout is exercised properly.\","
+      "\"likeCount\":4200,\"indexedAt\":\"2026-10-01T10:00:00.000Z\"},\"isOnline\":true,\"isValid\":true}");
+   wf_mock_pds_register(pds, "app.bsky.actor.putPreferences", "{}");
    wf_mock_pds_register(pds, "app.bsky.graph.getLists",
       "{\"lists\":[{\"uri\":\"at://did:plc:abc/app.bsky.graph.list/1\",\"cid\":\"l1\","
       "\"name\":\"Friends\",\"purpose\":\"app.bsky.graph.defs#curatelist\","

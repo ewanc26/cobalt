@@ -123,6 +123,7 @@ cobalt_app_create(void)
    cobalt_graph_view_init(&app->graph);
    cobalt_search_view_init(&app->search);
    cobalt_lists_view_init(&app->lists);
+   cobalt_feed_discovery_view_init(&app->feed_discovery);
    cobalt_starter_pack_view_init(&app->starter_pack);
    app->feed_back = COBALT_SCREEN_FEEDS;
    cobalt_queue_view_open(&app->queue_view);
@@ -245,6 +246,10 @@ cobalt_app_view_position(const cobalt_app *app, cobalt_screen screen, int *selec
          case COBALT_SCREEN_FEEDS:
             sel = app->feeds_selected;
             scr = app->feeds_scroll;
+            break;
+         case COBALT_SCREEN_FEED_DISCOVERY:
+            sel = app->feed_discovery.nav.selected;
+            scr = app->feed_discovery.nav.scroll;
             break;
          default:
             break;
@@ -572,6 +577,7 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
    cobalt_graph_view_init(&app->graph);
    cobalt_search_view_init(&app->search);
    cobalt_lists_view_init(&app->lists);
+   cobalt_feed_discovery_view_init(&app->feed_discovery);
    cobalt_starter_pack_view_init(&app->starter_pack);
    app->feed_back = COBALT_SCREEN_FEEDS;
          app->screen = COBALT_SCREEN_HOME;
@@ -830,6 +836,56 @@ handle_job_result(cobalt_app *app, const cobalt_job_result *result)
          if (app->screen != COBALT_SCREEN_LISTS &&
              (result->message[0] || !result->ok)) {
             set_notice(app, result->message, !result->ok);
+         }
+         break;
+
+      case COBALT_JOB_SAVED_FEEDS:
+         /* The v2 list (pinned flags) rides on the v1 fetch: one request at a
+          * time, so chain it from this result. */
+         if (!result->ok) {
+            set_notice(app, result->message, true);
+         } else if (cobalt_session_saved_feeds_v2()->count == 0) {
+            cobalt_session_begin_saved_feeds_v2();
+         }
+         break;
+
+
+      case COBALT_JOB_FEED_DISCOVERY:
+      case COBALT_JOB_FEED_GENERATOR:
+      case COBALT_JOB_SAVED_FEEDS_V2:
+         /* The lists on screen show these results; only failures are worth a
+          * notice. */
+         cobalt_feed_discovery_view_result(&app->feed_discovery, result->kind,
+                                           result->ok, result->message);
+         if (!result->ok) {
+            set_notice(app, result->message, true);
+         } else if (result->kind == COBALT_JOB_SAVED_FEEDS_V2) {
+            /* A mutation marked the v1 list stale; otherwise just make sure
+             * both lists have landed once. */
+            if (app->feeds_dirty) {
+               app->feeds_dirty = false;
+               cobalt_session_begin_saved_feeds();
+            } else if (cobalt_session_saved_feeds()->count == 0) {
+               cobalt_session_begin_saved_feeds();
+            }
+         } else if (cobalt_session_saved_feeds_v2()->count == 0) {
+            cobalt_session_begin_saved_feeds_v2();
+         }
+         break;
+
+      case COBALT_JOB_SAVE_FEED:
+      case COBALT_JOB_REMOVE_FEED:
+      case COBALT_JOB_PIN_FEED:
+         cobalt_feed_discovery_view_result(&app->feed_discovery, result->kind,
+                                           result->ok, result->message);
+         if (app->screen != COBALT_SCREEN_FEED_DISCOVERY &&
+             (result->message[0] || !result->ok)) {
+            set_notice(app, result->message, !result->ok);
+         }
+         if (result->ok) {
+            /* Refresh both saved lists; the v1 fetch chains off the v2 one. */
+            app->feeds_dirty = true;
+            cobalt_session_begin_saved_feeds_v2();
          }
          break;
 
@@ -1441,6 +1497,30 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
          cobalt_app_update_feeds(app, in);
          break;
 
+      case COBALT_SCREEN_FEED_DISCOVERY:
+         switch (cobalt_feed_discovery_view_update(&app->feed_discovery, in)) {
+            case COBALT_FEED_DISCOVERY_VIEW_BACK:
+               if (!cobalt_session_busy()) {
+                  cobalt_session_begin_saved_feeds();
+               }
+               app->screen = COBALT_SCREEN_FEEDS;
+               break;
+            case COBALT_FEED_DISCOVERY_VIEW_OPEN_FEED:
+               if (app->feed_discovery.open_uri[0]) {
+                  cobalt_timeline_rewind(&app->timeline);
+                  cobalt_session_begin_feed(app->feed_discovery.open_uri, false);
+                  app->viewing_custom_feed = true;
+                  app->viewing_search = false;
+                  app->feed_back = COBALT_SCREEN_FEED_DISCOVERY;
+                  app->screen = COBALT_SCREEN_TIMELINE;
+               }
+               break;
+            case COBALT_FEED_DISCOVERY_VIEW_STAY:
+            default:
+               break;
+         }
+         break;
+
       case COBALT_SCREEN_MUTED_LIST:
       case COBALT_SCREEN_BLOCKED_LIST:
          switch (cobalt_graph_view_update(&app->graph, in)) {
@@ -1743,6 +1823,10 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_FEEDS:
          cobalt_app_draw_feeds(app, r, surface);
+         break;
+
+      case COBALT_SCREEN_FEED_DISCOVERY:
+         cobalt_feed_discovery_view_draw(&app->feed_discovery, r, surface);
          break;
 
       case COBALT_SCREEN_MUTED_LIST:

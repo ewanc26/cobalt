@@ -63,6 +63,10 @@ typedef struct {
 /* Feed discovery result. */
 const cobalt_feed_discovery_page *cobalt_session_feed_discovery_results(void);
 
+/* The inspected feed generator's detail; NULL until
+ * cobalt_session_begin_feed_generator() has completed. */
+const cobalt_feed_generator *cobalt_session_feed_generator(void);
+
 /* Saved feeds v2 result. */
 const cobalt_saved_feeds_v2 *cobalt_session_saved_feeds_v2(void);
 

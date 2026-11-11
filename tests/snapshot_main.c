@@ -8,6 +8,7 @@
 #include "atproto/session.h"
 #include "atproto/session_internal.h"
 #include "atproto/feed.h"
+#include "atproto/feeds.h"
 #include "atproto/external_card.h"
 #include "ui/videoduration.h"
 #include "../../wolfram/test/mock_pds.h"
@@ -1371,6 +1372,53 @@ main(int argc, char **argv)
       cobalt_app_view_position(g_app, COBALT_SCREEN_FEEDS, &sel1, &scr1);
       CHECK(sel1 == 0);
    }
+
+   /* Feed discovery: X from the picker lists the suggested generators. */
+   frame(COBALT_BTN_ALT_X);
+   WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_FEED_DISCOVERY &&
+              !cobalt_session_busy() &&
+              cobalt_session_feed_discovery_results()->count == 2 &&
+              cobalt_session_saved_feeds_v2()->count == 2, 5000);
+   CHECK(cobalt_session_feed_discovery_results()->count == 2);
+   CHECK(cobalt_session_saved_feeds_v2()->count == 2);
+   CHECK(strcmp(cobalt_session_feed_discovery_results()->generators[0].display_name,
+                "Cat Pics") == 0);
+   settle(2);
+   shoot("feed-discovery");
+
+   /* Confirm inspects the selected generator. */
+   frame(COBALT_BTN_CONFIRM);
+   WAIT_UNTIL(!cobalt_session_busy() && cobalt_session_feed_generator() != NULL,
+              5000);
+   CHECK(cobalt_session_feed_generator() != NULL);
+   CHECK(strcmp(cobalt_session_feed_generator()->display_name, "Cat Pics") == 0);
+   CHECK(cobalt_session_feed_generator()->like_count == 4200);
+   settle(2);
+   shoot("feed-detail");
+
+   /* The fixture pins "cats", so Y reports it is already saved and R toggles
+    * the pin through a putPreferences round-trip. */
+   CHECK(cobalt_feed_saved_state(
+            "at://did:plc:x/app.bsky.feed.generator/cats") == 1);
+   frame(COBALT_BTN_ALT_Y);
+   settle(5);
+   CHECK(strstr(g_app->feed_discovery.status, "Already") != NULL);
+   frame(COBALT_BTN_SHOULDER_R);
+   WAIT_UNTIL(!cobalt_session_busy(), 5000);
+   settle(5);
+   shoot("feed-detail-pinned");
+
+   /* B from the detail returns to the browse list; B again leaves the screen
+    * and the picker has refreshed. */
+   frame(COBALT_BTN_BACK);
+   settle(5);
+   CHECK(g_app->feed_discovery.browsing_detail == false);
+   shoot("feed-discovery-return");
+   frame(COBALT_BTN_BACK);
+   WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_FEEDS &&
+              !cobalt_session_busy(), 5000);
+   CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_FEEDS);
+   shoot("feeds-after-discovery");
 
    frame(COBALT_BTN_BACK);
    settle(10);
