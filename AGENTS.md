@@ -960,3 +960,15 @@ This block is byte-identical in every repo of the stack and is drift-checked by 
 Source files are named `<scope>/<atom>.<ext>`: the directory is the scope and the file is one atom. This applies to every language, with the language's own extension (for C, `.c` and `.h`; for C++, `.cpp` and `.hpp`).
 
 A screen with its own selection and touch state is an atom of its own: `app/<screen>_view.c` owns that screen's update/draw pair and hit rectangles, and its `.h` declares them. `settings_view.c` and `account_view.c` follow this; `app_internal.h` keeps shared app state and helpers, not per-screen prototypes. The home menu, feed picker and sign-in still live in `app_home.c` because they share the menu lifecycle; split a screen out when it grows its own independent state, not merely to shorten a file.
+
+<!-- allowed-agents -->
+## Allowed agents
+
+Only **Claude** (Anthropic) and **Mistral** (Mistral AI) may be used as coding agents in this repository. This rule supersedes any earlier agent-attribution guidance in this file.
+
+- Agent-assisted commits must credit only one of those agents:
+  - `Co-Authored-By: Claude <noreply@anthropic.com>`
+  - `Co-Authored-By: Mistral Vibe <vibe@mistral.ai>`
+- Allowed agent footers are `🤖 Generated with [Claude Code](https://claude.com/claude-code)` and `🤖 Generated with [Mistral Vibe](https://mistral.ai)`.
+- Do not add `Co-Authored-By:` trailers, `Generated with` footers, author names, or committer identities for any other agent or AI tool.
+- Do not credit another agent in commit metadata.
