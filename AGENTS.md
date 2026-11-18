@@ -1,4 +1,8 @@
-# AGENTS.md — Cobalt
+# AGENTS.md
+
+Guidance for AI coding agents working in **cobalt**.
+
+— Cobalt
 
 **Cobalt** is a native Wii U homebrew client for the AT Protocol / Bluesky. It's related to [Channel Blue](https://github.com/ewanc26) (the Wii homebrew Bluesky client) in spirit and naming, but Channel Blue is pre-alpha — it isn't really working yet. Cobalt isn't picking up where a finished Channel Blue left off; it's a parallel attempt on hardware with a noticeably easier development flow than the original Wii. It targets the Aroma homebrew environment and is built with devkitPro/WUT.
 
