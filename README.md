@@ -384,3 +384,5 @@ Cobalt is licensed under the GNU Affero General Public License v3.0. See
 
 Bundled fonts and icon assets have their own licences where applicable; see
 [romfs/FONTS.md](romfs/FONTS.md) for attribution and licence details.
+
+Copyright (C) 2026 Ewan Croft (ewanc26).
