@@ -36,7 +36,8 @@ extern "C" {
 
 typedef struct {
    char id[COBALT_CHAT_ID_MAX];          /* convo id, for opening it later */
-   char name[COBALT_POST_NAME_MAX];      /* counterpart, or "Group" */
+   char name[COBALT_POST_NAME_MAX];      /* counterpart, or the group's name
+                                          * ("Group" when it sent none) */
    char handle[COBALT_POST_NAME_MAX];    /* with a leading @, empty for a group */
    char avatar[COBALT_POST_AVATAR_MAX];  /* URL, empty when unset */
    char preview[COBALT_CHAT_PREVIEW_MAX]; /* last message text, empty if none */
@@ -90,8 +91,8 @@ int cobalt_chat_pick_counterpart(const char *const *member_dids, size_t count,
                                  const char *viewer_did);
 
 /*
- * Number of other members. Anything above one is a group, which this inbox
- * labels "Group" rather than inventing a name for it.
+ * Number of other members. Anything above one is a group; the inbox row
+ * carries the group's own name, so this only has to say that it is one.
  */
 int cobalt_chat_other_member_count(const char *const *member_dids, size_t count,
                                    const char *viewer_did);
@@ -265,7 +266,9 @@ struct wf_chat_convo_list;
 struct wf_chat_message_list;
 
 /* Replace the thread with a getMessages page. The server sends newest first, so
- * the page is reversed into place. Returns the number of messages held. */
+ * the page is reversed into place. Entries with no text — a deleted message,
+ * or one of a group's system messages (a join, a rename) — are left out rather
+ * than drawn as empty bubbles. Returns the number of messages held. */
 int cobalt_chat_thread_fill_from_wolfram(cobalt_chat_thread *out,
                                          const struct wf_chat_message_list *list,
                                          const char *viewer_did, int64_t now);

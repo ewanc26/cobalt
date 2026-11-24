@@ -47,6 +47,8 @@
 
 #ifdef COBALT_HAS_WOLFRAM
 #include <wolfram/bookmark_typed.h>
+#include <wolfram/chat_group.h>
+#include <wolfram/chat_typed.h>
 #include <wolfram/feed_typed.h>
 #endif
 
@@ -1926,6 +1928,112 @@ test_chat_inbox_counterpart(void)
    inbox.count = COBALT_CHAT_CONVOS_MAX;
    CHECK(!cobalt_chat_inbox_can_page(&inbox));
 }
+
+#ifdef COBALT_HAS_WOLFRAM
+static void
+test_chat_inbox_group_rows(void)
+{
+   begin("inbox rows for group conversations");
+
+   char me[] = "did:plc:me";
+   char a[] = "did:plc:a";
+   char b[] = "did:plc:b";
+   char a_handle[] = "a.test";
+   char a_name[] = "Alice";
+   char group_id[] = "g1";
+   char plain_id[] = "g2";
+   char direct_id[] = "c1";
+   char group_name[] = "Weekend crew";
+   char group_tag[] = "chat.bsky.convo.defs#groupConvo";
+
+   wf_agent_profile_view trio[3];
+   memset(trio, 0, sizeof(trio));
+   trio[0].did = me;
+   trio[1].did = a;
+   trio[1].handle = a_handle;
+   trio[1].display_name = a_name;
+   trio[2].did = b;
+
+   wf_chat_convo convos[3];
+   memset(convos, 0, sizeof(convos));
+   convos[0].id = group_id;
+   convos[0].members = trio;
+   convos[0].member_count = 3;
+   convos[0].type = group_tag;
+   convos[0].group_name = group_name;
+   convos[1].id = plain_id;
+   convos[1].members = trio;
+   convos[1].member_count = 3;
+   convos[2].id = direct_id;
+   convos[2].members = trio;
+   convos[2].member_count = 2;
+
+   wf_chat_convo_list list;
+   memset(&list, 0, sizeof(list));
+   list.convos = convos;
+   list.convo_count = 3;
+
+   cobalt_chat_inbox inbox;
+   memset(&inbox, 0, sizeof(inbox));
+   CHECK(cobalt_chat_inbox_append_from_wolfram(&inbox, &list, me) == 3);
+   CHECK(inbox.count == 3);
+
+   /* A group row carries the group's own name, so two groups are tellable
+    * apart and the conversation opens under its real name. */
+   CHECK(inbox.items[0].group);
+   CHECK_STR(inbox.items[0].name, "Weekend crew");
+   CHECK(inbox.items[0].handle[0] == '\0');
+
+   /* A server that left the name out still gets a group row, labelled with
+    * the fallback rather than a member's name. */
+   CHECK(inbox.items[1].group);
+   CHECK_STR(inbox.items[1].name, "Group");
+
+   /* The direct row in the same page still names its counterpart. */
+   CHECK(!inbox.items[2].group);
+   CHECK_STR(inbox.items[2].name, "Alice");
+   CHECK_STR(inbox.items[2].handle, "@a.test");
+}
+
+static void
+test_chat_thread_skips_textless(void)
+{
+   begin("a group thread leaves out system and deleted messages");
+
+   char latest[] = "latest";
+   char first[] = "first real";
+   char b_did[] = "did:plc:b";
+   char a_did[] = "did:plc:a";
+   char me_did[] = "did:plc:me";
+
+   /* Newest first, as the server sends them: a real message, a system
+    * message (a member joined), a deleted message, the viewer's own, and
+    * the system message that created the group. Wolfram parses a view
+    * with no text — the system and deleted kinds — into a message whose
+    * text is NULL. */
+   wf_chat_message wire[5];
+   memset(wire, 0, sizeof(wire));
+   wire[0].text = latest;
+   wire[0].sender = b_did;
+   wire[2].sender = a_did;
+   wire[3].text = first;
+   wire[3].sender = me_did;
+
+   wf_chat_message_list list;
+   memset(&list, 0, sizeof(list));
+   list.messages = wire;
+   list.message_count = 5;
+
+   cobalt_chat_thread thread;
+   memset(&thread, 0, sizeof(thread));
+   CHECK(cobalt_chat_thread_fill_from_wolfram(&thread, &list, me_did, 0) == 2);
+   CHECK(thread.count == 2);
+   CHECK_STR(thread.items[0].text, "first real");
+   CHECK(thread.items[0].mine);
+   CHECK_STR(thread.items[1].text, "latest");
+   CHECK(!thread.items[1].mine);
+}
+#endif
 
 static cobalt_chat_convo
 test_row(const char *id, int unread)
@@ -4369,6 +4477,10 @@ main(int argc, char **argv)
    test_notification_wording();
    test_notification_grouping();
    test_chat_inbox_counterpart();
+#ifdef COBALT_HAS_WOLFRAM
+   test_chat_inbox_group_rows();
+   test_chat_thread_skips_textless();
+#endif
    test_chat_requests_count_label();
    test_chat_request_rows();
    test_chat_join_request_rows();
