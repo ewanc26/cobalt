@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Fixed
+
+- Group conversations in Messages now carry the group's own name in the inbox, instead of every group showing as "Group": the name a group convo always sends (`chat.bsky.convo.defs#groupConvo`) was parsed by Wolfram but dropped by the inbox, so groups could not be told apart and opened under a placeholder title. A group thread no longer draws the entries that are not messages anyone sent — a group's system messages (a member joined, the group was renamed) and deleted messages arrived with no text and rendered as empty bubbles throughout the conversation. ([#301](https://github.com/ewanc26/cobalt/issues/301))
+
 ### Added
 
 - The Feeds screen now manages feeds, not just opens them: X opens Discover feeds, a list of suggested generators where A inspects one, and Y on a saved feed opens its detail. The detail screen shows the generator's avatar, description and like count, and offers A to open the feed, Y to save, R to pin/unpin and X twice to remove; saved feeds are starred in the picker. Feed mutations refresh both saved-feeds lists, and the v2 read parses the raw preferences so pinned flags and unknown preference types survive. Host e2e covers discovery, detail, the saved-feeds list and save/pin/remove round-trips including failures; snapshots cover the picker, discovery and detail screens on both displays. ([#273](https://github.com/ewanc26/cobalt/issues/273))

@@ -515,20 +515,37 @@ cobalt_chat_thread_fill_from_wolfram(cobalt_chat_thread *out,
       return 0;
    }
 
-   /* The newest messages come first on the wire. Take the first `n` and write
-    * them back to front, so index 0 ends up as the oldest of those held. */
-   const size_t n = typed->message_count < COBALT_CHAT_MESSAGES_MAX
-                       ? typed->message_count
-                       : COBALT_CHAT_MESSAGES_MAX;
+   /* A getMessages page is a union, not all messages: alongside the
+    * messageViews it carries deletedMessageViews and, in a group,
+    * systemMessageViews (a member joined, the group was renamed, and so
+    * on). Wolfram parses those into messages with no text. A bubble with
+    * nothing in it is not a message anyone sent, so they are left out;
+    * in a group they would otherwise fill the thread with empty bubbles,
+    * starting with the event that created it. */
+   size_t kept = 0;
+   for (size_t k = 0; k < typed->message_count; k++) {
+      if (typed->messages[k].text && typed->messages[k].text[0]) {
+         kept++;
+      }
+   }
+
+   /* The newest messages come first on the wire. Take the first `n` of the
+    * ones kept and write them back to front, so index 0 ends up as the
+    * oldest of those held. */
+   const size_t n = kept < COBALT_CHAT_MESSAGES_MAX ? kept : COBALT_CHAT_MESSAGES_MAX;
    out->count = 0;
 
-   for (size_t k = 0; k < n; k++) {
+   size_t slot = n;
+   for (size_t k = 0; k < typed->message_count && slot > 0; k++) {
       const wf_chat_message *src = &typed->messages[k];
-      cobalt_chat_message *dst = &out->items[n - 1 - k];
+      if (!src->text || !src->text[0]) {
+         continue;
+      }
+      cobalt_chat_message *dst = &out->items[--slot];
       int64_t epoch = 0;
 
       memset(dst, 0, sizeof(*dst));
-      cobalt_feed_copy_text(dst->text, sizeof(dst->text), src->text ? src->text : "");
+      cobalt_feed_copy_text(dst->text, sizeof(dst->text), src->text);
       dst->mine = viewer_did && src->sender && strcmp(src->sender, viewer_did) == 0;
       if (src->sent_at && now > 0 && wf_time_parse_rfc3339(src->sent_at, &epoch) == WF_OK) {
          wf_time_relative(epoch, now, dst->age, sizeof(dst->age));
@@ -581,10 +598,18 @@ cobalt_chat_inbox_append_from_wolfram(cobalt_chat_inbox *out,
       snprintf(item->id, sizeof(item->id), "%s", src->id ? src->id : "");
 
       /* A group is what its `kind` says it is; more than one other member is
-       * only a fallback for a server that did not send the kind. */
+       * only a fallback for a server that did not send the kind. The row
+       * takes the group's own name, which a group convo always carries
+       * (chat.bsky.convo.defs#groupConvo requires it and Wolfram parses it
+       * into group_name); "Group" is only the fallback for a server that
+       * left it out, so two groups are tellable apart in the inbox and the
+       * conversation opens under its real name. */
       if (wf_chat_convo_is_group(src) || others > 1) {
          item->group = true;
-         snprintf(item->name, sizeof(item->name), "Group");
+         cobalt_feed_copy_text(item->name, sizeof(item->name),
+                               src->group_name && src->group_name[0]
+                                  ? src->group_name
+                                  : "Group");
       } else {
          const int at = cobalt_chat_pick_counterpart(dids, scanned, viewer_did);
          const wf_agent_profile_view *who = at >= 0 ? &src->members[at] : NULL;
