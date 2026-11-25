@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-25
+
 ### Fixed
 
 - Group conversations in Messages now carry the group's own name in the inbox, instead of every group showing as "Group": the name a group convo always sends (`chat.bsky.convo.defs#groupConvo`) was parsed by Wolfram but dropped by the inbox, so groups could not be told apart and opened under a placeholder title. A group thread no longer draws the entries that are not messages anyone sent — a group's system messages (a member joined, the group was renamed) and deleted messages arrived with no text and rendered as empty bubbles throughout the conversation. ([#301](https://github.com/ewanc26/cobalt/issues/301))
@@ -357,7 +359,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/ewanc26/cobalt/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/ewanc26/cobalt/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/ewanc26/cobalt/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/ewanc26/cobalt/compare/v0.13.0...v0.14.0
