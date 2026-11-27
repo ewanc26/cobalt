@@ -11,6 +11,10 @@ cobalt_session_teardown_agent(void)
       wf_agent_free(g_session.wf);
       g_session.wf = NULL;
       g_session.prefs_loaded = false;
+      /* The label context is the account's: its adult setting, labelers and
+       * DID must not outlive it into the next sign-in. */
+      cobalt_labels_set_viewer(NULL);
+      cobalt_labels_reset();
    }
 }
 

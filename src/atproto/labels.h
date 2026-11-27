@@ -37,6 +37,15 @@ bool cobalt_post_mod_covers(const cobalt_post_mod *mod);
 struct cJSON;
 struct wf_actor_preferences;
 
+/*
+ * The signed-in account, which Wolfram's engine needs as `user_did`: without
+ * it a `!no-unauthenticated` label (an author's "hide me from logged-out
+ * viewers") applies to everyone, and the viewer's own posts are not
+ * recognised as theirs. cobalt_labels_apply takes it from the session before
+ * every decision; NULL or "" means signed out.
+ */
+void cobalt_labels_set_viewer(const char *did);
+
 /* Reset the active context to the safe default. Safe to call repeatedly. */
 void cobalt_labels_reset(void);
 
