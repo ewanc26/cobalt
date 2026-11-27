@@ -9,6 +9,8 @@
 
 #include "atproto/feeds.h"
 #include "atproto/session_internal.h"
+#include "atproto/prefs_write.h"
+#include "wolfram/tid.h"
 
 #include "wolfram/agent.h"
 #include "wolfram/unspecced_trends_typed.h"
@@ -269,27 +271,15 @@ cobalt_session_run_saved_feeds_v2(const cobalt_job_input *in, cobalt_job_result 
 /* ------------------------------------------------------------------ */
 /* Save/remove/pin feed: write the v2 saved-feeds preference */
 
-/* Build the v2 saved-feeds items array from the current state plus the
- * change. Returns a cJSON array the caller must free. */
-static cJSON *
-build_saved_feeds_v2_items(const char *feed_uri, bool pinned, bool remove)
-{
-    /* Build from the raw current preferences, copied verbatim, so unknown
-     * fields and other preference types survive the round-trip. */
-    char *cur_json = NULL;
-    cJSON *prefs = NULL;
-    if (wf_agent_get_preferences(g_session.wf, &cur_json) == WF_OK && cur_json) {
-        prefs = cJSON_Parse(cur_json);
-        free(cur_json);
-    }
-    if (!prefs || !cJSON_IsArray(prefs)) {
-        if (prefs) cJSON_Delete(prefs);
-        prefs = cJSON_CreateArray();
-    }
+#define SAVED_FEEDS_V2 "app.bsky.actor.defs#savedFeedsPrefV2"
 
+/* Build the v2 saved-feeds items array from `prefs` (the account's current
+ * preferences) plus the change. Returns a cJSON array the caller must free. */
+static cJSON *
+build_saved_feeds_v2_items(cJSON *prefs, const char *feed_uri, bool pinned, bool remove)
+{
     cJSON *items = cJSON_CreateArray();
     if (!items) {
-        cJSON_Delete(prefs);
         return NULL;
     }
 
@@ -326,78 +316,58 @@ build_saved_feeds_v2_items(const char *feed_uri, bool pinned, bool remove)
     }
 
     if (!remove && !seen) {
+        /* `id` is required by app.bsky.actor.defs#savedFeed; upstream uses a
+         * TID, and an item without one is invalid to every other client. */
+        char id[15];
+        if (wf_tid_now(id) != WF_OK) {
+            cJSON_Delete(items);
+            return NULL;
+        }
         cJSON *item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "id", id);
         cJSON_AddStringToObject(item, "type", "feed");
         cJSON_AddStringToObject(item, "value", feed_uri);
         cJSON_AddBoolToObject(item, "pinned", pinned);
         cJSON_AddItemToArray(items, item);
     }
-
-    cJSON_Delete(prefs);
     return items;
 }
 
-void
-cobalt_session_run_save_feed(const cobalt_job_input *in, cobalt_job_result *r,
-                              cobalt_auth_state *state)
+/* Save, pin or remove one feed: one read of the preferences, one write. Never
+ * writes when the read fails (see atproto/prefs_write.h). */
+static void
+write_saved_feed(const char *uri, bool pinned, bool remove, cobalt_job_result *r,
+                 cobalt_auth_state *state)
 {
+    *state = COBALT_AUTH_SIGNED_IN;
     if (!g_session.wf) {
         cobalt_session_set_message(r, "Sign in first.");
-        *state = COBALT_AUTH_SIGNED_IN;
         return;
     }
-
-    cJSON *items = build_saved_feeds_v2_items(in->uri, in->paging, false);
+    cJSON *prefs = cobalt_prefs_read(g_session.wf);
+    if (!prefs) {
+        cobalt_session_set_message(r, "Could not read your preferences, so nothing "
+                                      "was changed. Try again.");
+        return;
+    }
+    cJSON *items = build_saved_feeds_v2_items(prefs, uri, pinned, remove);
     if (!items) {
-        cobalt_session_set_message(r, "Could not prepare feed save.");
-        *state = COBALT_AUTH_SIGNED_IN;
+        cJSON_Delete(prefs);
+        cobalt_session_set_message(r, "Could not prepare the feed change.");
         return;
-    }
-
-    /* putPreferences replaces the whole preferences array, so round-trip the
-     * current one and swap in the modified v2 saved-feeds preference. */
-    char *cur_json = NULL;
-    cJSON *prefs = NULL;
-    if (wf_agent_get_preferences(g_session.wf, &cur_json) == WF_OK && cur_json) {
-        prefs = cJSON_Parse(cur_json);
-        free(cur_json);
-    }
-    if (!prefs || !cJSON_IsArray(prefs)) {
-        if (prefs) cJSON_Delete(prefs);
-        prefs = cJSON_CreateArray();
     }
     cJSON *v2 = cJSON_CreateObject();
-    cJSON_AddItemToObject(v2, "$type", cJSON_CreateString("app.bsky.actor.defs#savedFeedsPrefV2"));
+    cJSON_AddItemToObject(v2, "$type", cJSON_CreateString(SAVED_FEEDS_V2));
     cJSON_AddItemToObject(v2, "items", items);
-    /* remove any existing v2 saved-feeds pref, then append the new one */
-    for (int i = cJSON_GetArraySize(prefs) - 1; i >= 0; i--) {
-        cJSON *it = cJSON_GetArrayItem(prefs, i);
-        cJSON *ty = cJSON_GetObjectItemCaseSensitive(it, "$type");
-        if (ty && cJSON_IsString(ty) && ty->valuestring &&
-            strstr(ty->valuestring, "savedFeedsPrefV2")) {
-            cJSON_DeleteItemFromArray(prefs, i);
-        }
-    }
-    cJSON_AddItemToArray(prefs, v2);
-
-    char *json = cJSON_PrintUnformatted(prefs);
+    const wf_status status =
+        cobalt_prefs_put_replacing(g_session.wf, prefs, SAVED_FEEDS_V2, v2);
     cJSON_Delete(prefs);
-    if (!json) {
-        cobalt_session_set_message(r, "Could not serialize feed save.");
-        *state = COBALT_AUTH_SIGNED_IN;
-        return;
-    }
-
-    wf_response res = {0};
-    const wf_status status = wf_agent_put_preferences(g_session.wf, json, &res);
-    free(json);
-    wf_response_free(&res);
 
     if (status != WF_OK) {
-        COBALT_LOGW("session: feed save failed (%d)", (int) status);
-        cobalt_session_set_message(r, "Could not save feed (wolfram status %d).",
+        COBALT_LOGW("session: feed change failed (%d)", (int) status);
+        cobalt_session_set_message(r, remove ? "Could not remove feed (wolfram status %d)."
+                                             : "Could not save feed (wolfram status %d).",
                                    (int) status);
-        *state = COBALT_AUTH_SIGNED_IN;
         return;
     }
 
@@ -406,83 +376,23 @@ cobalt_session_run_save_feed(const cobalt_job_input *in, cobalt_job_result *r,
     memset(&s_saved_feeds_v2, 0, sizeof(s_saved_feeds_v2));
     SDL_UnlockMutex(g_session.lock);
 
-    COBALT_LOGI("session: saved feed %s (pinned=%d)", in->uri, in->paging);
-    *state = COBALT_AUTH_SIGNED_IN;
+    COBALT_LOGI("session: %s feed %s (pinned=%d)", remove ? "removed" : "saved", uri,
+                (int) pinned);
     r->ok = true;
+}
+
+void
+cobalt_session_run_save_feed(const cobalt_job_input *in, cobalt_job_result *r,
+                              cobalt_auth_state *state)
+{
+    write_saved_feed(in->uri, in->paging, false, r, state);
 }
 
 void
 cobalt_session_run_remove_feed(const cobalt_job_input *in, cobalt_job_result *r,
                                  cobalt_auth_state *state)
 {
-    if (!g_session.wf) {
-        cobalt_session_set_message(r, "Sign in first.");
-        *state = COBALT_AUTH_SIGNED_IN;
-        return;
-    }
-
-    cJSON *items = build_saved_feeds_v2_items(in->uri, false, true);
-    if (!items) {
-        cobalt_session_set_message(r, "Could not prepare feed removal.");
-        *state = COBALT_AUTH_SIGNED_IN;
-        return;
-    }
-
-    /* putPreferences replaces the whole preferences array, so round-trip the
-     * current one and swap in the modified v2 saved-feeds preference. */
-    char *cur_json = NULL;
-    cJSON *prefs = NULL;
-    if (wf_agent_get_preferences(g_session.wf, &cur_json) == WF_OK && cur_json) {
-        prefs = cJSON_Parse(cur_json);
-        free(cur_json);
-    }
-    if (!prefs || !cJSON_IsArray(prefs)) {
-        if (prefs) cJSON_Delete(prefs);
-        prefs = cJSON_CreateArray();
-    }
-    cJSON *v2 = cJSON_CreateObject();
-    cJSON_AddItemToObject(v2, "$type", cJSON_CreateString("app.bsky.actor.defs#savedFeedsPrefV2"));
-    cJSON_AddItemToObject(v2, "items", items);
-    /* remove any existing v2 saved-feeds pref, then append the new one */
-    for (int i = cJSON_GetArraySize(prefs) - 1; i >= 0; i--) {
-        cJSON *it = cJSON_GetArrayItem(prefs, i);
-        cJSON *ty = cJSON_GetObjectItemCaseSensitive(it, "$type");
-        if (ty && cJSON_IsString(ty) && ty->valuestring &&
-            strstr(ty->valuestring, "savedFeedsPrefV2")) {
-            cJSON_DeleteItemFromArray(prefs, i);
-        }
-    }
-    cJSON_AddItemToArray(prefs, v2);
-
-    char *json = cJSON_PrintUnformatted(prefs);
-    cJSON_Delete(prefs);
-    if (!json) {
-        cobalt_session_set_message(r, "Could not serialize feed removal.");
-        *state = COBALT_AUTH_SIGNED_IN;
-        return;
-    }
-
-    wf_response res = {0};
-    const wf_status status = wf_agent_put_preferences(g_session.wf, json, &res);
-    free(json);
-    wf_response_free(&res);
-
-    if (status != WF_OK) {
-        COBALT_LOGW("session: feed removal failed (%d)", (int) status);
-        cobalt_session_set_message(r, "Could not remove feed (wolfram status %d).",
-                                   (int) status);
-        *state = COBALT_AUTH_SIGNED_IN;
-        return;
-    }
-
-    /* Invalidate cache */
-    SDL_LockMutex(g_session.lock);
-    memset(&s_saved_feeds_v2, 0, sizeof(s_saved_feeds_v2));
-    SDL_UnlockMutex(g_session.lock);
-
-    COBALT_LOGI("session: removed feed %s", in->uri);
-    *state = COBALT_AUTH_SIGNED_IN;
-    r->ok = true;
+    write_saved_feed(in->uri, false, true, r, state);
 }
 
 void
