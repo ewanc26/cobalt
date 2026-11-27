@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-11-27
+
 ### Fixed
 
 - Posts from accounts that ask to be hidden from logged-out viewers are no longer hidden from you. 0.18.0 never told Wolfram's moderation engine who was signed in, so it treated everyone as logged out: those accounts' posts were dropped from Home and shown as "Signed-in users only" everywhere else. Your own self-labelled posts are now recognised as yours, as in the official client. Signing out also resets the label preferences, so the next account starts from the safe default. ([#275](https://github.com/ewanc26/cobalt/issues/275))
@@ -369,7 +371,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.18.1...HEAD
+[0.18.1]: https://github.com/ewanc26/cobalt/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/ewanc26/cobalt/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/ewanc26/cobalt/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/ewanc26/cobalt/compare/v0.15.0...v0.16.0
