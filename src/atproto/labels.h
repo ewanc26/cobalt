@@ -55,6 +55,22 @@ void cobalt_labels_reset(void);
  * place, when memory runs out. */
 bool cobalt_labels_from_prefs(const struct wf_actor_preferences *prefs);
 
+/*
+ * The atproto-accept-labelers value for the active context: Bluesky's
+ * moderation labeler with ";redact" (its takedowns remove content, as in the
+ * official client), then each subscribed labeler, at most
+ * COBALT_LABELS_ACCEPT_MAX of them. Writes "" when nothing fits. Returns the
+ * number of labelers written.
+ */
+#define COBALT_LABELS_ACCEPT_MAX 20
+int cobalt_labels_accept_value(char *out, size_t out_size);
+
+/* Send that value on every request `agent` makes from now on, so the AppView
+ * attaches the account's labelers' labels and not only its own. Returns
+ * false, leaving the previous value, if Wolfram refuses it. */
+struct wf_agent;
+bool cobalt_labels_send_accept(struct wf_agent *agent);
+
 /* Whether the active context lets adult content through; for diagnostics and
  * tests. */
 bool cobalt_labels_adult_enabled(void);

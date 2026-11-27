@@ -22,6 +22,7 @@ ensure_prefs(void)
    }
    cobalt_prefs_from_wolfram(&g_session.prefs, &p, cobalt_time_now());
    cobalt_labels_from_prefs(&p);
+   cobalt_labels_send_accept(g_session.wf);
    wf_actor_preferences_free(&p);
    g_session.prefs_loaded = true;
 }
