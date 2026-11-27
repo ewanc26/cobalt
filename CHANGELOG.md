@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Added
+
+- Labels from the labelers you subscribe to now reach Cobalt. Every request names Bluesky's moderation labeler and, once your preferences load, your own subscriptions (up to 20), in the `atproto-accept-labelers` header. Before, the AppView attached only its defaults. Labels whose definitions Cobalt has not loaded yet are named on the post as unsupported rather than ignored. ([#275](https://github.com/ewanc26/cobalt/issues/275))
+
 ## [0.18.1] - 2026-11-27
 
 ### Fixed

@@ -931,6 +931,7 @@ here has run on a console, so the console flow remains a `needs-owner` check.
   - The account's adult-content switch, subscribed labelers and `contentLabelPrefs`.
   - Do not keep a label table or per-label defaults in Cobalt. Fix gaps in Wolfram.
 - Treat an absent adult-content preference as **off**. A visibility value Cobalt does not recognise is skipped.
+- Send `atproto-accept-labelers` with `cobalt_labels_send_accept`. `new_wf_agent` sends the default (Bluesky's labeler with `;redact`), and `ensure_prefs` adds the account's subscriptions, capped at `COBALT_LABELS_ACCEPT_MAX` (20). Wolfram refuses control characters, so a hostile DID cannot inject a header.
 - `user_did` must be the signed-in DID. `cobalt_labels_apply` sets it from `cobalt_session_did()` before every decision, and `cobalt_session_teardown_agent` clears it and resets the context. Wolfram's `!no-unauthenticated` and `is_me` rules depend on it. Without it, 0.18.0 filtered every post from accounts that opt out of logged-out viewing.
 - Until `ensure_prefs` loads the account's preferences, the context is the safe default: adult content off, Bluesky's labeler only.
 - `cobalt_labels_from_prefs` builds the new context before it frees the old one. If memory runs out, the previous preferences stay in place.
@@ -946,7 +947,6 @@ here has run on a console, so the console flow remains a `needs-owner` check.
 - **Scoped out (#275 stays open):**
   - A settings screen for label preferences, and writing a changed preference back.
   - Fetching third-party labelers' own label definitions (`app.bsky.labeler.getServices`). Until then, their custom values show as unsupported.
-  - Sending `atproto-accept-labelers`, so the AppView only attaches Bluesky's labels.
   - Avatar and banner blurs. Profile-level decisions are not drawn yet.
 - **Verification:** host only. `make -C tests all e2e snapshot` covers known, unknown and malformed labels, self-labels, the adult gate, preference changes and filtering (e2e `test_labels`). The `labels-covered` and `labels-revealed` snapshots cover both displays. Not run on Cemu or hardware.
 
