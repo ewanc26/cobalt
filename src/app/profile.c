@@ -159,6 +159,9 @@ cobalt_profile_view_update(cobalt_profile_view *view, const cobalt_input *in)
       cobalt_session_begin_like(post->uri, post->cid);
    } else if (cobalt_input_pressed(in, COBALT_BTN_RIGHT)) {
       cobalt_session_begin_repost(post->uri, post->cid);
+   } else if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM) &&
+              cobalt_postcard_can_reveal(post)) {
+      cobalt_postcard_reveal(post->uri);
    } else if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
       cobalt_session_begin_thread(post->uri);
       return COBALT_PROFILE_VIEW_OPEN_THREAD;
