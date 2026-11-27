@@ -19,6 +19,7 @@
 #include "atproto/feed.h"
 #include "atproto/feeds.h"
 #include "atproto/prefs.h"
+#include "atproto/labels.h"
 #include "atproto/notifications.h"
 #include "atproto/chat.h"
 #include "atproto/actor_profile.h"

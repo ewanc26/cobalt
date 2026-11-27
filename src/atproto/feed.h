@@ -152,6 +152,33 @@ typedef struct {
    char target[96];   /* mention DID, link URI (cut to fit) or tag text */
 } cobalt_post_facet;
 
+/*
+ * What a post's content labels make a card do, decided once by
+ * atproto/labels.c from Wolfram's moderation engine. Zeroed means "nothing":
+ * a post with no labels, or one whose labels the account ignores.
+ */
+typedef enum {
+   COBALT_MOD_NONE = 0,
+   COBALT_MOD_BLUR_MEDIA,    /* text shown; images and link thumbnails covered */
+   COBALT_MOD_BLUR_CONTENT,  /* the whole post behind a cover */
+   COBALT_MOD_FILTER,        /* dropped from lists altogether */
+} cobalt_mod_action;
+
+#define COBALT_POST_MOD_REASON_MAX 48
+#define COBALT_POST_MOD_UNSUPPORTED_MAX 64
+
+typedef struct {
+   unsigned char action;   /* cobalt_mod_action */
+   /* The cover cannot be lifted: an adult label with adult content off, or a
+    * moderator's !hide. */
+   bool no_override;
+   char reason[COBALT_POST_MOD_REASON_MAX];
+   /* Label values Cobalt was given but has no definition for, comma
+    * separated, so they are named on the card rather than silently dropped.
+    * Empty when there are none. */
+   char unsupported[COBALT_POST_MOD_UNSUPPORTED_MAX];
+} cobalt_post_mod;
+
 typedef struct {
    char author[COBALT_POST_NAME_MAX];   /* display name, or the handle */
    char handle[COBALT_POST_NAME_MAX];   /* always the handle, with a leading @ */
@@ -235,6 +262,8 @@ typedef struct {
     */
    char root_uri[COBALT_POST_URI_MAX];
    char root_cid[COBALT_POST_CID_MAX];
+
+   cobalt_post_mod mod;
 } cobalt_post;
 
 typedef struct {

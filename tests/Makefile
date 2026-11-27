@@ -127,6 +127,7 @@ UNIT_SOURCES := \
 	$(SRC)/atproto/feed.c \
 	$(SRC)/atproto/external_card.c \
 	$(SRC)/atproto/prefs.c \
+	$(SRC)/atproto/labels.c \
 	$(WOLFRAM_SOURCES) \
 	$(SRC)/app/entropyview.c \
 	$(SRC)/util/entropy_gather.c \

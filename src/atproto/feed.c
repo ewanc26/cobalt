@@ -1,4 +1,5 @@
 #include "atproto/feed.h"
+#include "atproto/labels.h"
 #include "util/log.h"
 
 #ifdef COBALT_HAS_WOLFRAM
@@ -778,6 +779,8 @@ fill_from_view(cobalt_post *post, const wf_agent_post_view *view, int64_t now)
    post->bookmarked = view->viewer.has_bookmarked && view->viewer.bookmarked;
 
    fill_embed(post, view->embed);
+   cobalt_labels_apply(&post->mod, view->uri, view->author.did, view->labels,
+                       view->author_labels);
 
    /* Assume the post is its own root; a reply overwrites this below.
     * memcpy rather than snprintf: source and destination are members of the
@@ -1019,6 +1022,8 @@ fill_from_thread_post(cobalt_post *post, const wf_agent_thread_post *view,
             view->viewer_repost ? view->viewer_repost : "");
 
    fill_embed(post, view->embed);
+   cobalt_labels_apply(&post->mod, view->uri, view->author.did, view->labels,
+                       view->author_labels);
 
    memcpy(post->root_uri, post->uri, sizeof(post->root_uri));
    memcpy(post->root_cid, post->cid, sizeof(post->root_cid));
