@@ -43,7 +43,9 @@ cobalt_post_mod_covers(const cobalt_post_mod *mod)
 
 #include <cJSON.h>
 #include <wolfram/actor_prefs_typed.h>
+#include <wolfram/agent.h>
 #include <wolfram/moderation.h>
+#include <wolfram/xrpc.h>
 
 /*
  * The active context. Only the session worker builds it and only the worker
@@ -261,6 +263,51 @@ cobalt_labels_from_prefs(const wf_actor_preferences *prefs)
                g_ctx.opts.prefs.adult_content_enabled ? "on" : "off",
                (unsigned) g_ctx.opts.prefs.labeler_count,
                (unsigned) g_ctx.opts.prefs.global_label_count);
+   return true;
+}
+
+int
+cobalt_labels_accept_value(char *out, size_t out_size)
+{
+   if (!out || out_size == 0) {
+      return 0;
+   }
+   out[0] = '\0';
+   if (!g_ctx.ready) {
+      cobalt_labels_reset();
+   }
+   size_t used = 0;
+   int written = 0;
+   for (size_t i = 0; i < g_ctx.opts.prefs.labeler_count &&
+                      written < COBALT_LABELS_ACCEPT_MAX; i++) {
+      const char *did = g_ctx.opts.prefs.labelers[i].did;
+      const bool bsky = strcmp(did, WF_MOD_BSKY_LABELER_DID) == 0;
+      const int n = snprintf(out + used, out_size - used, "%s%s%s",
+                             used ? ", " : "", did, bsky ? ";redact" : "");
+      if (n < 0 || (size_t) n >= out_size - used) {
+         out[used] = '\0';   /* drop the one that did not fit, keep the rest */
+         break;
+      }
+      used += (size_t) n;
+      written++;
+   }
+   return written;
+}
+
+bool
+cobalt_labels_send_accept(struct wf_agent *agent)
+{
+   if (!agent) {
+      return false;
+   }
+   char value[2048];
+   cobalt_labels_accept_value(value, sizeof value);
+   const wf_status st =
+      wf_xrpc_client_set_accept_labelers(wf_agent_get_xrpc_client(agent), value);
+   if (st != WF_OK) {
+      COBALT_LOGW("labels: accept-labelers refused (%d)", (int) st);
+      return false;
+   }
    return true;
 }
 

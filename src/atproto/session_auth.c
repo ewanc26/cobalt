@@ -68,6 +68,10 @@ new_wf_agent(const char *service)
       COBALT_LOGW("session: could not set the post language");
    }
 
+   /* Bluesky's moderation labeler from the first request; the account's own
+    * subscriptions join it once its preferences load (ensure_prefs). */
+   cobalt_labels_send_accept(agent);
+
    return agent;
 }
 
