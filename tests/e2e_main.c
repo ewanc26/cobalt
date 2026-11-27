@@ -107,8 +107,8 @@ labelled_item(const char *n, const char *post_labels, const char *author_labels)
    static int k;
    char *b = buf[k++ & 7];
    snprintf(b, 1024,
-      "{\"post\":{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/%s\",\"cid\":\"bafy%s\","
-      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"a.test\"%s%s},"
+      "{\"post\":{\"uri\":\"at://did:plc:author/app.bsky.feed.post/%s\",\"cid\":\"bafy%s\","
+      "\"author\":{\"did\":\"did:plc:author\",\"handle\":\"a.test\"%s%s},"
       "\"record\":{\"$type\":\"app.bsky.feed.post\",\"text\":\"post %s\","
       "\"createdAt\":\"2026-10-01T10:00:00.000Z\"},%s%s"
       "\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}}",
@@ -126,7 +126,7 @@ fill_labelled_feed(cobalt_feed *feed)
    char json[8192];
    snprintf(json, sizeof json, "{\"feed\":[%s,%s,%s,%s,%s,%s,%s]}",
       labelled_item("0", NULL, NULL),
-      labelled_item("1", "[" LBL("did:plc:abc", "porn") "],", NULL),
+      labelled_item("1", "[" LBL("did:plc:author", "porn") "],", NULL),
       labelled_item("2", "[" LBL(BSKY_MOD, "graphic-media") "],", NULL),
       labelled_item("3", "[" LBL(BSKY_MOD, "!hide") "],", NULL),
       labelled_item("4", "[" LBL(BSKY_MOD, "made-up") "," LBL("did:plc:stranger", "porn") "],", NULL),
@@ -259,12 +259,60 @@ test_labels(void)
       CHECK(feed.posts[i].mod.action != COBALT_MOD_FILTER);
    }
 
+   /* Signed out, an author's "hide me from logged-out viewers" applies. */
+   {
+      char json[2048];
+      snprintf(json, sizeof json, "{\"feed\":[%s]}",
+               labelled_item("7", NULL, "[" LBL("did:plc:author", "!no-unauthenticated") "]"));
+      wf_agent_feed_list list;
+      memset(&list, 0, sizeof(list));
+      CHECK(wf_agent_parse_feed(json, strlen(json), &list) == WF_OK);
+      static cobalt_feed one;
+      memset(&one, 0, sizeof(one));
+      CHECK(cobalt_feed_append_from_wolfram(&one, &list, 0) == 1);
+      CHECK(one.posts[0].mod.action == COBALT_MOD_FILTER);
+      wf_agent_feed_list_free(&list);
+   }
+
    /* Absent adult preference reads as off; back to the default for the
     * rest of the run. */
    memset(&prefs, 0, sizeof(prefs));
    CHECK(cobalt_labels_from_prefs(&prefs));
    CHECK(!cobalt_labels_adult_enabled());
    cobalt_labels_reset();
+}
+
+/* Signed in (as did:plc:abc), the viewer DID reaches the engine: the
+ * logged-out label no longer hides anyone, and the account's own self-labelled
+ * post is not filtered from its own view. */
+static void
+test_labels_signed_in(void)
+{
+   CHECK_STR(cobalt_session_did(), "did:plc:abc");
+   cobalt_labels_reset();
+   char own[1024];
+   snprintf(own, sizeof own,
+      "{\"post\":{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/o\",\"cid\":\"bafyo\","
+      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"ewancroft.uk\"},"
+      "\"record\":{\"$type\":\"app.bsky.feed.post\",\"text\":\"mine\","
+      "\"createdAt\":\"2026-10-01T10:00:00.000Z\"},"
+      "\"labels\":[" LBL("did:plc:abc", "porn") "],"
+      "\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}}");
+   char json[4096];
+   snprintf(json, sizeof json, "{\"feed\":[%s,%s]}",
+            labelled_item("7", NULL, "[" LBL("did:plc:author", "!no-unauthenticated") "]"),
+            own);
+   wf_agent_feed_list list;
+   memset(&list, 0, sizeof(list));
+   CHECK(wf_agent_parse_feed(json, strlen(json), &list) == WF_OK);
+   static cobalt_feed feed;
+   memset(&feed, 0, sizeof(feed));
+   CHECK(cobalt_feed_append_from_wolfram(&feed, &list, 0) == 2);
+   CHECK(feed.posts[0].mod.action == COBALT_MOD_NONE);
+   CHECK(feed.posts[1].mod.action != COBALT_MOD_FILTER);
+   printf("own self-labelled post: action %d no_override %d\n",
+          feed.posts[1].mod.action, feed.posts[1].mod.no_override);
+   wf_agent_feed_list_free(&list);
 }
 
 /* --- a counting loopback server for the message request tests ---
@@ -1590,6 +1638,7 @@ main(int argc, char **argv)
    CHECK(cobalt_session_begin_timeline(false));
    CHECK(wait_job(&r) && r.ok);
    CHECK(cobalt_session_feed()->count == 2);
+   test_labels_signed_in();
    CHECK(strcmp(cobalt_session_feed()->posts[0].text, "hello timeline") == 0);
 
    CHECK(cobalt_session_begin_search_posts("found", false));
