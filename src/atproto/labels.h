@@ -71,6 +71,22 @@ int cobalt_labels_accept_value(char *out, size_t out_size);
 struct wf_agent;
 bool cobalt_labels_send_accept(struct wf_agent *agent);
 
+/* The labelers the active context counts, Bluesky's first: borrowed
+ * pointers valid until the context is rebuilt. Returns how many. */
+int cobalt_labels_labelers(const char **out, int max);
+
+/*
+ * Add the label definitions those labelers publish (from a detailed
+ * app.bsky.labeler.getServices), so their custom values are decided and
+ * named rather than listed as unsupported. Bounded at
+ * COBALT_LABELS_DEFS_MAX in all; duplicates and malformed definitions are
+ * skipped. Returns how many were added. A rebuild of the context
+ * (cobalt_labels_from_prefs, cobalt_labels_reset) drops them.
+ */
+#define COBALT_LABELS_DEFS_MAX 160
+struct wf_labeler_service_list;
+int cobalt_labels_add_services(const struct wf_labeler_service_list *list);
+
 /* Whether the active context lets adult content through; for diagnostics and
  * tests. */
 bool cobalt_labels_adult_enabled(void);
