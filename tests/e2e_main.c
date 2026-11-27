@@ -1566,6 +1566,9 @@ test_feeds(void)
    CHECK(cs_hits(&s, "app.bsky.actor.putPreferences") == 1);
    CHECK(cs_request_contains(&s, "app.bsky.actor.putPreferences", "dogs"));
    CHECK(cs_request_contains(&s, "app.bsky.actor.putPreferences", "savedFeedsPrefV2"));
+   /* A newly saved feed carries the id app.bsky.actor.defs#savedFeed requires,
+    * and the account's other preferences ride along untouched. */
+   CHECK(cs_request_contains(&s, "app.bsky.actor.putPreferences", "\"id\":\"3"));
    CHECK(cobalt_session_saved_feeds_v2()->count == 0);
    CHECK(cobalt_session_begin_saved_feeds_v2());
    CHECK(wait_job(&r) && r.ok);
@@ -1577,6 +1580,22 @@ test_feeds(void)
    CHECK(cobalt_session_begin_remove_feed("at://did:plc:x/app.bsky.feed.generator/poetry"));
    CHECK(wait_job(&r) && r.ok);
    CHECK(cs_hits(&s, "app.bsky.actor.putPreferences") == 3);
+
+   /* When the preferences cannot be read, nothing is written: a write built
+    * from nothing would replace everything the account has saved. */
+   cs_set(&s, "app.bsky.actor.getPreferences", 500,
+      "{\"error\":\"InternalServerError\",\"message\":\"boom\"}");
+   const int puts_before = cs_hits(&s, "app.bsky.actor.putPreferences");
+   CHECK(cobalt_session_begin_save_feed("at://did:plc:y/app.bsky.feed.generator/dogs", false));
+   CHECK(wait_job(&r));
+   CHECK(!r.ok);
+   CHECK(strstr(r.message, "nothing was changed") != NULL);
+   CHECK(cobalt_session_begin_remove_feed("at://did:plc:x/app.bsky.feed.generator/cats"));
+   CHECK(wait_job(&r));
+   CHECK(!r.ok);
+   CHECK(cs_hits(&s, "app.bsky.actor.putPreferences") == puts_before);
+   cs_set(&s, "app.bsky.actor.getPreferences", 200,
+      "{\"preferences\":[{\"$type\":\"app.bsky.actor.defs#savedFeedsPrefV2\",\"items\":[]}]}");
 
    /* A failing mutation reports the failure. */
    cs_set(&s, "app.bsky.actor.putPreferences", 400,
