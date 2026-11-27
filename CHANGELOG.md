@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Fixed
+
+- Posts from accounts that ask to be hidden from logged-out viewers are no longer hidden from you. 0.18.0 never told Wolfram's moderation engine who was signed in, so it treated everyone as logged out: those accounts' posts were dropped from Home and shown as "Signed-in users only" everywhere else. Your own self-labelled posts are now recognised as yours, as in the official client. Signing out also resets the label preferences, so the next account starts from the safe default. ([#275](https://github.com/ewanc26/cobalt/issues/275))
+
 ## [0.18.0] - 2026-11-27
 
 ### Added

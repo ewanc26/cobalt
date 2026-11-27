@@ -931,6 +931,7 @@ here has run on a console, so the console flow remains a `needs-owner` check.
   - The account's adult-content switch, subscribed labelers and `contentLabelPrefs`.
   - Do not keep a label table or per-label defaults in Cobalt. Fix gaps in Wolfram.
 - Treat an absent adult-content preference as **off**. A visibility value Cobalt does not recognise is skipped.
+- `user_did` must be the signed-in DID. `cobalt_labels_apply` sets it from `cobalt_session_did()` before every decision, and `cobalt_session_teardown_agent` clears it and resets the context. Wolfram's `!no-unauthenticated` and `is_me` rules depend on it. Without it, 0.18.0 filtered every post from accounts that opt out of logged-out viewing.
 - Until `ensure_prefs` loads the account's preferences, the context is the safe default: adult content off, Bluesky's labeler only.
 - `cobalt_labels_from_prefs` builds the new context before it frees the old one. If memory runs out, the previous preferences stay in place.
 - Decide once, on the worker, in `fill_from_view` and `fill_from_thread_post`. They read `labels` and `author_labels`, which Wolfram's typed post and thread views keep (Wolfram 0.47.0). The result is a `cobalt_post_mod`: one action, `no_override`, a reason and an unsupported-labels line. Drawing never touches JSON or the engine.
