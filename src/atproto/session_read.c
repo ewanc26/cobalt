@@ -3,6 +3,33 @@
 #include "atproto/session_internal.h"
 
 #ifdef COBALT_HAS_WOLFRAM
+#include <wolfram/labeler_typed.h>
+#endif
+
+#ifdef COBALT_HAS_WOLFRAM
+
+/* The subscribed labelers' own label definitions. A failure is logged and
+ * not fatal: their labels are then named as unsupported, as before. */
+static void
+load_labeler_definitions(void)
+{
+   const char *dids[COBALT_LABELS_ACCEPT_MAX];
+   const int n = cobalt_labels_labelers(dids, COBALT_LABELS_ACCEPT_MAX);
+   if (n <= 0) {
+      return;
+   }
+   wf_labeler_service_list list;
+   memset(&list, 0, sizeof(list));
+   const wf_status st =
+      wf_agent_get_labeler_services(g_session.wf, dids, (size_t) n, true, &list);
+   if (st != WF_OK) {
+      COBALT_LOGW("session: getServices failed (%d); labeler labels stay unsupported",
+                  (int) st);
+      return;
+   }
+   cobalt_labels_add_services(&list);
+   wf_labeler_service_list_free(&list);
+}
 
 /* Fetch the saved preferences once per sign-in. Failure is not fatal: the
  * feed is simply shown unfiltered. */
@@ -23,6 +50,7 @@ ensure_prefs(void)
    cobalt_prefs_from_wolfram(&g_session.prefs, &p, cobalt_time_now());
    cobalt_labels_from_prefs(&p);
    cobalt_labels_send_accept(g_session.wf);
+   load_labeler_definitions();
    wf_actor_preferences_free(&p);
    g_session.prefs_loaded = true;
 }

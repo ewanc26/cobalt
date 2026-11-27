@@ -44,6 +44,7 @@ cobalt_post_mod_covers(const cobalt_post_mod *mod)
 #include <cJSON.h>
 #include <wolfram/actor_prefs_typed.h>
 #include <wolfram/agent.h>
+#include <wolfram/labeler_typed.h>
 #include <wolfram/moderation.h>
 #include <wolfram/xrpc.h>
 
@@ -56,6 +57,9 @@ typedef struct {
    bool ready;
    wf_mod_label_def *defs;
    size_t def_count;
+   /* A labeler's own name for each def, parallel to defs; NULL for the
+    * global ones, which cobalt_labels_reason names. */
+   char **def_names;
    wf_mod_opts opts;   /* opts.prefs arrays below are owned here */
 } labels_ctx;
 
@@ -104,6 +108,12 @@ ctx_free(labels_ctx *c)
    }
    free(p->global_label_identifiers);
    free(p->global_label_prefs);
+   if (c->def_names) {
+      for (size_t i = 0; i < c->def_count; i++) {
+         free(c->def_names[i]);
+      }
+      free(c->def_names);
+   }
    wf_mod_label_defs_free(c->defs, c->def_count);
    memset(c, 0, sizeof(*c));
 }
@@ -188,6 +198,10 @@ ctx_build(labels_ctx *c, const wf_actor_preferences *src)
    memset(c, 0, sizeof(*c));
    c->opts.user_did = g_viewer[0] ? g_viewer : NULL;
    if (wf_mod_global_label_defs(&c->defs, &c->def_count) != WF_OK) {
+      return false;
+   }
+   c->def_names = calloc(c->def_count, sizeof(*c->def_names));
+   if (!c->def_names) {
       return false;
    }
    wf_mod_prefs *p = &c->opts.prefs;
@@ -311,6 +325,108 @@ cobalt_labels_send_accept(struct wf_agent *agent)
    return true;
 }
 
+int
+cobalt_labels_labelers(const char **out, int max)
+{
+   if (!out || max <= 0) {
+      return 0;
+   }
+   if (!g_ctx.ready) {
+      cobalt_labels_reset();
+   }
+   int n = 0;
+   for (size_t i = 0; i < g_ctx.opts.prefs.labeler_count && n < max; i++) {
+      out[n++] = g_ctx.opts.prefs.labelers[i].did;
+   }
+   return n;
+}
+
+/* The English name a labeler gave a value, else its first one. */
+static const char *
+def_name(const wf_labeler_label_value_def *d)
+{
+   const char *first = NULL;
+   for (size_t i = 0; i < d->locale_count; i++) {
+      const wf_labeler_label_value_def_locale *l = &d->locales[i];
+      if (!l->name || !l->name[0]) {
+         continue;
+      }
+      if (l->lang && strncmp(l->lang, "en", 2) == 0) {
+         return l->name;
+      }
+      if (!first) {
+         first = l->name;
+      }
+   }
+   return first;
+}
+
+static bool
+have_def(const char *identifier, const char *by)
+{
+   for (size_t i = 0; i < g_ctx.def_count; i++) {
+      const wf_mod_label_def *d = &g_ctx.defs[i];
+      if (d->defined_by && strcmp(d->defined_by, by) == 0 &&
+          strcmp(d->identifier, identifier) == 0) {
+         return true;
+      }
+   }
+   return false;
+}
+
+int
+cobalt_labels_add_services(const wf_labeler_service_list *list)
+{
+   if (!list || !g_ctx.ready) {
+      return 0;
+   }
+   int added = 0;
+   for (size_t s = 0; s < list->service_count; s++) {
+      const wf_labeler_service_view *v = &list->services[s];
+      const char *by = v->creator.did;
+      if (!by || !by[0] || !v->has_policies) {
+         continue;
+      }
+      for (size_t i = 0; i < v->policies.label_value_definition_count; i++) {
+         const wf_labeler_label_value_def *d = &v->policies.label_value_definitions[i];
+         if (!d->identifier || !d->identifier[0] || have_def(d->identifier, by)) {
+            continue;
+         }
+         if (g_ctx.def_count >= COBALT_LABELS_DEFS_MAX) {
+            COBALT_LOGW("labels: definition limit reached; the rest stay unsupported");
+            return added;
+         }
+         wf_mod_label_def *grown =
+            realloc(g_ctx.defs, (g_ctx.def_count + 1) * sizeof(*grown));
+         if (!grown) {
+            return added;
+         }
+         g_ctx.defs = grown;
+         char **names =
+            realloc(g_ctx.def_names, (g_ctx.def_count + 1) * sizeof(*names));
+         if (!names) {
+            return added;
+         }
+         g_ctx.def_names = names;
+         wf_mod_label_def *def = &g_ctx.defs[g_ctx.def_count];
+         if (wf_mod_interpret_label_def(def, d->identifier, by, d->blurs, d->severity,
+                                        d->has_adult_only && d->adult_only,
+                                        d->has_default_setting ? d->default_setting
+                                                               : NULL) != WF_OK) {
+            wf_mod_label_def_free(def);
+            continue;
+         }
+         names[g_ctx.def_count] = dup_str(def_name(d));
+         g_ctx.def_count++;
+         added++;
+      }
+   }
+   g_ctx.opts.label_defs = g_ctx.defs;
+   g_ctx.opts.label_def_count = g_ctx.def_count;
+   COBALT_LOGI("labels: %d labeler definition(s) loaded", added);
+   return added;
+}
+
 bool
 cobalt_labels_adult_enabled(void)
 {
@@ -324,6 +440,14 @@ set_reason(cobalt_post_mod *out, const wf_mod_cause *cause)
       return;
    }
    const char *value = NULL;
+   if (cause->type == WF_MOD_CAUSE_LABEL && cause->label_def && g_ctx.def_names &&
+       cause->label_def >= g_ctx.defs && cause->label_def < g_ctx.defs + g_ctx.def_count) {
+      const char *name = g_ctx.def_names[cause->label_def - g_ctx.defs];
+      if (name && name[0]) {
+         cobalt_feed_copy_text(out->reason, sizeof(out->reason), name);
+         return;
+      }
+   }
    if (cause->type == WF_MOD_CAUSE_LABEL) {
       value = cause->label_def && cause->label_def->identifier
                  ? cause->label_def->identifier
