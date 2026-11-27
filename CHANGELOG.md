@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Added
+
+- Labelers' own labels now work. Once your preferences load, Cobalt fetches the label definitions each of your labelers publishes, including Bluesky's, so their custom labels cover or hide posts as each labeler intends. A cover names the label as the labeler does (in English where it offers it), for example "Spoilers". Those labels were previously listed as unsupported. ([#275](https://github.com/ewanc26/cobalt/issues/275))
+
 ## [0.19.0] - 2026-11-27
 
 ### Added
