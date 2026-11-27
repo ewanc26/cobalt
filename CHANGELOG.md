@@ -9,7 +9,7 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ### Fixed
 
-- Saving, pinning or removing a feed can no longer erase your Bluesky preferences. If Cobalt could not read your current preferences first (a dropped connection, a server error), it wrote back a list holding only the feed change, which replaced every other preference the account had saved: muted words, saved and pinned feeds, label and adult-content choices. It now refuses and says nothing was changed. A newly saved feed also carries the `id` every saved feed must have; Cobalt's were missing it, so other clients could reject or mishandle them.
+- Saving, pinning or removing a feed can no longer erase your Bluesky preferences. If Cobalt could not read your current preferences first (a dropped connection, a server error), it wrote back a list holding only the feed change, which replaced every other preference the account had saved: muted words, saved and pinned feeds, label and adult-content choices. It now refuses and says nothing was changed. A newly saved feed also carries the `id` every saved feed must have; Cobalt's were missing it, so other clients could reject or mishandle them. ([#312](https://github.com/ewanc26/cobalt/pull/312))
 
 ## [0.20.0] - 2026-11-27
 
