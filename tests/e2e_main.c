@@ -9,10 +9,14 @@
 #include "app/chat_thread.h"
 #include "app/messages.h"
 #include "atproto/prefs.h"
+#include "atproto/labels.h"
+#include "ui/postcard.h"
 #include "atproto/session.h"
 #include "atproto/feeds.h"
 #include "input/input.h"
 #include "../../wolfram/test/mock_pds.h"
+#include <wolfram/actor_prefs_typed.h>
+#include <wolfram/feed_typed.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -92,6 +96,175 @@ test_muted_words(void)
    CHECK(cobalt_prefs_filter_feed(&p, &feed, 1, false) == 1);
    CHECK(feed.count == 3);
    CHECK(strcmp(feed.posts[1].text, "post 2") == 0);
+}
+
+/* Content labels: Wolfram's engine decides, atproto/labels.c flattens the
+ * decision onto the post, and the card draws the cover. */
+static const char *
+labelled_item(const char *n, const char *post_labels, const char *author_labels)
+{
+   static char buf[8][1024];
+   static int k;
+   char *b = buf[k++ & 7];
+   snprintf(b, 1024,
+      "{\"post\":{\"uri\":\"at://did:plc:abc/app.bsky.feed.post/%s\",\"cid\":\"bafy%s\","
+      "\"author\":{\"did\":\"did:plc:abc\",\"handle\":\"a.test\"%s%s},"
+      "\"record\":{\"$type\":\"app.bsky.feed.post\",\"text\":\"post %s\","
+      "\"createdAt\":\"2026-10-01T10:00:00.000Z\"},%s%s"
+      "\"indexedAt\":\"2026-10-01T10:00:00.000Z\"}}",
+      n, n, author_labels ? ",\"labels\":" : "", author_labels ? author_labels : "",
+      n, post_labels ? "\"labels\":" : "", post_labels ? post_labels : "");
+   return b;
+}
+
+#define BSKY_MOD "did:plc:ar7c4by46qjdydhdevvrndac"
+#define LBL(src, val) "{\"src\":\"" src "\",\"uri\":\"at://x\",\"val\":\"" val "\"}"
+
+static void
+fill_labelled_feed(cobalt_feed *feed)
+{
+   char json[8192];
+   snprintf(json, sizeof json, "{\"feed\":[%s,%s,%s,%s,%s,%s,%s]}",
+      labelled_item("0", NULL, NULL),
+      labelled_item("1", "[" LBL("did:plc:abc", "porn") "],", NULL),
+      labelled_item("2", "[" LBL(BSKY_MOD, "graphic-media") "],", NULL),
+      labelled_item("3", "[" LBL(BSKY_MOD, "!hide") "],", NULL),
+      labelled_item("4", "[" LBL(BSKY_MOD, "made-up") "," LBL("did:plc:stranger", "porn") "],", NULL),
+      labelled_item("5", "[{\"src\":7},\"junk\"],", NULL),
+      labelled_item("6", NULL, "[" LBL(BSKY_MOD, "!warn") "]"));
+   wf_agent_feed_list list;
+   memset(&list, 0, sizeof(list));
+   CHECK(wf_agent_parse_feed(json, strlen(json), &list) == WF_OK);
+   memset(feed, 0, sizeof(*feed));
+   CHECK(cobalt_feed_append_from_wolfram(feed, &list, 0) == 7);
+   wf_agent_feed_list_free(&list);
+}
+
+static void
+test_labels(void)
+{
+   static cobalt_feed feed;
+   static cobalt_post shown;
+
+   /* The safe default: adult content off, Bluesky's labeler counted. */
+   cobalt_labels_reset();
+   CHECK(!cobalt_labels_adult_enabled());
+   fill_labelled_feed(&feed);
+   CHECK(feed.count == 7);
+
+   CHECK(feed.posts[0].mod.action == COBALT_MOD_NONE);
+   CHECK(!cobalt_postcard_covered(&feed.posts[0]));
+
+   /* An author's own porn label, adult content off: the adult gate forces
+    * "hide", which in a list means the post is dropped, as upstream does. */
+   CHECK(feed.posts[1].mod.action == COBALT_MOD_FILTER);
+   CHECK_STR(feed.posts[1].mod.reason, "Adult content");
+
+   /* graphic-media from the moderation labeler is adult-only too. */
+   CHECK(feed.posts[2].mod.action == COBALT_MOD_FILTER);
+   CHECK_STR(feed.posts[2].mod.reason, "Graphic media");
+
+   CHECK(feed.posts[3].mod.action == COBALT_MOD_FILTER);
+   CHECK(feed.posts[3].mod.no_override);
+   CHECK_STR(feed.posts[3].mod.reason, "Hidden by moderators");
+
+   /* Unknown value from a counted labeler is named; a stranger's label is not
+    * a label the account sees at all. */
+   CHECK(feed.posts[4].mod.action == COBALT_MOD_NONE);
+   CHECK_STR(feed.posts[4].mod.unsupported, "made-up");
+   cobalt_postcard_cover(&feed.posts[4], &shown);
+   CHECK(strstr(shown.text, "post 4") != NULL);
+   CHECK(strstr(shown.text, "Labelled made-up") != NULL);
+
+   /* Malformed label items are skipped, not trusted and not fatal. */
+   CHECK(feed.posts[5].mod.action == COBALT_MOD_NONE);
+   CHECK(feed.posts[5].mod.unsupported[0] == '\0');
+
+   /* A moderator's !warn on the account covers its posts, and can be lifted. */
+   CHECK(feed.posts[6].mod.action == COBALT_MOD_BLUR_CONTENT);
+   CHECK(!feed.posts[6].mod.no_override);
+   CHECK_STR(feed.posts[6].mod.reason, "Content warning");
+
+   /* Covers: the whole post for content, only media for media. */
+   cobalt_postcard_reveal(NULL);
+   CHECK(cobalt_postcard_covered(&feed.posts[6]));
+   CHECK(cobalt_postcard_can_reveal(&feed.posts[6]));
+   cobalt_postcard_cover(&feed.posts[6], &shown);
+   CHECK_STR(shown.text, "Content warning. A: show it.");
+   cobalt_postcard_reveal(feed.posts[6].uri);
+   CHECK(!cobalt_postcard_covered(&feed.posts[6]));
+   cobalt_postcard_cover(&feed.posts[6], &shown);
+   CHECK_STR(shown.text, "post 6");
+   /* Revealing another post covers this one again. */
+   cobalt_postcard_reveal(feed.posts[0].uri);
+   CHECK(cobalt_postcard_covered(&feed.posts[6]));
+
+   /* no_override ignores a reveal. */
+   cobalt_postcard_reveal(feed.posts[3].uri);
+   CHECK(cobalt_postcard_covered(&feed.posts[3]));
+   CHECK(!cobalt_postcard_can_reveal(&feed.posts[3]));
+   cobalt_postcard_cover(&feed.posts[3], &shown);
+   CHECK_STR(shown.text, "Hidden by moderators. Cobalt will not show it.");
+   /* A filtered post a list shows anyway (a profile) keeps its cover. */
+   cobalt_postcard_reveal(feed.posts[1].uri);
+   CHECK(cobalt_postcard_covered(&feed.posts[1]));
+   CHECK(!cobalt_postcard_can_reveal(&feed.posts[1]));
+   cobalt_postcard_cover(&feed.posts[1], &shown);
+   CHECK_STR(shown.text, "Adult content. Cobalt will not show it.");
+   CHECK(shown.image_count == 0 && shown.link.uri[0] == '\0');
+   cobalt_postcard_reveal(NULL);
+
+   /* The account's preferences: adult content on, graphic media shown, and a
+    * hide on sexual. */
+   wf_actor_pref_content_label cl[3];
+   memset(cl, 0, sizeof(cl));
+   cl[0].label = "graphic-media";
+   cl[0].visibility = "ignore";
+   cl[1].label = "porn";
+   cl[1].visibility = "warn";
+   cl[2].label = "sexual";
+   cl[2].visibility = "not-a-visibility";
+   wf_actor_preferences prefs;
+   memset(&prefs, 0, sizeof(prefs));
+   prefs.adult_content.has_enabled = true;
+   prefs.adult_content.enabled = true;
+   prefs.content_labels = cl;
+   prefs.content_label_count = 3;
+   CHECK(cobalt_labels_from_prefs(&prefs));
+   CHECK(cobalt_labels_adult_enabled());
+   fill_labelled_feed(&feed);
+   CHECK(feed.posts[1].mod.action == COBALT_MOD_BLUR_MEDIA);
+   CHECK(!feed.posts[1].mod.no_override);
+   CHECK(feed.posts[2].mod.action == COBALT_MOD_NONE);
+   /* Media covered, text kept, and the cover can be lifted. */
+   cobalt_postcard_reveal(NULL);
+   CHECK(cobalt_postcard_can_reveal(&feed.posts[1]));
+   cobalt_postcard_cover(&feed.posts[1], &shown);
+   CHECK(strstr(shown.text, "post 1") == shown.text);
+   CHECK(strstr(shown.text, "Adult content: media hidden. A: show it.") != NULL);
+   CHECK(shown.image_count == 0);
+   CHECK(feed.posts[3].mod.no_override);   /* !hide is not configurable */
+
+   /* A hidden label drops the post from a filtered list. */
+   cl[1].visibility = "hide";
+   CHECK(cobalt_labels_from_prefs(&prefs));
+   fill_labelled_feed(&feed);
+   CHECK(feed.posts[1].mod.action == COBALT_MOD_FILTER);
+   cobalt_prefs p;
+   cobalt_prefs_clear(&p);
+   const int before = feed.count;
+   CHECK(cobalt_prefs_filter_feed(&p, &feed, 0, false) >= 2);   /* porn and !hide */
+   CHECK(feed.count < before);
+   for (int i = 0; i < feed.count; i++) {
+      CHECK(feed.posts[i].mod.action != COBALT_MOD_FILTER);
+   }
+
+   /* Absent adult preference reads as off; back to the default for the
+    * rest of the run. */
+   memset(&prefs, 0, sizeof(prefs));
+   CHECK(cobalt_labels_from_prefs(&prefs));
+   CHECK(!cobalt_labels_adult_enabled());
+   cobalt_labels_reset();
 }
 
 /* --- a counting loopback server for the message request tests ---
@@ -1312,6 +1485,7 @@ main(int argc, char **argv)
 {
    (void) argc; (void) argv;
    test_muted_words();
+   test_labels();
    /* Init reports a blocker on the host (no CA file, no console entropy, no
     * mbedTLS RNG hook). Those gate HTTPS on the console and are irrelevant to
     * plain HTTP against localhost; the worker runs regardless. */

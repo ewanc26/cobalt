@@ -1132,6 +1132,38 @@ main(int argc, char **argv)
       go_home();
    }
 
+   /* Content labels: a covered post, the same post after A lifts the cover,
+    * and a media-only cover beside it (cobalt#275). The decisions are set
+    * directly; e2e covers how labels become them. */
+   {
+      cobalt_feed *marks = (cobalt_feed *) cobalt_session_bookmarks();
+      *marks = *cobalt_session_feed();
+      CHECK(marks->count >= 2);
+      marks->posts[0].mod.action = COBALT_MOD_BLUR_CONTENT;
+      snprintf(marks->posts[0].mod.reason, sizeof marks->posts[0].mod.reason,
+               "Content warning");
+      marks->posts[1].mod.action = COBALT_MOD_BLUR_MEDIA;
+      snprintf(marks->posts[1].mod.reason, sizeof marks->posts[1].mod.reason,
+               "Graphic media");
+      snprintf(marks->posts[1].mod.unsupported,
+               sizeof marks->posts[1].mod.unsupported, "made-up");
+      cobalt_postcard_reveal(NULL);
+      g_app->screen = COBALT_SCREEN_BOOKMARKS;
+      cobalt_timeline_rewind(&g_app->bookmarks);
+      settle(3);
+      CHECK(cobalt_postcard_covered(&marks->posts[0]));
+      shoot("labels-covered");
+      frame(COBALT_BTN_CONFIRM); settle(3);
+      CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_BOOKMARKS);
+      CHECK(!cobalt_postcard_covered(&marks->posts[0]));
+      shoot("labels-revealed");
+      cobalt_postcard_reveal(NULL);
+      for (int i = 0; i < marks->count; i++) {
+         memset(&marks->posts[i].mod, 0, sizeof marks->posts[i].mod);
+      }
+      go_home();
+   }
+
    open_home_item(7);
    WAIT_UNTIL(cobalt_app_screen(g_app) == COBALT_SCREEN_NOTIFICATIONS, 5000);
    shoot("notifications");
