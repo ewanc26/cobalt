@@ -923,6 +923,14 @@ here has run on a console, so the console flow remains a `needs-owner` check.
 
 **Verification note:** `make -j4` succeeds end-to-end — `cobalt.elf`/`.rpx`/`.wuhb`, no errors or warnings. Still no hardware pass, and this closes the last item on §12's original roadmap list.
 
+### Preference writes are read-modify-write, and never write blind
+
+`app.bsky.actor.putPreferences` replaces the whole array. Change a preference only through `src/atproto/prefs_write.c`:
+- Read with `cobalt_prefs_read`. If it returns NULL, change nothing and tell the user.
+- Write with `cobalt_prefs_put_replacing`, which swaps the one `$type` and keeps every other preference verbatim.
+
+Before 0.20.1 the feed writers fell back to an empty array when the read failed, and that wiped the account's preferences. New `savedFeed` items need an `id` (a TID from `wf_tid_now`).
+
 ### Content labels: Wolfram decides, the worker flattens, the card covers
 
 - Decide labels only through Wolfram's moderation engine. `src/atproto/labels.c` keeps one `wf_mod_opts` for the signed-in account and gives it these definitions:
