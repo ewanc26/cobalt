@@ -51,7 +51,7 @@ The first time Cobalt runs without a seed file it asks you to scribble on the Ga
 | Button | Does |
 |---|---|
 | Up, Down | Previous and next post. Reaching the bottom loads more. |
-| A | Open the thread. |
+| A | Open the thread. On a post behind a content-label cover, A shows it first; press A again to open it. |
 | Left | Like (again to undo). |
 | Right | Repost (again to undo). |
 | X | New post. |

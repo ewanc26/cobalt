@@ -74,6 +74,7 @@ replace testing on the console.
 - Lists and list members, with create/edit and add/remove actions
 - Starter packs opened from a post link: bounded members and included feeds, with profiles and feeds one press away (read/use only)
 - Mute and block, including browsable lists
+- Content labels: warned posts behind a cover that A lifts, hidden posts dropped, by the account's own label preferences
 - Report a post or account with a reason, with a confirmation before anything is sent
 - Mute or unmute a conversation from its Thread window menu, with the server's answer on the status line
 - Post search
