@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-27
+
 ### Added
 
 - Labelers' own labels now work. Once your preferences load, Cobalt fetches the label definitions each of your labelers publishes, including Bluesky's, so their custom labels cover or hide posts as each labeler intends. A cover names the label as the labeler does (in English where it offers it), for example "Spoilers". Those labels were previously listed as unsupported. ([#275](https://github.com/ewanc26/cobalt/issues/275))
@@ -381,7 +383,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/ewanc26/cobalt/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/ewanc26/cobalt/compare/v0.18.1...v0.19.0
 [0.18.1]: https://github.com/ewanc26/cobalt/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/ewanc26/cobalt/compare/v0.17.0...v0.18.0
