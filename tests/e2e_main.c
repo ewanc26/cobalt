@@ -274,6 +274,32 @@ test_labels(void)
       wf_agent_feed_list_free(&list);
    }
 
+   /* The accept-labelers value: Bluesky's labeler first, with ;redact, then
+    * the account's subscriptions, bounded. */
+   {
+      wf_actor_preferences lp;
+      memset(&lp, 0, sizeof(lp));
+      char *subs[25];
+      char dids[25][32];
+      for (int i = 0; i < 25; i++) {
+         snprintf(dids[i], sizeof dids[i], "did:plc:labeler%02d", i);
+         subs[i] = dids[i];
+      }
+      lp.labelers.labelers = subs;
+      lp.labelers.labeler_count = 2;
+      CHECK(cobalt_labels_from_prefs(&lp));
+      char value[2048];
+      CHECK(cobalt_labels_accept_value(value, sizeof value) == 3);
+      CHECK_STR(value, BSKY_MOD ";redact, did:plc:labeler00, did:plc:labeler01");
+      lp.labelers.labeler_count = 25;
+      CHECK(cobalt_labels_from_prefs(&lp));
+      CHECK(cobalt_labels_accept_value(value, sizeof value) ==
+            COBALT_LABELS_ACCEPT_MAX);
+      char small[40];
+      CHECK(cobalt_labels_accept_value(small, sizeof small) == 1);
+      CHECK_STR(small, BSKY_MOD ";redact");
+   }
+
    /* Absent adult preference reads as off; back to the default for the
     * rest of the run. */
    memset(&prefs, 0, sizeof(prefs));
@@ -1639,6 +1665,9 @@ main(int argc, char **argv)
    CHECK(wait_job(&r) && r.ok);
    CHECK(cobalt_session_feed()->count == 2);
    test_labels_signed_in();
+   /* The timeline request carried the default accept-labelers value. */
+   CHECK(wf_mock_pds_get_last_labelers(pds) != NULL &&
+         strstr(wf_mock_pds_get_last_labelers(pds), BSKY_MOD ";redact") != NULL);
    CHECK(strcmp(cobalt_session_feed()->posts[0].text, "hello timeline") == 0);
 
    CHECK(cobalt_session_begin_search_posts("found", false));
