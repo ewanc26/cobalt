@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-27
+
 ### Added
 
 - Labels from the labelers you subscribe to now reach Cobalt. Every request names Bluesky's moderation labeler and, once your preferences load, your own subscriptions (up to 20), in the `atproto-accept-labelers` header. Before, the AppView attached only its defaults. Labels whose definitions Cobalt has not loaded yet are named on the post as unsupported rather than ignored. ([#275](https://github.com/ewanc26/cobalt/issues/275))
@@ -375,7 +377,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.18.1...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/ewanc26/cobalt/compare/v0.18.1...v0.19.0
 [0.18.1]: https://github.com/ewanc26/cobalt/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/ewanc26/cobalt/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/ewanc26/cobalt/compare/v0.16.0...v0.17.0
