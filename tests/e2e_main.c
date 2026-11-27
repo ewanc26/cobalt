@@ -17,6 +17,7 @@
 #include "../../wolfram/test/mock_pds.h"
 #include <wolfram/actor_prefs_typed.h>
 #include <wolfram/feed_typed.h>
+#include <wolfram/labeler_typed.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -298,6 +299,49 @@ test_labels(void)
       char small[40];
       CHECK(cobalt_labels_accept_value(small, sizeof small) == 1);
       CHECK_STR(small, BSKY_MOD ";redact");
+   }
+
+   /* A labeler's own definitions: its custom value is decided by its
+    * definition and named by its own English name; before they load, the
+    * same value is listed as unsupported. Malformed definitions are skipped. */
+   {
+      cobalt_labels_reset();
+      static cobalt_feed one;
+      char json[2048];
+      snprintf(json, sizeof json, "{\"feed\":[%s]}",
+               labelled_item("8", "[" LBL(BSKY_MOD, "spoiler") "],", NULL));
+      wf_agent_feed_list list;
+      memset(&list, 0, sizeof(list));
+      CHECK(wf_agent_parse_feed(json, strlen(json), &list) == WF_OK);
+      memset(&one, 0, sizeof(one));
+      CHECK(cobalt_feed_append_from_wolfram(&one, &list, 0) == 1);
+      CHECK(one.posts[0].mod.action == COBALT_MOD_NONE);
+      CHECK_STR(one.posts[0].mod.unsupported, "spoiler");
+
+      const char *services =
+         "{\"views\":[{\"$type\":\"app.bsky.labeler.defs#labelerViewDetailed\","
+         "\"uri\":\"at://" BSKY_MOD "/app.bsky.labeler.service/self\",\"cid\":\"c\","
+         "\"creator\":{\"did\":\"" BSKY_MOD "\",\"handle\":\"moderation.bsky.app\"},"
+         "\"indexedAt\":\"2026-01-01T00:00:00Z\",\"policies\":{\"labelValues\":[\"spoiler\"],"
+         "\"labelValueDefinitions\":[{\"identifier\":\"spoiler\",\"severity\":\"inform\","
+         "\"blurs\":\"content\",\"defaultSetting\":\"warn\",\"adultOnly\":false,"
+         "\"locales\":[{\"lang\":\"de\",\"name\":\"Spoiler (de)\",\"description\":\"x\"},"
+         "{\"lang\":\"en\",\"name\":\"Spoilers\",\"description\":\"x\"}]},"
+         "{\"severity\":\"alert\",\"blurs\":\"none\",\"locales\":[]}]}}]}";
+      wf_labeler_service_list sl;
+      memset(&sl, 0, sizeof(sl));
+      CHECK(wf_labeler_parse_services(services, strlen(services), &sl) == WF_OK);
+      CHECK(cobalt_labels_add_services(&sl) == 1);
+      CHECK(cobalt_labels_add_services(&sl) == 0);   /* no duplicates */
+      wf_labeler_service_list_free(&sl);
+
+      memset(&one, 0, sizeof(one));
+      CHECK(cobalt_feed_append_from_wolfram(&one, &list, 0) == 1);
+      CHECK(one.posts[0].mod.action == COBALT_MOD_BLUR_CONTENT);
+      CHECK(!one.posts[0].mod.no_override);
+      CHECK_STR(one.posts[0].mod.reason, "Spoilers");
+      CHECK(one.posts[0].mod.unsupported[0] == '\0');
+      wf_agent_feed_list_free(&list);
    }
 
    /* Absent adult preference reads as off; back to the default for the
