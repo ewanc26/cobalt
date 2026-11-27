@@ -932,6 +932,11 @@ here has run on a console, so the console flow remains a `needs-owner` check.
   - Do not keep a label table or per-label defaults in Cobalt. Fix gaps in Wolfram.
 - Treat an absent adult-content preference as **off**. A visibility value Cobalt does not recognise is skipped.
 - Send `atproto-accept-labelers` with `cobalt_labels_send_accept`. `new_wf_agent` sends the default (Bluesky's labeler with `;redact`), and `ensure_prefs` adds the account's subscriptions, capped at `COBALT_LABELS_ACCEPT_MAX` (20). Wolfram refuses control characters, so a hostile DID cannot inject a header.
+- Load labelers' own definitions in `ensure_prefs` (`load_labeler_definitions`). It calls `wf_agent_get_labeler_services` (detailed) for every counted labeler, then `cobalt_labels_add_services`, which interprets each definition with `wf_mod_interpret_label_def`.
+  - Total definitions are capped at `COBALT_LABELS_DEFS_MAX`. Duplicates and definitions without an identifier are skipped.
+  - The labeler's English name (else its first) becomes the cover's reason.
+  - A rebuilt context drops these definitions, so reload them after every `cobalt_labels_from_prefs`.
+  - If the fetch fails, it is logged and the labels stay "unsupported".
 - `user_did` must be the signed-in DID. `cobalt_labels_apply` sets it from `cobalt_session_did()` before every decision, and `cobalt_session_teardown_agent` clears it and resets the context. Wolfram's `!no-unauthenticated` and `is_me` rules depend on it. Without it, 0.18.0 filtered every post from accounts that opt out of logged-out viewing.
 - Until `ensure_prefs` loads the account's preferences, the context is the safe default: adult content off, Bluesky's labeler only.
 - `cobalt_labels_from_prefs` builds the new context before it frees the old one. If memory runs out, the previous preferences stay in place.
@@ -946,7 +951,6 @@ here has run on a console, so the console flow remains a `needs-owner` check.
 - Name label values the context has no definition for, from a source it counts (the author, or a subscribed labeler), on the card: "Labelled x, which Cobalt does not support yet". Never drop them silently. Ignore labels from labelers the account does not subscribe to, as upstream does.
 - **Scoped out (#275 stays open):**
   - A settings screen for label preferences, and writing a changed preference back.
-  - Fetching third-party labelers' own label definitions (`app.bsky.labeler.getServices`). Until then, their custom values show as unsupported.
   - Avatar and banner blurs. Profile-level decisions are not drawn yet.
 - **Verification:** host only. `make -C tests all e2e snapshot` covers known, unknown and malformed labels, self-labels, the adult gate, preference changes and filtering (e2e `test_labels`). The `labels-covered` and `labels-revealed` snapshots cover both displays. Not run on Cemu or hardware.
 
