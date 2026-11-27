@@ -1,4 +1,5 @@
 #include "atproto/labels.h"
+#include "atproto/session.h"
 #include "util/log.h"
 
 #include <stdio.h>
@@ -57,6 +58,16 @@ typedef struct {
 } labels_ctx;
 
 static labels_ctx g_ctx;
+static char g_viewer[256];
+
+void
+cobalt_labels_set_viewer(const char *did)
+{
+   if (strcmp(g_viewer, did ? did : "") != 0) {
+      snprintf(g_viewer, sizeof g_viewer, "%s", did ? did : "");
+   }
+   g_ctx.opts.user_did = g_viewer[0] ? g_viewer : NULL;
+}
 
 static char *
 dup_str(const char *s)
@@ -173,6 +184,7 @@ static bool
 ctx_build(labels_ctx *c, const wf_actor_preferences *src)
 {
    memset(c, 0, sizeof(*c));
+   c->opts.user_did = g_viewer[0] ? g_viewer : NULL;
    if (wf_mod_global_label_defs(&c->defs, &c->def_count) != WF_OK) {
       return false;
    }
@@ -367,6 +379,7 @@ cobalt_labels_apply(cobalt_post_mod *out, const char *uri, const char *author_di
          return;
       }
    }
+   cobalt_labels_set_viewer(cobalt_session_did());
 
    wf_mod_label *pl = NULL;
    wf_mod_label *al = NULL;
