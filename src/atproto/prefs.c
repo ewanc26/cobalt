@@ -28,6 +28,11 @@ post_is_hidden(const cobalt_prefs *prefs, const cobalt_post *post, bool home)
    if (home && prefs->hide_reposts && post->reposted_by[0]) {
       return true;
    }
+   /* A label the account hides, or a moderator's !hide: dropped from every
+    * list, as muted words are. */
+   if (post->mod.action == COBALT_MOD_FILTER) {
+      return true;
+   }
    if (prefs->muted.count == 0) {
       return false;
    }
