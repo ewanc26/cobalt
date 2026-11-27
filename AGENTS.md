@@ -923,6 +923,32 @@ here has run on a console, so the console flow remains a `needs-owner` check.
 
 **Verification note:** `make -j4` succeeds end-to-end — `cobalt.elf`/`.rpx`/`.wuhb`, no errors or warnings. Still no hardware pass, and this closes the last item on §12's original roadmap list.
 
+### Content labels: Wolfram decides, the worker flattens, the card covers
+
+- Decide labels only through Wolfram's moderation engine. `src/atproto/labels.c` keeps one `wf_mod_opts` for the signed-in account and gives it these definitions:
+  - `wf_mod_global_label_defs`: `!hide`, `!warn`, porn, sexual, nudity, graphic-media and gore.
+  - `WF_MOD_BSKY_LABELER_DID`, which is always counted.
+  - The account's adult-content switch, subscribed labelers and `contentLabelPrefs`.
+  - Do not keep a label table or per-label defaults in Cobalt. Fix gaps in Wolfram.
+- Treat an absent adult-content preference as **off**. A visibility value Cobalt does not recognise is skipped.
+- Until `ensure_prefs` loads the account's preferences, the context is the safe default: adult content off, Bluesky's labeler only.
+- `cobalt_labels_from_prefs` builds the new context before it frees the old one. If memory runs out, the previous preferences stay in place.
+- Decide once, on the worker, in `fill_from_view` and `fill_from_thread_post`. They read `labels` and `author_labels`, which Wolfram's typed post and thread views keep (Wolfram 0.47.0). The result is a `cobalt_post_mod`: one action, `no_override`, a reason and an unsupported-labels line. Drawing never touches JSON or the engine.
+- Each post gets one action, from the content-list context, falling back to media:
+  - **`COBALT_MOD_FILTER`:** a label the account hides. Adult labels with adult content off become hide too, as upstream does. `cobalt_prefs_filter_feed` drops these posts. A list that does not filter (profile, search, bookmarks, thread) draws them under a cover that cannot be lifted.
+  - **`BLUR_CONTENT`:** covers the text and media.
+  - **`BLUR_MEDIA`:** keeps the text and removes images, link cards and quotes.
+  - A thread uses the same action, so opening a post never uncovers it.
+- `src/ui/postcard.c` applies the cover inside every entry point: height, draw, scrolled draw and text total. Height and drawing therefore always agree. The covered copy goes into one static scratch post, because the UI thread draws one card at a time.
+- Reveal state is a single URI in `postcard.c`, not a field in the worker's shared list. That keeps the lock rule above intact. A on a coverable post reveals it (timeline-family screens, thread, profile), and the footer says "A: show".
+- Name label values the context has no definition for, from a source it counts (the author, or a subscribed labeler), on the card: "Labelled x, which Cobalt does not support yet". Never drop them silently. Ignore labels from labelers the account does not subscribe to, as upstream does.
+- **Scoped out (#275 stays open):**
+  - A settings screen for label preferences, and writing a changed preference back.
+  - Fetching third-party labelers' own label definitions (`app.bsky.labeler.getServices`). Until then, their custom values show as unsupported.
+  - Sending `atproto-accept-labelers`, so the AppView only attaches Bluesky's labels.
+  - Avatar and banner blurs. Profile-level decisions are not drawn yet.
+- **Verification:** host only. `make -C tests all e2e snapshot` covers known, unknown and malformed labels, self-labels, the adult gate, preference changes and filtering (e2e `test_labels`). The `labels-covered` and `labels-revealed` snapshots cover both displays. Not run on Cemu or hardware.
+
 ---
 
 *This file should be kept current as the project evolves. If you (the agent) make an architectural decision not reflected here — e.g. picking a specific TLS portlib, or discovering GamePad-only UI isn't viable for some reason — update the relevant section rather than leaving this file to drift out of sync with the codebase.*
