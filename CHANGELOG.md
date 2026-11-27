@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-27
+
 ### Added
 
 - Posts with content labels are no longer shown as if they had none. Wolfram's moderation engine now decides each post from its own labels and its author's, using the account's adult-content setting, subscribed labelers and per-label choices, with Bluesky's moderation labeler always counted. A post the account hides is dropped from the timeline. A warned post is drawn as a cover naming the reason ("Content warning", "Graphic media"); A lifts it, and A again opens the thread. Covers for adult content with adult content off, and for a moderator's hide, cannot be lifted. Labels Cobalt has no definition for are named on the card instead of being ignored. There is no settings screen for labels yet, and third-party labelers' own definitions are not loaded. ([#275](https://github.com/ewanc26/cobalt/issues/275))
@@ -363,7 +365,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/ewanc26/cobalt/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/ewanc26/cobalt/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/ewanc26/cobalt/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/ewanc26/cobalt/compare/v0.14.0...v0.15.0
