@@ -98,6 +98,29 @@ void cobalt_postcard_draw_scrolled(cobalt_render *r, const cobalt_post *post,
 int cobalt_postcard_text_total(cobalt_render *r, const cobalt_post *post,
                                int card_w, int indent);
 
+/*
+ * Content labels. A post whose labels cover it (atproto/labels.h) is drawn,
+ * sized and wrapped as its cover instead: the reason in place of the text,
+ * and no media. Every entry point above applies this, so a card's height and
+ * its drawing always agree.
+ *
+ * One post at a time can be revealed, by URI; revealing another, or passing
+ * NULL, covers the previous one again. A cover with no_override set ignores
+ * the reveal. UI thread only.
+ */
+void cobalt_postcard_reveal(const char *uri);
+
+/* Whether `post` is drawn as its cover right now. */
+bool cobalt_postcard_covered(const cobalt_post *post);
+
+/* Whether pressing A on `post` should reveal it rather than act on it:
+ * covered, and the cover can be lifted. */
+bool cobalt_postcard_can_reveal(const cobalt_post *post);
+
+/* Write the cover `post` would be drawn as into `out`, or copy it unchanged
+ * when it is not covered. Exposed for tests. */
+void cobalt_postcard_cover(const cobalt_post *post, cobalt_post *out);
+
 /* The "more below" line at the foot of a TV detail column whose text does not
  * fit. Drawn in the column's last caption line, ending at `bottom`. Returns
  * the rect it drew into, so a caller can check it. */

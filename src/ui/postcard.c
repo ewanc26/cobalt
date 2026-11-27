@@ -182,10 +182,100 @@ remote_compact(cobalt_render *r)
    return cobalt_render_remote(r);
 }
 
+/* --- content-label covers --- */
+
+static char g_revealed[COBALT_POST_URI_MAX];
+
+void
+cobalt_postcard_reveal(const char *uri)
+{
+   snprintf(g_revealed, sizeof g_revealed, "%s", uri ? uri : "");
+}
+
+/* A filtered post is one the account asked never to see in a list; when a
+ * list that does not drop posts (a profile, search) shows it anyway, its cover
+ * stays, as a no_override one does. */
+static bool
+can_lift(const cobalt_post *post)
+{
+   return !post->mod.no_override && post->mod.action != COBALT_MOD_FILTER;
+}
+
+bool
+cobalt_postcard_covered(const cobalt_post *post)
+{
+   if (!post || post->mod.action == COBALT_MOD_NONE) {
+      return false;
+   }
+   if (!can_lift(post)) {
+      return true;
+   }
+   return !(g_revealed[0] && strcmp(g_revealed, post->uri) == 0);
+}
+
+bool
+cobalt_postcard_can_reveal(const cobalt_post *post)
+{
+   return cobalt_postcard_covered(post) && can_lift(post);
+}
+
+void
+cobalt_postcard_cover(const cobalt_post *post, cobalt_post *out)
+{
+   memcpy(out, post, sizeof(*out));
+   if (post->mod.unsupported[0]) {
+      /* Named rather than dropped: Cobalt was told something about this post
+       * and cannot act on it, which the reader should know. */
+      const size_t used = strlen(out->text);
+      snprintf(out->text + used, sizeof(out->text) - used,
+               "%sLabelled %s, which Cobalt does not support yet.",
+               used ? "\n\n" : "", post->mod.unsupported);
+   }
+   if (!cobalt_postcard_covered(post)) {
+      return;
+   }
+   const char *reason = post->mod.reason[0] ? post->mod.reason : "Labelled content";
+   const char *how = !can_lift(post) ? "Cobalt will not show it."
+                                           : "A: show it.";
+
+   /* Media goes in both cases: it is what every cover hides. */
+   out->image_count = 0;
+   memset(&out->link, 0, sizeof(out->link));
+   memset(&out->quote, 0, sizeof(out->quote));
+
+   if (post->mod.action == COBALT_MOD_BLUR_MEDIA) {
+      snprintf(out->embed_note, sizeof(out->embed_note), "[media hidden]");
+      /* Keep the text, and say why the media is gone at its foot. */
+      const size_t used = strlen(out->text);
+      snprintf(out->text + used, sizeof(out->text) - used, "%s%s: media hidden. %s",
+               used ? "\n\n" : "", reason, how);
+      return;
+   }
+   out->facet_count = 0;
+   out->embed_note[0] = '\0';
+   snprintf(out->text, sizeof(out->text), "%s. %s", reason, how);
+}
+
+/* The post as drawn: itself, or its cover in `scratch`. */
+static const cobalt_post *
+as_drawn(const cobalt_post *post, cobalt_post *scratch)
+{
+   if (!cobalt_postcard_covered(post) && !post->mod.unsupported[0]) {
+      return post;
+   }
+   cobalt_postcard_cover(post, scratch);
+   return scratch;
+}
+
+/* One scratch post, reused: the UI thread draws one card at a time, and a
+ * cobalt_post is too big for every frame's stack. */
+static cobalt_post g_cover_scratch;
+
 int
 cobalt_postcard_height(cobalt_render *r, const cobalt_post *post, int text_lines,
                        bool focused)
 {
+   post = post ? as_drawn(post, &g_cover_scratch) : post;
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const int caption_h = cobalt_font_line_height(r, COBALT_FONT_CAPTION);
    const int body_h = cobalt_font_line_height(r, COBALT_FONT_BODY);
@@ -713,6 +803,7 @@ cobalt_postcard_draw_scrolled(cobalt_render *r, const cobalt_post *post,
    if (!r || !post || !rect) {
       return;
    }
+   post = as_drawn(post, &g_cover_scratch);
 
    const cobalt_metrics *m = cobalt_render_metrics(r);
    const bool compact = remote_compact(r);
@@ -913,7 +1004,11 @@ int
 cobalt_postcard_text_total(cobalt_render *r, const cobalt_post *post, int card_w,
                            int indent)
 {
-   if (!r || !post || !post->text[0]) {
+   if (!r || !post) {
+      return 0;
+   }
+   post = as_drawn(post, &g_cover_scratch);
+   if (!post->text[0]) {
       return 0;
    }
    const cobalt_metrics *m = cobalt_render_metrics(r);

@@ -90,6 +90,11 @@ cobalt_timeline_update_feed(cobalt_timeline *view, const cobalt_input *in,
          cobalt_session_begin_like(post->uri, post->cid);
       } else if (cobalt_input_pressed(in, COBALT_BTN_RIGHT)) {
          cobalt_session_begin_repost(post->uri, post->cid);
+      } else if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM) &&
+                 cobalt_postcard_can_reveal(post)) {
+         /* A on a labelled post lifts its cover first; a second A opens it,
+          * as on any other post. */
+         cobalt_postcard_reveal(post->uri);
       } else if (cobalt_input_pressed(in, COBALT_BTN_CONFIRM)) {
          COBALT_LOGI("timeline: opening thread %s", post->uri);
          cobalt_session_begin_thread(post->uri);
@@ -272,6 +277,10 @@ cobalt_timeline_draw_feed(cobalt_timeline *view, cobalt_render *r,
 
    if (cobalt_session_busy()) {
       cobalt_draw_hints(r, "Working...");
+   } else if (view->nav.selected < feed->count &&
+              cobalt_postcard_can_reveal(&feed->posts[view->nav.selected])) {
+      /* A lifts a label's cover before it opens anything, so say so. */
+      cobalt_draw_hints(r, "A: show  Y: more  Left: like  Right: repost");
    } else if (split && view->detail_more.w > 0) {
       cobalt_draw_hints(r, footer_scroll);
    } else {
