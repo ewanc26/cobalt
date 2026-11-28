@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Added
+
+- A profile's avatar is covered when a label on the account asks for it, for example graphic media from a labeler you subscribe to. The image is not downloaded; the lettered placeholder is drawn, and the counts line says "Avatar hidden: <reason>". Cobalt does not draw profile banners, so banners are not covered. ([#275](https://github.com/ewanc26/cobalt/issues/275))
+
 ## [0.21.0] - 2026-11-28
 
 ### Added
