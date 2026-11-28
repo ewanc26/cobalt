@@ -204,6 +204,10 @@ ctx_build(labels_ctx *c, const wf_actor_preferences *src)
    if (!c->def_names) {
       return false;
    }
+   /* The engine reads definitions through opts; set them now so a lookup made
+    * before any post is decided (the settings screen) sees the globals too. */
+   c->opts.label_defs = c->defs;
+   c->opts.label_def_count = c->def_count;
    wf_mod_prefs *p = &c->opts.prefs;
 
    /* Official clients always count Bluesky's own labeler. */
@@ -427,6 +431,26 @@ cobalt_labels_add_services(const wf_labeler_service_list *list)
    return added;
 }
 
+const char *
+cobalt_labels_visibility(const char *label)
+{
+   if (!label) {
+      return "warn";
+   }
+   if (!g_ctx.ready) {
+      cobalt_labels_reset();
+   }
+   const wf_mod_label_def *def = wf_mod_find_label_def(&g_ctx.opts, label, NULL);
+   if (!def) {
+      return "warn";
+   }
+   switch (wf_mod_get_label_pref(&g_ctx.opts, def, NULL)) {
+      case WF_MOD_PREF_HIDE: return "hide";
+      case WF_MOD_PREF_IGNORE: return "ignore";
+      default: return "warn";
+   }
+}
+
 bool
 cobalt_labels_adult_enabled(void)
 {
@@ -589,4 +613,19 @@ cobalt_labels_apply(cobalt_post_mod *out, const char *uri, const char *author_di
    wf_mod_labels_free(al, an);
 }
 
+#endif
+
+#ifndef COBALT_HAS_WOLFRAM
+bool
+cobalt_labels_adult_enabled(void)
+{
+   return false;
+}
+
+const char *
+cobalt_labels_visibility(const char *label)
+{
+   (void) label;
+   return "warn";
+}
 #endif

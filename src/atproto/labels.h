@@ -89,7 +89,6 @@ int cobalt_labels_add_services(const struct wf_labeler_service_list *list);
 
 /* Whether the active context lets adult content through; for diagnostics and
  * tests. */
-bool cobalt_labels_adult_enabled(void);
 
 /*
  * Decide `out` for one post from its `labels` and its author's, as kept by
@@ -103,6 +102,12 @@ void cobalt_labels_apply(cobalt_post_mod *out, const char *uri,
                          const struct cJSON *author_labels);
 
 #endif
+
+/* The settings screen reads these in every build; without Wolfram they report
+ * the defaults (adult off, labels warned). */
+bool cobalt_labels_adult_enabled(void);
+bool cobalt_labels_adult_enabled(void);
+const char *cobalt_labels_visibility(const char *label);
 
 #ifdef __cplusplus
 }

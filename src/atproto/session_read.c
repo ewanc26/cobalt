@@ -31,6 +31,26 @@ load_labeler_definitions(void)
    wf_labeler_service_list_free(&list);
 }
 
+void
+cobalt_session_refresh_label_context(void)
+{
+   wf_actor_preferences p;
+
+   if (!g_session.wf) {
+      return;
+   }
+   memset(&p, 0, sizeof(p));
+   if (wf_agent_get_actor_prefs_typed(g_session.wf, &p) != WF_OK) {
+      COBALT_LOGW("session: label context not refreshed (getPreferences failed)");
+      wf_actor_preferences_free(&p);
+      return;
+   }
+   cobalt_labels_from_prefs(&p);
+   cobalt_labels_send_accept(g_session.wf);
+   load_labeler_definitions();
+   wf_actor_preferences_free(&p);
+}
+
 /* Fetch the saved preferences once per sign-in. Failure is not fatal: the
  * feed is simply shown unfiltered. */
 static void

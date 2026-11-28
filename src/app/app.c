@@ -1,4 +1,5 @@
 #include "app/app_internal.h"
+#include "app/label_settings_view.h"
 #include "app/account_view.h"
 #include "app/settings_view.h"
 #include "app/queue_store.h"
@@ -1483,6 +1484,10 @@ app_update_inner(cobalt_app *app, const cobalt_input *in, uint32_t now_ms)
          cobalt_app_update_account(app, in);
          break;
 
+      case COBALT_SCREEN_LABEL_SETTINGS:
+         cobalt_app_update_label_settings(app, in);
+         break;
+
       case COBALT_SCREEN_SETTINGS:
          cobalt_settings_view_update(app, in);
          break;
@@ -1811,6 +1816,10 @@ cobalt_app_draw(cobalt_app *app, cobalt_render *r, cobalt_surface_id surface)
 
       case COBALT_SCREEN_ACCOUNT:
          cobalt_app_draw_account(app, r, surface);
+         break;
+
+      case COBALT_SCREEN_LABEL_SETTINGS:
+         cobalt_app_draw_label_settings(app, r, surface);
          break;
 
       case COBALT_SCREEN_SETTINGS:

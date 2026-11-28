@@ -1614,6 +1614,75 @@ test_feeds(void)
    CHECK(r.message[0] != '\0');
    CHECK(cobalt_session_feed_discovery_results()->count == 2);
 
+   /* Content-label settings: one preference is written, the label context is
+    * rebuilt from the server's copy, and a refused read or write changes
+    * nothing. The account is signed in as did:plc:abc above. */
+   cs_set(&s, "app.bsky.actor.getPreferences", 200,
+      "{\"preferences\":[{\"$type\":\"app.bsky.actor.defs#adultContentPref\",\"enabled\":true},"
+      "{\"$type\":\"app.bsky.actor.defs#contentLabelPref\",\"label\":\"porn\",\"visibility\":\"hide\"},"
+      "{\"$type\":\"app.bsky.actor.defs#savedFeedsPrefV2\",\"items\":[]}]}");
+   cs_set(&s, "app.bsky.actor.putPreferences", 200, "{}");
+   {
+      const int puts = cs_hits(&s, "app.bsky.actor.putPreferences");
+      CHECK(cobalt_session_begin_label_pref("porn", "warn"));
+      CHECK(wait_job(&r) && r.ok);
+      CHECK(cs_hits(&s, "app.bsky.actor.putPreferences") == puts + 1);
+      CHECK(cs_request_contains(&s, "app.bsky.actor.putPreferences", "\"label\":\"porn\""));
+      CHECK(cs_request_contains(&s, "app.bsky.actor.putPreferences", "\"visibility\":\"warn\""));
+      /* The old porn entry is replaced, not kept beside the new one. */
+      CHECK(!cs_request_contains(&s, "app.bsky.actor.putPreferences", "\"visibility\":\"hide\""));
+      /* The adult switch and the saved feeds ride along untouched. */
+      CHECK(cs_request_contains(&s, "app.bsky.actor.putPreferences", "adultContentPref"));
+      CHECK(cs_request_contains(&s, "app.bsky.actor.putPreferences", "savedFeedsPrefV2"));
+   }
+   /* After the write the server reports the new value; the context follows it. */
+   cs_set(&s, "app.bsky.actor.getPreferences", 200,
+      "{\"preferences\":[{\"$type\":\"app.bsky.actor.defs#adultContentPref\",\"enabled\":true},"
+      "{\"$type\":\"app.bsky.actor.defs#contentLabelPref\",\"label\":\"porn\",\"visibility\":\"warn\"}]}");
+   CHECK(cobalt_session_begin_label_pref("porn", "warn"));
+   CHECK(wait_job(&r) && r.ok);
+   CHECK(strcmp(cobalt_labels_visibility("porn"), "warn") == 0);
+   CHECK(cobalt_labels_adult_enabled());
+
+   /* A refused read writes nothing and says so. */
+   cs_set(&s, "app.bsky.actor.getPreferences", 500,
+      "{\"error\":\"InternalServerError\",\"message\":\"boom\"}");
+   {
+      const int puts = cs_hits(&s, "app.bsky.actor.putPreferences");
+      CHECK(cobalt_session_begin_label_pref("sexual", "hide"));
+      CHECK(wait_job(&r));
+      CHECK(!r.ok);
+      CHECK(strstr(r.message, "nothing was changed") != NULL);
+      CHECK(cs_hits(&s, "app.bsky.actor.putPreferences") == puts);
+   }
+
+   /* A refused write leaves the account's previous setting in force. */
+   cs_set(&s, "app.bsky.actor.getPreferences", 200,
+      "{\"preferences\":[{\"$type\":\"app.bsky.actor.defs#adultContentPref\",\"enabled\":true},"
+      "{\"$type\":\"app.bsky.actor.defs#contentLabelPref\",\"label\":\"porn\",\"visibility\":\"warn\"}]}");
+   cs_set(&s, "app.bsky.actor.putPreferences", 400,
+      "{\"error\":\"InvalidRequest\",\"message\":\"nope\"}");
+   CHECK(cobalt_session_begin_label_pref("porn", "hide"));
+   CHECK(wait_job(&r));
+   CHECK(!r.ok);
+   CHECK(strstr(r.message, "It is unchanged") != NULL);
+   CHECK(strcmp(cobalt_labels_visibility("porn"), "warn") == 0);
+
+   /* A fresh context reads the global defaults before any post is decided:
+    * nudity is ignored by default, porn is hidden with adult content off. */
+   cobalt_labels_reset();
+   CHECK(strcmp(cobalt_labels_visibility("nudity"), "ignore") == 0);
+   CHECK(strcmp(cobalt_labels_visibility("porn"), "hide") == 0);
+
+   /* A value that is not a visibility is refused before any request. */
+   {
+      const int puts = cs_hits(&s, "app.bsky.actor.putPreferences");
+      CHECK(cobalt_session_begin_label_pref("porn", "maybe"));
+      CHECK(wait_job(&r));
+      CHECK(!r.ok);
+      CHECK(cs_hits(&s, "app.bsky.actor.putPreferences") == puts);
+   }
+
    cs_stop(&s);
 }
 
