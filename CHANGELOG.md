@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-28
+
 ### Added
 
 - Content-label settings. Account now has a Content labels screen with the adult-content switch and each label's visibility (hide, warn or show). Changes are written to your Bluesky preferences, one preference at a time, and the screen shows what the server now holds, so a refused change leaves the previous setting in place. Adult labels are read as hidden while adult content is off, and the screen says so. ([#275](https://github.com/ewanc26/cobalt/issues/275))
@@ -393,7 +395,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.20.1...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/ewanc26/cobalt/compare/v0.20.1...v0.21.0
 [0.20.1]: https://github.com/ewanc26/cobalt/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/ewanc26/cobalt/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/ewanc26/cobalt/compare/v0.18.1...v0.19.0
