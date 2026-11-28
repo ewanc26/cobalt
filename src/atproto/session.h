@@ -125,6 +125,7 @@ typedef enum {
    COBALT_JOB_CHAT_GROUP_ADD,
    COBALT_JOB_CHAT_GROUP_REMOVE,
    COBALT_JOB_CHAT_JOIN_LINK,
+   COBALT_JOB_LABEL_PREF,
 } cobalt_job_kind;
 
 typedef struct {
@@ -594,6 +595,13 @@ typedef struct {
 const cobalt_saved_feeds *cobalt_session_saved_feeds(void);
 bool cobalt_session_begin_saved_feeds(void);
 bool cobalt_session_begin_list_members(const char *list_uri, bool paging);
+
+/* Set one content-label preference: `label` is a label identifier (for example
+ * "porn") with `visibility` "hide", "warn" or "ignore"; or `label` is "adult"
+ * with `visibility` "on" or "off" for the adult-content switch. Only that one
+ * preference is written. On failure the account keeps its previous value, and
+ * the label context is left as it was. */
+bool cobalt_session_begin_label_pref(const char *label, const char *visibility);
 
 /* Create or edit a list's name, description and purpose. Names are required;
  * an empty description clears it. Editing replaces the whole record, keeping

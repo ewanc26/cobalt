@@ -142,6 +142,9 @@ typedef struct {
     bool link_disable;
     /* Feed discovery: cursor for paging. */
     char cursor[COBALT_CURSOR_MAX];
+    /* Label preference jobs: the visibility or "on"/"off" to set for the label
+     * in `uri` ("adult" for the adult-content switch). */
+    char label_value[16];
 } cobalt_job_input;
 
 /* How many thread roots one run remembers as muted. The server has no read
@@ -267,6 +270,11 @@ extern cobalt_session_core g_session;
 void cobalt_session_set_message(cobalt_job_result *r, const char *fmt, ...)
    __attribute__((format(printf, 2, 3)));
 bool cobalt_session_submit(cobalt_job_kind kind, const cobalt_job_input *in);
+void cobalt_session_run_label_pref(const cobalt_job_input *in, cobalt_job_result *r,
+                                   cobalt_auth_state *state);
+/* Re-read the account's label preferences and rebuild the label context from
+ * them, with the labelers' definitions. Worker thread only. */
+void cobalt_session_refresh_label_context(void);
 
 #ifdef COBALT_HAS_WOLFRAM
 /* Core, for the runners (they need Wolfram's status type). */

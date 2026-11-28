@@ -22,6 +22,8 @@ cobalt_prefs_read(wf_agent *wf)
    return prefs;
 }
 
+static wf_status cobalt_prefs_put_array(wf_agent *wf, cJSON *prefs, cJSON *replacement);
+
 static bool
 is_type(const cJSON *pref, const char *type)
 {
@@ -41,6 +43,30 @@ cobalt_prefs_find(cJSON *prefs, const char *type)
    return NULL;
 }
 
+static bool
+key_is(const cJSON *pref, const char *key, const char *value)
+{
+   const cJSON *k = cJSON_GetObjectItemCaseSensitive(pref, key);
+   return cJSON_IsString(k) && k->valuestring && strcmp(k->valuestring, value) == 0;
+}
+
+wf_status
+cobalt_prefs_put_replacing_match(wf_agent *wf, cJSON *prefs, const char *type,
+                                 const char *key, const char *value, cJSON *replacement)
+{
+   if (!wf || !cJSON_IsArray(prefs) || !type || !key || !value) {
+      cJSON_Delete(replacement);
+      return WF_ERR_INVALID_ARG;
+   }
+   for (int i = cJSON_GetArraySize(prefs) - 1; i >= 0; i--) {
+      const cJSON *it = cJSON_GetArrayItem(prefs, i);
+      if (is_type(it, type) && key_is(it, key, value)) {
+         cJSON_DeleteItemFromArray(prefs, i);
+      }
+   }
+   return cobalt_prefs_put_array(wf, prefs, replacement);
+}
+
 wf_status
 cobalt_prefs_put_replacing(wf_agent *wf, cJSON *prefs, const char *type,
                            cJSON *replacement)
@@ -54,6 +80,12 @@ cobalt_prefs_put_replacing(wf_agent *wf, cJSON *prefs, const char *type,
          cJSON_DeleteItemFromArray(prefs, i);
       }
    }
+   return cobalt_prefs_put_array(wf, prefs, replacement);
+}
+
+static wf_status
+cobalt_prefs_put_array(wf_agent *wf, cJSON *prefs, cJSON *replacement)
+{
    if (replacement) {
       cJSON_AddItemToArray(prefs, replacement);
    }

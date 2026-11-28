@@ -34,6 +34,15 @@ cJSON *cobalt_prefs_find(cJSON *prefs, const char *type);
 wf_status cobalt_prefs_put_replacing(wf_agent *wf, cJSON *prefs, const char *type,
                                      cJSON *replacement);
 
+/*
+ * As cobalt_prefs_put_replacing, but only entries of `type` whose `key` string
+ * field equals `value` are replaced. Used where one type holds many entries,
+ * such as a content-label preference per label.
+ */
+wf_status cobalt_prefs_put_replacing_match(wf_agent *wf, cJSON *prefs, const char *type,
+                                           const char *key, const char *value,
+                                           cJSON *replacement);
+
 #ifdef __cplusplus
 }
 #endif

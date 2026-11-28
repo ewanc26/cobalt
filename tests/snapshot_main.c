@@ -1309,6 +1309,16 @@ main(int argc, char **argv)
    settle(10);
    shoot("account");
 
+   /* Content labels: opened from Account, then back out to it. */
+   frame(COBALT_BTN_DOWN); settle(2);
+   frame(COBALT_BTN_DOWN); settle(2);
+   frame(COBALT_BTN_DOWN); settle(2);
+   frame(COBALT_BTN_CONFIRM); settle(3);
+   CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_LABEL_SETTINGS);
+   shoot("label-settings");
+   frame(COBALT_BTN_BACK); settle(3);
+   CHECK(cobalt_app_screen(g_app) == COBALT_SCREEN_ACCOUNT);
+
    /* Drafts: a list, then resuming the first one into compose and coming back.
     * The saved text survives the round trip; nothing is sent. */
    {

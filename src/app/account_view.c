@@ -1,6 +1,7 @@
 #include "app/account_view.h"
 
 #include "app/app_internal.h"
+#include "app/label_settings_view.h"
 
 /* Rows in draw order; Up/Down cycles this list. PROFILE is the identity panel
  * above the rows, and is selectable through that panel. */
@@ -8,6 +9,7 @@ typedef enum {
    ACCOUNT_ROW_PROFILE = 0,
    ACCOUNT_ROW_MUTED,
    ACCOUNT_ROW_BLOCKED,
+   ACCOUNT_ROW_LABELS,
    ACCOUNT_ROW_LANG,
    ACCOUNT_ROW_SIGN_OUT,
    ACCOUNT_ROW_COUNT,
@@ -73,6 +75,11 @@ cobalt_app_update_account(cobalt_app *app, const cobalt_input *in)
          app->screen = COBALT_SCREEN_BLOCKED_LIST;
          COBALT_LOGI("account: opened blocked accounts");
          break;
+      case ACCOUNT_ROW_LABELS:
+         cobalt_app_open_label_settings();
+         app->screen = COBALT_SCREEN_LABEL_SETTINGS;
+         COBALT_LOGI("account: opened content labels");
+         break;
       case ACCOUNT_ROW_LANG:
          cobalt_session_cycle_post_lang();
          break;
@@ -132,7 +139,7 @@ cobalt_app_draw_account(cobalt_app *app, cobalt_render *r, cobalt_surface_id sur
    }
 
    const char *ROW_LABEL[ACCOUNT_ROW_COUNT] = {
-      "", "Muted accounts", "Blocked accounts", "Post language", "Sign out",
+      "", "Muted accounts", "Blocked accounts", "Content labels", "Post language", "Sign out",
    };
    /* The language is a value, not part of the label. Settings and Credits put
     * the label on the left edge and its state on the right; this was the last
