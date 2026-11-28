@@ -923,6 +923,10 @@ here has run on a console, so the console flow remains a `needs-owner` check.
 
 **Verification note:** `make -j4` succeeds end-to-end — `cobalt.elf`/`.rpx`/`.wuhb`, no errors or warnings. Still no hardware pass, and this closes the last item on §12's original roadmap list.
 
+### The label context is guarded by the session lock
+
+Every entry point that reads or rebuilds the label context (`src/atproto/labels.c`) takes the session lock for its whole body with `LABELS_LOCKED`, which releases through a `cleanup` attribute on every return path. The UI reads the context while it holds the lock (app.c), and the worker rebuilds it, so both sides must take the same lock. Do not add an entry point that touches the context without it.
+
 ### The content-label settings screen writes through the job, and shows the server's answer
 
 `src/app/label_settings_view.c` is reached from Account. It never changes its own state: `cobalt_session_begin_label_pref` runs a job (`src/atproto/label_prefs.c`) that writes one `contentLabelPref` or `adultContentPref`, then `cobalt_session_refresh_label_context` re-reads the account and rebuilds the label context from the server's copy. A refused read or write leaves the context, and so the screen, unchanged. Adult labels are not writable while adult content is off, because the engine hides them whatever the setting says.

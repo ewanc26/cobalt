@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Fixed
+
+- The content-label state is now read and rebuilt under the session lock. Opening the Content labels screen while the worker refreshed the labels could read the context while it was being freed and rebuilt, which could crash. ([#275](https://github.com/ewanc26/cobalt/issues/275))
+
 ## [0.22.0] - 2026-11-28
 
 ### Added

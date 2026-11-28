@@ -63,12 +63,36 @@ typedef struct {
    wf_mod_opts opts;   /* opts.prefs arrays below are owned here */
 } labels_ctx;
 
+/*
+ * The label context is read by the UI (under the session lock, as app.c holds
+ * it while it draws) and rebuilt by the worker. Every entry point that touches
+ * it takes the same lock for its whole body; the mutex is reentrant, so one
+ * entry point may call another.
+ */
+static int
+labels_guard_acquire(void)
+{
+   cobalt_session_lock();
+   return 0;
+}
+
+static void
+labels_guard_release(int *guard)
+{
+   (void) guard;
+   cobalt_session_unlock();
+}
+
+#define LABELS_LOCKED \
+   int labels_guard_ __attribute__((cleanup(labels_guard_release))) = labels_guard_acquire()
+
 static labels_ctx g_ctx;
 static char g_viewer[256];
 
 void
 cobalt_labels_set_viewer(const char *did)
 {
+   LABELS_LOCKED;
    if (strcmp(g_viewer, did ? did : "") != 0) {
       snprintf(g_viewer, sizeof g_viewer, "%s", did ? did : "");
    }
@@ -259,6 +283,7 @@ ctx_build(labels_ctx *c, const wf_actor_preferences *src)
 void
 cobalt_labels_reset(void)
 {
+   LABELS_LOCKED;
    ctx_free(&g_ctx);
    if (!ctx_build(&g_ctx, NULL)) {
       ctx_free(&g_ctx);
@@ -269,6 +294,7 @@ cobalt_labels_reset(void)
 bool
 cobalt_labels_from_prefs(const wf_actor_preferences *prefs)
 {
+   LABELS_LOCKED;
    labels_ctx next;
    if (!ctx_build(&next, prefs)) {
       ctx_free(&next);
@@ -287,6 +313,7 @@ cobalt_labels_from_prefs(const wf_actor_preferences *prefs)
 int
 cobalt_labels_accept_value(char *out, size_t out_size)
 {
+   LABELS_LOCKED;
    if (!out || out_size == 0) {
       return 0;
    }
@@ -332,6 +359,7 @@ cobalt_labels_send_accept(struct wf_agent *agent)
 int
 cobalt_labels_labelers(const char **out, int max)
 {
+   LABELS_LOCKED;
    if (!out || max <= 0) {
       return 0;
    }
@@ -381,6 +409,7 @@ have_def(const char *identifier, const char *by)
 int
 cobalt_labels_add_services(const wf_labeler_service_list *list)
 {
+   LABELS_LOCKED;
    if (!list || !g_ctx.ready) {
       return 0;
    }
@@ -434,6 +463,7 @@ cobalt_labels_add_services(const wf_labeler_service_list *list)
 const char *
 cobalt_labels_visibility(const char *label)
 {
+   LABELS_LOCKED;
    if (!label) {
       return "warn";
    }
@@ -454,6 +484,7 @@ cobalt_labels_visibility(const char *label)
 bool
 cobalt_labels_adult_enabled(void)
 {
+   LABELS_LOCKED;
    return g_ctx.ready && g_ctx.opts.prefs.adult_content_enabled;
 }
 
@@ -493,6 +524,7 @@ bool
 cobalt_labels_avatar_covered(const char *did, const cJSON *labels, char *reason,
                              size_t reason_size)
 {
+   LABELS_LOCKED;
    bool covered = false;
 
    if (reason && reason_size) {
@@ -639,6 +671,7 @@ void
 cobalt_labels_apply(cobalt_post_mod *out, const char *uri, const char *author_did,
                     const cJSON *labels, const cJSON *author_labels)
 {
+   LABELS_LOCKED;
    if (!out) {
       return;
    }
