@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-11-28
+
 ### Fixed
 
 - The content-label state is now read and rebuilt under the session lock. Opening the Content labels screen while the worker refreshed the labels could read the context while it was being freed and rebuilt, which could crash. ([#275](https://github.com/ewanc26/cobalt/issues/275))
@@ -405,7 +407,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.22.1...HEAD
+[0.22.1]: https://github.com/ewanc26/cobalt/compare/v0.22.0...v0.22.1
 [0.22.0]: https://github.com/ewanc26/cobalt/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/ewanc26/cobalt/compare/v0.20.1...v0.21.0
 [0.20.1]: https://github.com/ewanc26/cobalt/compare/v0.20.0...v0.20.1
