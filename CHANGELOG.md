@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-28
+
 ### Added
 
 - A profile's avatar is covered when a label on the account asks for it, for example graphic media from a labeler you subscribe to. The image is not downloaded; the lettered placeholder is drawn, and the counts line says "Avatar hidden: <reason>". Cobalt does not draw profile banners, so banners are not covered. ([#275](https://github.com/ewanc26/cobalt/issues/275))
@@ -399,7 +401,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/ewanc26/cobalt/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/ewanc26/cobalt/compare/v0.20.1...v0.21.0
 [0.20.1]: https://github.com/ewanc26/cobalt/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/ewanc26/cobalt/compare/v0.19.0...v0.20.0
