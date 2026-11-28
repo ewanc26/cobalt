@@ -87,6 +87,13 @@ int cobalt_labels_labelers(const char **out, int max);
 struct wf_labeler_service_list;
 int cobalt_labels_add_services(const struct wf_labeler_service_list *list);
 
+/* Whether a profile's avatar should be covered for its labels, decided by
+ * Wolfram's profile rules in the avatar context. Writes the reason (what the
+ * cover is called) into `reason`, or "" when not covered. `labels` is the
+ * profile's labels array, which may be NULL. Worker thread only. */
+bool cobalt_labels_avatar_covered(const char *did, const struct cJSON *labels, char *reason,
+                                  size_t reason_size);
+
 /* Whether the active context lets adult content through; for diagnostics and
  * tests. */
 

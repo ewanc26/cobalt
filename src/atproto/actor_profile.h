@@ -39,6 +39,12 @@ typedef struct {
     * and ui/imagecache.c does the fetching. */
    char avatar[COBALT_POST_AVATAR_MAX];
 
+   /* A label covers the avatar (Wolfram's profile rules, avatar context): the
+    * image is not fetched and the lettered placeholder is drawn. The reason is
+    * also named on the counts line, so the cover is not silent. */
+   bool avatar_covered;
+   char avatar_reason[COBALT_POST_MOD_REASON_MAX];
+
    /* Pre-formatted, because these are drawn as a single line and the numbers
     * are not otherwise needed. */
    char counts[COBALT_POST_META_MAX];       /* "120 followers · 84 following" */

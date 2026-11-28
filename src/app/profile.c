@@ -322,8 +322,8 @@ draw_header(cobalt_render *r, const cobalt_profile *profile,
       const wide_header w = wide_header_measure(r, profile, m);
       const int inner = w.text_h > w.avatar ? w.text_h : w.avatar;
       const int avatar_y = rect->y + (rect->h - w.avatar) / 2;
-      cobalt_avatar_draw(r, profile->avatar, profile->display_name,
-                         profile->handle, left, avatar_y, w.avatar);
+      cobalt_avatar_draw(r, profile->avatar_covered ? "" : profile->avatar,
+                         profile->display_name, profile->handle, left, avatar_y, w.avatar);
 
       int wy = rect->y + m->pad_tile + (inner - w.text_h) / 2;
       int handle_w = 0;
@@ -383,8 +383,8 @@ draw_header(cobalt_render *r, const cobalt_profile *profile,
    int y = rect->y + m->pad_tile;
 
    const int avatar = header_avatar_side(r, m);
-   cobalt_avatar_draw(r, profile->avatar, profile->display_name,
-                      profile->handle, left, y, avatar);
+   cobalt_avatar_draw(r, profile->avatar_covered ? "" : profile->avatar,
+                      profile->display_name, profile->handle, left, y, avatar);
 
    /* Name and handle beside the avatar; everything after clears it. Both stop
     * at the card's right edge, which on this layout is the only thing keeping

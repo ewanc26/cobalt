@@ -9,6 +9,7 @@
 #include "app/chat_thread.h"
 #include "app/messages.h"
 #include "atproto/prefs.h"
+#include <cJSON.h>
 #include "atproto/labels.h"
 #include "ui/postcard.h"
 #include "atproto/session.h"
@@ -299,6 +300,31 @@ test_labels(void)
       char small[40];
       CHECK(cobalt_labels_accept_value(small, sizeof small) == 1);
       CHECK_STR(small, BSKY_MOD ";redact");
+   }
+
+   /* The profile's avatar is decided in the avatar context, from the account's
+    * labels and its profile-record labels together. Graphic media covers it
+    * (it blurs media, so the account's avatar too); a stranger's label and a
+    * profile with no labels never do. Which other labels blur the avatar
+    * depends on the global definitions, and is not asserted here. */
+   {
+      const char *did = "did:plc:author";
+      char reason[64];
+      cJSON *none = NULL;
+      cJSON *gm = cJSON_Parse("[{\"src\":\"" BSKY_MOD "\",\"uri\":\"did:plc:author\",\"val\":\"graphic-media\"}]");
+      cJSON *porn = cJSON_Parse("[{\"src\":\"did:plc:author\",\"uri\":\"did:plc:author\",\"val\":\"porn\"}]");
+      cJSON *stranger = cJSON_Parse("[{\"src\":\"did:plc:stranger\",\"uri\":\"did:plc:author\",\"val\":\"graphic-media\"}]");
+      CHECK(gm && porn && stranger);
+      cobalt_labels_reset();
+      CHECK(!cobalt_labels_avatar_covered(did, none, reason, sizeof reason));
+      CHECK(reason[0] == '\0');
+      CHECK(cobalt_labels_avatar_covered(did, gm, reason, sizeof reason));
+      CHECK_STR(reason, "Graphic media");
+      (void) porn;
+      CHECK(!cobalt_labels_avatar_covered(did, stranger, reason, sizeof reason));
+      cJSON_Delete(gm);
+      cJSON_Delete(porn);
+      cJSON_Delete(stranger);
    }
 
    /* A labeler's own definitions: its custom value is decided by its
