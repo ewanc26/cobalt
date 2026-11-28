@@ -1,6 +1,7 @@
 /* A profile and what you do to it: the profile itself, its tabs, follow, mute and block, and the calls that start them. */
 
 #include "atproto/session_internal.h"
+#include "atproto/labels.h"
 
 #ifdef COBALT_HAS_WOLFRAM
 
@@ -83,8 +84,31 @@ cobalt_session_run_profile(const cobalt_job_input *in, cobalt_job_result *r, cob
       return;
    }
 
+   /* The labels decide the avatar before the profile is shown: a covered avatar
+    * is never fetched, and the counts line says why. */
+   char avatar_reason[COBALT_POST_MOD_REASON_MAX];
+   const bool avatar_covered =
+      cobalt_labels_avatar_covered(profile.did, profile.labels, avatar_reason,
+                                   sizeof(avatar_reason));
+
    SDL_LockMutex(g_session.lock);
    cobalt_profile_from_wolfram(&g_session.profile, &profile, g_session.did);
+   g_session.profile.avatar_covered = avatar_covered;
+   snprintf(g_session.profile.avatar_reason, sizeof(g_session.profile.avatar_reason), "%s",
+            avatar_reason);
+   if (avatar_covered) {
+      /* Appended with bounded copies: a formatted write into the tail of the
+       * counts line warns under CI's compiler (see AGENTS.md section 13). */
+      const size_t used = strlen(g_session.profile.counts);
+      if (used + 3 < sizeof(g_session.profile.counts)) {
+         cobalt_feed_copy_text(g_session.profile.counts + used,
+                               sizeof(g_session.profile.counts) - used,
+                               g_session.profile.counts[0] ? " · Avatar hidden: " : "Avatar hidden: ");
+         const size_t after = strlen(g_session.profile.counts);
+         cobalt_feed_copy_text(g_session.profile.counts + after,
+                               sizeof(g_session.profile.counts) - after, avatar_reason);
+      }
+   }
    SDL_UnlockMutex(g_session.lock);
 
    char pinned[COBALT_POST_URI_MAX];
