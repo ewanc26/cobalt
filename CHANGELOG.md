@@ -7,6 +7,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-11-28
+
 ### Fixed
 
 - Saving, pinning or removing a feed can no longer erase your Bluesky preferences. If Cobalt could not read your current preferences first (a dropped connection, a server error), it wrote back a list holding only the feed change, which replaced every other preference the account had saved: muted words, saved and pinned feeds, label and adult-content choices. It now refuses and says nothing was changed. A newly saved feed also carries the `id` every saved feed must have; Cobalt's were missing it, so other clients could reject or mishandle them. ([#312](https://github.com/ewanc26/cobalt/pull/312))
@@ -387,7 +389,8 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 ### Added
 - First working client: app-password sign-in, timeline, threads, likes, reposts, composing, notifications, profiles and avatars.
 
-[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/ewanc26/cobalt/compare/v0.20.1...HEAD
+[0.20.1]: https://github.com/ewanc26/cobalt/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/ewanc26/cobalt/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/ewanc26/cobalt/compare/v0.18.1...v0.19.0
 [0.18.1]: https://github.com/ewanc26/cobalt/compare/v0.18.0...v0.18.1
