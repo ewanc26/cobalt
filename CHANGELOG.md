@@ -7,6 +7,10 @@ the GitHub release notes, so keep the `## [x.y.z] - date` headings exact.
 
 ## [Unreleased]
 
+### Added
+
+- Content-label settings. Account now has a Content labels screen with the adult-content switch and each label's visibility (hide, warn or show). Changes are written to your Bluesky preferences, one preference at a time, and the screen shows what the server now holds, so a refused change leaves the previous setting in place. Adult labels are read as hidden while adult content is off, and the screen says so. ([#275](https://github.com/ewanc26/cobalt/issues/275))
+
 ## [0.20.1] - 2026-11-28
 
 ### Fixed

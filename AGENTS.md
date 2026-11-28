@@ -923,6 +923,10 @@ here has run on a console, so the console flow remains a `needs-owner` check.
 
 **Verification note:** `make -j4` succeeds end-to-end — `cobalt.elf`/`.rpx`/`.wuhb`, no errors or warnings. Still no hardware pass, and this closes the last item on §12's original roadmap list.
 
+### The content-label settings screen writes through the job, and shows the server's answer
+
+`src/app/label_settings_view.c` is reached from Account. It never changes its own state: `cobalt_session_begin_label_pref` runs a job (`src/atproto/label_prefs.c`) that writes one `contentLabelPref` or `adultContentPref`, then `cobalt_session_refresh_label_context` re-reads the account and rebuilds the label context from the server's copy. A refused read or write leaves the context, and so the screen, unchanged. Adult labels are not writable while adult content is off, because the engine hides them whatever the setting says.
+
 ### Preference writes are read-modify-write, and never write blind
 
 `app.bsky.actor.putPreferences` replaces the whole array. Change a preference only through `src/atproto/prefs_write.c`:
@@ -958,7 +962,6 @@ Before 0.20.1 the feed writers fell back to an empty array when the read failed,
 - Reveal state is a single URI in `postcard.c`, not a field in the worker's shared list. That keeps the lock rule above intact. A on a coverable post reveals it (timeline-family screens, thread, profile), and the footer says "A: show".
 - Name label values the context has no definition for, from a source it counts (the author, or a subscribed labeler), on the card: "Labelled x, which Cobalt does not support yet". Never drop them silently. Ignore labels from labelers the account does not subscribe to, as upstream does.
 - **Scoped out (#275 stays open):**
-  - A settings screen for label preferences, and writing a changed preference back.
   - Avatar and banner blurs. Profile-level decisions are not drawn yet.
 - **Verification:** host only. `make -C tests all e2e snapshot` covers known, unknown and malformed labels, self-labels, the adult gate, preference changes and filtering (e2e `test_labels`). The `labels-covered` and `labels-revealed` snapshots cover both displays. Not run on Cemu or hardware.
 
