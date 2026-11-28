@@ -949,6 +949,9 @@ Before 0.20.1 the feed writers fell back to an empty array when the read failed,
   - The labeler's English name (else its first) becomes the cover's reason.
   - A rebuilt context drops these definitions, so reload them after every `cobalt_labels_from_prefs`.
   - If the fetch fails, it is logged and the labels stay "unsupported".
+- A profile's avatar is decided in `cobalt_labels_avatar_covered`. Wolfram splits a profile's labels: account labels (uri = the DID) go through `wf_mod_decide_account`, and profile-record labels (uri ends in `/app.bsky.actor.profile/self`) through `wf_mod_decide_profile`. Both decisions are merged, as upstream does, and the avatar context decides. The profile's labels come from `wf_agent_profile.labels` (Wolfram 0.49.0).
+  - A covered avatar is passed to the drawing as "" (the placeholder), so it is never fetched, and the reason is appended to the counts line.
+  - Banners are not decided: Cobalt does not draw profile banners.
 - `user_did` must be the signed-in DID. `cobalt_labels_apply` sets it from `cobalt_session_did()` before every decision, and `cobalt_session_teardown_agent` clears it and resets the context. Wolfram's `!no-unauthenticated` and `is_me` rules depend on it. Without it, 0.18.0 filtered every post from accounts that opt out of logged-out viewing.
 - Until `ensure_prefs` loads the account's preferences, the context is the safe default: adult content off, Bluesky's labeler only.
 - `cobalt_labels_from_prefs` builds the new context before it frees the old one. If memory runs out, the previous preferences stay in place.
