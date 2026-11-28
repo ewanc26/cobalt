@@ -148,7 +148,9 @@ A starter-pack link in a post's More menu opens the pack instead of the link pag
 
 ## Account
 
-Muted accounts and Blocked accounts (A on one undoes it), the post language setting and Sign out, which wipes the saved session from the SD card.
+Muted accounts and Blocked accounts (A on one undoes it), Content labels, the post language setting and Sign out, which wipes the saved session from the SD card.
+
+Content labels sets the adult-content switch and what each label does: Hide, Warn or Show. A changes the value, and the screen shows the value Bluesky now holds. While adult content is off, the adult labels read as hidden and cannot be changed.
 
 ## Settings
 
